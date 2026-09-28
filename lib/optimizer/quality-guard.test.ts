@@ -77,4 +77,42 @@ describe("checkQuality", () => {
     );
     expect(dropped.negationKept).toBe(false);
   });
+
+  it("accepts a faithful mixed Arabic/code rewrite (regression: false rejection)", () => {
+    const mixed = "حلل SELECT customer_name, invoice_total FROM sales_data";
+    const check = checkQuality(mixed, mixed, "ar");
+    expect(check.languageOk).toBe(true);
+    expect(check.warnings).not.toContain(
+      "المخرج العربي ليس مكتوباً بالعربية",
+    );
+  });
+
+  it("accepts a purely code-bearing prompt with no Arabic", () => {
+    const code = "SELECT customer_name, invoice_total FROM sales_data";
+    const check = checkQuality(code, code, "ar");
+    expect(check.languageOk).toBe(true);
+  });
+
+  it("still rejects an English paragraph returned in the arabic field", () => {
+    const check = checkQuality(
+      "حلل أداء المبيعات",
+      "Analyze the sales performance data carefully",
+      "ar",
+    );
+    expect(check.languageOk).toBe(false);
+  });
+
+  it("still rejects a code-only output that lost Arabic content", () => {
+    const check = checkQuality(
+      "حلل أداء المبيعات في الربع الأول",
+      "SELECT FROM WHERE",
+      "ar",
+    );
+    expect(check.languageOk).toBe(false);
+  });
+
+  it("still rejects Arabic script returned in the english field", () => {
+    const check = checkQuality("write a summary", "اكتب ملخصاً", "en");
+    expect(check.languageOk).toBe(false);
+  });
 });

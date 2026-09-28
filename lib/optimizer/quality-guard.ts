@@ -171,8 +171,19 @@ function arabicContentWords(text: string): Set<string> {
 }
 
 /**
- * @param lang "ar" checks the Arabic variant; "en" checks the English one —
- *            coverage stays null there since the languages differ by design.
+ * Language contract: presence, not dominance.
+ *
+ * A mixed Arabic/code prompt ("حلل SELECT ... FROM sales_data") legitimately
+ * ends up with more Latin letters than Arabic ones in its own rewrite — the
+ * SQL identifiers carry no Arabic script at all. Requiring Arabic to *win*
+ * the letter count would hard-reject such a faithful output as "not Arabic",
+ * which in turn would block the English variant for no reason (the guard
+ * rejects on languageOk failure).
+ *
+ * So the rule is keyed on the input: an Arabic-bearing input must stay
+ * Arabic-bearing (a rewrite that loses every Arabic letter dropped real
+ * content); an input with no Arabic at all has nothing Arabic to preserve,
+ * so its rewrite is judged as-is. English is checked by presence only.
  */
 export function checkQuality(
   original: string,
@@ -181,14 +192,19 @@ export function checkQuality(
 ): QualityCheck {
   const warnings: string[] = [];
   const { ar, la } = letterCounts(output);
-  // Presence + dominance, no length floor: a short dialect output like
-  // "عايز حلل" is still Arabic; an English paragraph in the arabic field is not.
-  const languageOk = lang === "ar" ? ar > 0 && ar >= la : la > 0 && la > ar;
+  const originalArabic = letterCounts(original).ar;
+  // Presence-based contract, keyed on what the input actually asks for:
+  // an Arabic-bearing input must stay Arabic-bearing (a rewrite that loses
+  // every Arabic letter dropped real content); an input with no Arabic at
+  // all has nothing Arabic to preserve, so its rewrite is judged as-is.
+  // A short dialect output like "عايز حلل" is still Arabic; an English
+  // paragraph in the arabic field of an Arabic prompt is not.
+  const languageOk = lang === "ar" ? ar > 0 || originalArabic === 0 : la > 0;
   if (!languageOk) {
     warnings.push(
       lang === "ar"
-        ? "المخرج العربي ليس مكتوباً بالعربية في الغالب"
-        : "المخرج الإنجليزي ليس مكتوباً بالإنجليزية في الغالب",
+        ? "المخرج العربي ليس مكتوباً بالعربية"
+        : "المخرج الإنجليزي ليس مكتوباً بالإنجليزية",
     );
   }
 
