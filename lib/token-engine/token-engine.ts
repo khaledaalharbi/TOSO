@@ -48,7 +48,10 @@ export async function analyzeTokens(text: string): Promise<TokenMeasurement> {
 /* 1. Provider tokenizer — billing truth (Gemini countTokens by default)      */
 /* -------------------------------------------------------------------------- */
 
+let providerUnavailable = false;
+
 async function countViaProvider(text: string): Promise<number | null> {
+  if (providerUnavailable) return null;
   try {
     const response = await fetch("/api/tokens/count", {
       method: "POST",
@@ -59,7 +62,11 @@ async function countViaProvider(text: string): Promise<number | null> {
     const payload = (await response.json()) as {
       tokens?: number;
       fallback?: boolean;
+      reason?: string;
     };
+    if (payload.fallback && payload.reason === "no_api_key") {
+      providerUnavailable = true;
+    }
     if (typeof payload.tokens !== "number" || payload.fallback) return null;
     return Math.max(0, Math.round(payload.tokens));
   } catch {

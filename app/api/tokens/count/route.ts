@@ -33,45 +33,72 @@ export async function POST(request: Request): Promise<NextResponse> {
   const text = (body.text ?? "").trim();
   if (!text) return NextResponse.json({ tokens: 0, fallback: false });
   if (text.length > 100_000) {
-    return NextResponse.json({ error: "text_too_long", limit: 100_000 }, { status: 413 });
+    return NextResponse.json(
+      { error: "text_too_long", limit: 100_000 },
+      { status: 413 },
+    );
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  const apiKeys = [
+    process.env.GEMINI_API_KEY,
+    process.env.GEMINI_API_KEY_BACKUP,
+  ].filter((key): key is string => Boolean(key));
+  if (!apiKeys.length) {
     // No key configured → tell the client to estimate locally.
-    return NextResponse.json({ tokens: heuristicCount(text), fallback: true });
+    return NextResponse.json({
+      tokens: heuristicCount(text),
+      fallback: true,
+      reason: "no_api_key",
+    });
   }
 
   const model = resolveProviderModel("google", body.model).id;
 
-  try {
-    const response = await fetch(
-      `${GEMINI_BASE}/${model}:countTokens?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text }] }] }),
-        cache: "no-store",
-      },
-    );
-
-    if (!response.ok) {
-      // Key problems are recoverable for the user; surface a stable code.
-      const errorPayload = await response.json().catch(() => ({}));
-      const errorCode =
-        typeof errorPayload === "object" && errorPayload !== null && "error" in errorPayload
-          ? (errorPayload.error as { status?: string }).status ?? `http_${response.status}`
-          : `http_${response.status}`;
-      return NextResponse.json(
-        { tokens: heuristicCount(text), fallback: true, errorCode },
-        { status: 200 },
+  for (const apiKey of apiKeys) {
+    try {
+      const response = await fetch(
+        `${GEMINI_BASE}/${model}:countTokens?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contents: [{ parts: [{ text }] }] }),
+          cache: "no-store",
+          signal: AbortSignal.timeout(15_000),
+        },
       );
-    }
 
-    const payload = (await response.json()) as { totalTokens?: number };
-    const tokens = Math.max(0, Math.round(payload.totalTokens ?? 0));
-    return NextResponse.json({ tokens, fallback: false, model });
-  } catch {
-    return NextResponse.json({ tokens: heuristicCount(text), fallback: true });
+      if (response.status === 429) continue; // quota on this key → try the backup
+      if (!response.ok) {
+        // Key problems are recoverable for the user; surface a stable code.
+        const errorPayload = await response.json().catch(() => ({}));
+        const errorCode =
+          typeof errorPayload === "object" &&
+          errorPayload !== null &&
+          "error" in errorPayload
+            ? ((errorPayload.error as { status?: string }).status ??
+              `http_${response.status}`)
+            : `http_${response.status}`;
+        return NextResponse.json(
+          { tokens: heuristicCount(text), fallback: true, errorCode },
+          { status: 200 },
+        );
+      }
+
+      const payload = (await response.json()) as { totalTokens?: number };
+      const tokens = Math.max(0, Math.round(payload.totalTokens ?? 0));
+      return NextResponse.json({ tokens, fallback: false, model });
+    } catch {
+      // Network/timeout on this key — not key-specific, don't burn the backup.
+      return NextResponse.json({
+        tokens: heuristicCount(text),
+        fallback: true,
+      });
+    }
   }
+  // Every configured key hit quota.
+  return NextResponse.json({
+    tokens: heuristicCount(text),
+    fallback: true,
+    errorCode: "http_429",
+  });
 }

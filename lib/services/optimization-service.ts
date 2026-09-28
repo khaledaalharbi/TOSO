@@ -1,4 +1,7 @@
 import { estimateCost } from "@/lib/cost-engine/estimate-cost";
+import { normalizeArabic } from "@/lib/optimizer/arabic-normalizer";
+import { checkEntities } from "@/lib/optimizer/entity-guard";
+import { checkQuality } from "@/lib/optimizer/quality-guard";
 import {
   optimizeDual,
   type DualOptimization,
@@ -30,36 +33,112 @@ export async function runOptimization(
   events: OptimizationEvents = {},
 ): Promise<OptimizationReport> {
   warmTokenizer();
-  const original = await analyzeTokens(prompt);
-  events.onOriginalMeasured?.(original);
-
   const model = getModel(config.provider, config.model);
-  const optimized = await optimizeDual(
-    prompt,
+  const candidate = normalizeArabic(prompt);
+  const normalizedPrompt = checkEntities(prompt, candidate).preserved
+    ? candidate
+    : prompt;
+  const originalPromise = analyzeTokens(prompt);
+  const normalizedPromise =
+    normalizedPrompt === prompt
+      ? originalPromise
+      : analyzeTokens(normalizedPrompt);
+  const optimizedPromise = optimizeDual(
+    normalizedPrompt,
     config.provider === "google" ? model.id : undefined,
   );
-  events.onOptimized?.(optimized);
 
-  const [arabicM, englishM] = await Promise.all([
-    analyzeTokens(optimized.arabic),
+  const original = await originalPromise;
+  events.onOriginalMeasured?.(original);
+
+  const result = await optimizedPromise;
+  const arabicCheck = checkEntities(prompt, result.arabic);
+  const englishCheck = result.english
+    ? checkEntities(prompt, result.english, false)
+    : null;
+  const arabicQuality = checkQuality(prompt, result.arabic, "ar");
+  const englishQuality = result.english
+    ? checkQuality(prompt, result.english, "en")
+    : null;
+  // Hard-reject on provable failures only (lost entities, wrong language);
+  // soft signals (negation, coverage) surface as warnings instead.
+  const rejectedByGuard =
+    result.source === "gemini" &&
+    (!arabicCheck.preserved ||
+      (englishCheck !== null && !englishCheck.preserved) ||
+      !arabicQuality.languageOk);
+  const optimized: DualOptimization = rejectedByGuard
+    ? {
+        arabic: normalizedPrompt,
+        english: null,
+        source: "mock",
+        note: "لم يجتز مخرج Gemini فحوص السلامة المحلية (كيانات أو لغة)؛ استُخدمت تنقية محلية آمنة دون ترجمة.",
+      }
+    : result;
+  events.onOptimized?.(optimized);
+  const entityChecks = rejectedByGuard
+    ? { arabic: checkEntities(prompt, normalizedPrompt), english: null }
+    : { arabic: arabicCheck, english: englishCheck };
+  const quality = {
+    arabic: rejectedByGuard
+      ? checkQuality(prompt, normalizedPrompt, "ar")
+      : arabicQuality,
+    english: rejectedByGuard ? null : englishQuality,
+  };
+
+  const arabicPromise =
+    optimized.arabic === normalizedPrompt
+      ? normalizedPromise
+      : optimized.arabic === prompt
+        ? originalPromise
+        : analyzeTokens(optimized.arabic);
+  const [normalizedMeasurement, arabicM, englishM] = await Promise.all([
+    normalizedPromise,
+    arabicPromise,
     optimized.english
       ? analyzeTokens(optimized.english)
       : Promise.resolve(null),
   ]);
 
+  // Price against the model that actually served the call, not just the one
+  // selected in settings — model fallback may produce a different engine.
+  const pricedModel =
+    optimized.source === "gemini" && result.model
+      ? getModel("google", result.model)
+      : model;
+
   return {
+    originalPrompt: prompt,
     original: {
       ...measurementToAnalysis(original),
       arabicRatio: arabicRatio(prompt),
     },
     originalMeasurement: original,
-    arabic: variantReport(optimized.arabic, arabicM, original.tokens, model),
+    arabic: variantReport(
+      optimized.arabic,
+      arabicM,
+      original.tokens,
+      pricedModel,
+    ),
     english:
       optimized.english && englishM
-        ? variantReport(optimized.english, englishM, original.tokens, model)
+        ? variantReport(
+            optimized.english,
+            englishM,
+            original.tokens,
+            pricedModel,
+          )
         : null,
     note: optimized.note,
     source: optimized.source,
+    normalizedPrompt,
+    normalizedMeasurement,
+    entityChecks,
+    quality,
+    rejectedByGuard,
+    optimizationUsage:
+      result.source === "gemini" ? (result.usage ?? null) : null,
+    keyRole: result.source === "gemini" ? (result.keyRole ?? null) : null,
   };
 }
 

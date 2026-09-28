@@ -1,3 +1,6 @@
+import type { EntityCheck } from "@/lib/optimizer/entity-guard";
+import type { QualityCheck } from "@/lib/optimizer/quality-guard";
+
 export type ProviderId = "openai" | "anthropic" | "google" | "local";
 
 export interface ModelOption {
@@ -25,6 +28,15 @@ export interface OptimizationResult {
   notes: string[];
 }
 
+export interface InteractionUsage {
+  total_input_tokens?: number;
+  total_output_tokens?: number;
+  total_thought_tokens?: number;
+  total_cached_tokens?: number;
+  total_tool_use_tokens?: number;
+  total_tokens?: number;
+}
+
 export interface CostEstimate {
   original: number;
   optimized: number;
@@ -42,6 +54,7 @@ export interface VariantReport {
 }
 
 export interface OptimizationReport {
+  originalPrompt: string;
   original: TokenAnalysis;
   originalMeasurement?: TokenMeasurement;
   arabic: VariantReport;
@@ -51,6 +64,15 @@ export interface OptimizationReport {
   note: string;
   /** Which engine produced the variants. */
   source: "gemini" | "mock";
+  normalizedPrompt: string;
+  normalizedMeasurement: TokenMeasurement;
+  entityChecks: { arabic: EntityCheck; english: EntityCheck | null };
+  /** Approximate quality signals (language/negation/coverage) — hints, not proofs. */
+  quality: { arabic: QualityCheck; english: QualityCheck | null };
+  rejectedByGuard: boolean;
+  optimizationUsage: InteractionUsage | null;
+  /** Which configured Gemini key served the call; null for local fallback. */
+  keyRole: "primary" | "backup" | null;
 }
 
 /** How the tokens were counted — the UI shows this as a live/estimate badge. */

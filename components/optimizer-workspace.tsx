@@ -12,7 +12,7 @@ import {
   Sparkles,
   Wand2,
 } from "lucide-react";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { SettingsModal } from "@/components/settings-modal";
 import type { DualOptimization } from "@/lib/optimizer/llm-optimizer";
 import {
@@ -21,9 +21,11 @@ import {
   providers,
 } from "@/lib/providers/registry";
 import { runOptimization } from "@/lib/services/optimization-service";
+import { estimateHeatmapSegments } from "@/lib/token-engine/bpe-estimator";
 import { arabicRatio } from "@/lib/token-engine/token-engine";
 import type {
   CostEstimate,
+  InteractionUsage,
   OptimizationReport,
   ProviderConfig,
   TokenMeasurement,
@@ -70,20 +72,23 @@ export function OptimizerWorkspace() {
     setOriginal(null);
     setOriginalRatio(null);
     setPhase("analyzing");
-    const nextReport = await runOptimization(prompt, config, {
-      onOriginalMeasured: (measurement) => {
-        setOriginal(measurement);
-        setOriginalRatio(arabicRatio(prompt));
-        setPhase("optimizing");
-      },
-      onOptimized: (optimized) => {
-        setDual(optimized);
-        setPhase("measuring");
-      },
-    });
-    setReport(nextReport);
-    setPhase("done");
-    setRunning(false);
+    try {
+      const nextReport = await runOptimization(prompt, config, {
+        onOriginalMeasured: (measurement) => {
+          setOriginal(measurement);
+          setOriginalRatio(arabicRatio(prompt));
+          setPhase("optimizing");
+        },
+        onOptimized: (optimized) => {
+          setDual(optimized);
+          setPhase("measuring");
+        },
+      });
+      setReport(nextReport);
+      setPhase("done");
+    } finally {
+      setRunning(false);
+    }
   }
   function reset() {
     setReport(null);
@@ -217,7 +222,7 @@ export function OptimizerWorkspace() {
           <Node
             number={2}
             title="Processing / Optimization"
-            subtitle="فهم النية وإعادة الصياغة والترجمة عبر Gemini"
+            subtitle="تنقية محلية ثم إعادة صياغة عبر Gemini عند توفره"
             status={s2}
           >
             {dual ? (
@@ -227,13 +232,15 @@ export function OptimizerWorkspace() {
                 <span
                   className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${dual.source === "gemini" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}
                 >
-                  {dual.source === "gemini" ? (dual.model ?? "Gemini") : "محلي"}
+                  {dual.source === "gemini"
+                    ? `${dual.model ?? "Gemini"}${dual.keyRole === "backup" ? " · مفتاح احتياطي" : ""}`
+                    : "محلي"}
                 </span>
               </div>
             ) : (
               <Placeholder
                 active={s2 === "active"}
-                text="يفهم Gemini النية ويُنتج نسختين: عربية منقّحة وإنجليزية مترجمة"
+                text="تُنقّى العربية محلياً، ويُنشئ Gemini الترجمة عند توفره"
               />
             )}
           </Node>
@@ -249,7 +256,11 @@ export function OptimizerWorkspace() {
               <OutputCard
                 lang="ar"
                 title="Optimized Output"
-                chip="العربية"
+                chip={
+                  report?.source === "mock" || dual?.source === "mock"
+                    ? "تنقية محلية"
+                    : "العربية"
+                }
                 status={s3}
                 text={report?.arabic.text ?? dual?.arabic ?? null}
                 report={report?.arabic ?? null}
@@ -264,10 +275,19 @@ export function OptimizerWorkspace() {
                 status={s3}
                 text={report?.english?.text ?? dual?.english ?? null}
                 unavailable={englishUnavailable}
+                unavailableReason={
+                  report?.rejectedByGuard
+                    ? "حُجبت الترجمة لأن مخرج Gemini لم يحفظ بعض الكيانات؛ عُرضت النسخة المحلية بدلاً منه."
+                    : "الترجمة الإنجليزية غير متاحة في الوضع المحلي أو عند تعذّر Gemini."
+                }
                 report={report?.english ?? null}
               />
             </div>
           </div>
+
+          {report && <TokenHeatmap report={report} />}
+          {report && <OptimizationInsights report={report} />}
+          {report && <OptimizationUsagePanel report={report} />}
 
           <Beam on={phase === "measuring"} done={report !== null} />
           <CostBar
@@ -279,8 +299,8 @@ export function OptimizerWorkspace() {
         </div>
 
         <footer className="mt-8 flex items-center justify-center gap-2 text-xs text-slate-400">
-          <Gauge size={15} /> القياس حقيقي عبر Gemini countTokens · الفهم
-          والترجمة عبر Gemini · الطبقات قابلة للتوسع للغات أخرى.
+          <Gauge size={15} /> القياس عبر Gemini countTokens عند توفره، وإلا
+          بتقدير محلي · الترجمة تتطلب Gemini.
         </footer>
         <SettingsModal
           open={settingsOpen}
@@ -373,6 +393,7 @@ function OutputCard({
   chip,
   text,
   unavailable,
+  unavailableReason,
   report,
   status,
 }: {
@@ -381,6 +402,7 @@ function OutputCard({
   chip: string;
   text: string | null;
   unavailable?: boolean;
+  unavailableReason?: string;
   report: VariantReport | null;
   status: NodeStatus;
 }) {
@@ -412,10 +434,7 @@ function OutputCard({
       >
         {text ??
           (unavailable ? (
-            <span className="text-sm text-slate-400">
-              الترجمة الإنجليزية تتطلب مفتاح Gemini في{" "}
-              <code dir="ltr">.env.local</code> — النسخة العربية تعمل محليًا.
-            </span>
+            <span className="text-sm text-slate-400">{unavailableReason}</span>
           ) : (
             <span className="text-sm text-slate-400">
               {active ? "تُستكمل القياسات…" : "الناتج المحسّن سيظهر هنا"}
@@ -476,7 +495,429 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+const heatLevels = [
+  {
+    label: "خفيف · نحو 1",
+    className: "bg-teal-50 text-teal-900 ring-teal-200",
+  },
+  {
+    label: "متوسط · نحو 2–3",
+    className: "bg-amber-100 text-amber-950 ring-amber-200",
+  },
+  {
+    label: "مرتفع · نحو 4+",
+    className: "bg-rose-100 text-rose-900 ring-rose-200",
+  },
+];
+
+function heatLevel(tokens: number) {
+  return tokens <= 1
+    ? heatLevels[0]
+    : tokens <= 3
+      ? heatLevels[1]
+      : heatLevels[2];
+}
+
+export const TokenHeatmap = memo(function TokenHeatmap({
+  report,
+}: {
+  report: OptimizationReport;
+}) {
+  return (
+    <section
+      aria-labelledby="heatmap-title"
+      className="mt-5 rounded-3xl border border-violet-200 bg-white p-5 shadow-sm sm:p-6"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 id="heatmap-title" className="text-lg font-bold text-ink">
+            خريطة ثقل المقاطع
+          </h2>
+          <p className="mt-1 text-sm text-slate-600">
+            شاهد مواضع الثقل التقريبي في النص الأصلي والمخرجات، من دون إرسال كل
+            مقطع إلى مزود الخدمة.
+          </p>
+        </div>
+        <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-800">
+          تقدير محلي
+        </span>
+      </div>
+      <div
+        aria-label="مفتاح ألوان الخريطة الحرارية"
+        className="mt-4 flex flex-wrap gap-2 text-xs"
+      >
+        {heatLevels.map(({ label, className }) => (
+          <span
+            key={label}
+            className={`rounded-lg px-2.5 py-1.5 font-semibold ring-1 ring-inset ${className}`}
+          >
+            {label} توكن لكل مقطع
+          </span>
+        ))}
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+        <HeatmapVariant
+          title="النص الأصلي"
+          text={report.originalPrompt}
+          direction="rtl"
+        />
+        <HeatmapVariant
+          title="النسخة العربية"
+          text={report.arabic.text}
+          direction="rtl"
+        />
+        {report.english ? (
+          <HeatmapVariant
+            title="النسخة الإنجليزية"
+            text={report.english.text}
+            direction="ltr"
+          />
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+            <h3 className="font-bold text-slate-700">النسخة الإنجليزية</h3>
+            <p className="mt-3">
+              الإنجليزية غير متاحة في هذا التشغيل؛ لا توجد خريطة لنص غير موجود.
+            </p>
+          </div>
+        )}
+      </div>
+      <p className="mt-4 rounded-xl bg-violet-50 px-4 py-3 text-xs leading-6 text-violet-900">
+        الألوان تقدير لطول المقطع ونوع حروفه، وليست تفكيكاً رسمياً من Gemini. لا
+        تجمع تقديرات المقاطع لتطابق إجمالي countTokens؛ الأرقام الرسمية والتكلفة
+        المعروضة أعلاه/أدناه منفصلة عن هذه الخريطة.
+      </p>
+    </section>
+  );
+});
+
+function HeatmapVariant({
+  title,
+  text,
+  direction,
+}: {
+  title: string;
+  text: string;
+  direction: "rtl" | "ltr";
+}) {
+  const { segments, scoredSegments, truncated } = estimateHeatmapSegments(text);
+  const heaviest = segments
+    .filter(({ tokens }) => tokens !== null)
+    .sort((a, b) => (b.tokens ?? 0) - (a.tokens ?? 0))
+    .slice(0, 3);
+  return (
+    <div className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50/60 p-3 sm:p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="font-bold text-ink">{title}</h3>
+        <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-600">
+          {scoredSegments} مقطع في المعاينة
+        </span>
+      </div>
+      <div
+        dir={direction}
+        className="max-h-52 min-h-32 overflow-y-auto rounded-xl border border-slate-100 bg-white p-3 text-sm leading-9 whitespace-pre-wrap break-words"
+      >
+        {segments.map(({ text: part, tokens }, index) =>
+          tokens === null ? (
+            <span key={index}>{part}</span>
+          ) : (
+            <span
+              key={index}
+              dir="auto"
+              title={`${part} — نحو ${tokens} توكن (تقدير محلي)`}
+              aria-label={`${part}: نحو ${tokens} توكن بتقدير محلي`}
+              className={`rounded-md px-1 py-0.5 ring-1 ring-inset ${heatLevel(tokens).className}`}
+            >
+              {part}
+            </span>
+          ),
+        )}
+        {truncated && <span aria-hidden="true">…</span>}
+        {!segments.length && (
+          <span className="text-slate-500">
+            لا توجد مقاطع قصيرة قابلة للمعاينة.
+          </span>
+        )}
+      </div>
+      {truncated && (
+        <p className="mt-2 text-xs font-medium text-amber-800">
+          معاينة محدودة: أول {scoredSegments} مقطع ضمن 2000 حرف؛ بقية النص لم
+          تُحلَّل بصرياً.
+        </p>
+      )}
+      {heaviest.length > 0 && (
+        <div className="mt-3 border-t border-slate-200 pt-3">
+          <p className="mb-2 text-xs font-semibold text-slate-600">
+            أثقل المقاطع في المعاينة
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {heaviest.map(({ text: part, tokens }, index) => (
+              <span
+                key={index}
+                className="inline-flex max-w-full items-center gap-1 rounded-lg bg-white px-2 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200"
+              >
+                <span dir="auto" className="max-w-28 truncate">
+                  {part}
+                </span>
+                <span dir="ltr" className="shrink-0 text-violet-800">
+                  ~{tokens}
+                </span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---- cost bar ------------------------------------------------------------ */
+
+export function OptimizationInsights({
+  report,
+}: {
+  report: OptimizationReport;
+}) {
+  const {
+    originalMeasurement,
+    normalizedMeasurement,
+    arabic,
+    english,
+    entityChecks,
+  } = report;
+  if (!originalMeasurement || !arabic.measurement) return null;
+
+  return (
+    <div className="my-5 grid gap-4 md:grid-cols-2">
+      <section className="rounded-3xl border border-teal-200 bg-white p-5 shadow-sm">
+        <h2 className="font-bold text-ink">تفصيل التوفير في توكنز الإدخال</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          مقارنة النص الأصلي بالمنقّح محلياً، ثم بالنسخة العربية النهائية.
+        </p>
+        <div className="mt-4 space-y-3">
+          <MeasurementStep
+            title="التنقية المحلية"
+            before={originalMeasurement}
+            after={normalizedMeasurement}
+          />
+          <MeasurementStep
+            title={
+              report.source === "gemini"
+                ? "إعادة صياغة Gemini"
+                : "تعديل إضافي محلي"
+            }
+            before={normalizedMeasurement}
+            after={arabic.measurement}
+          />
+        </div>
+        <details className="mt-4 rounded-xl border border-teal-100 bg-teal-50/50 p-3 text-xs">
+          <summary className="cursor-pointer font-semibold text-teal-900">
+            عرض النص بعد التنقية المحلية
+          </summary>
+          <p
+            dir="auto"
+            className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-slate-700"
+          >
+            {report.normalizedPrompt}
+          </p>
+        </details>
+        {english && (
+          <p className="mt-3 text-xs text-slate-500">
+            الإنجليزية بديل مستقل مقارنة بالنص الأصلي؛ لا تُضاف وفوراتها إلى
+            العربية.
+          </p>
+        )}
+      </section>
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="font-bold text-ink">فحص الكيانات والجودة الظاهرة</h2>
+        {report.rejectedByGuard && (
+          <p
+            role="status"
+            className="mt-3 rounded-xl bg-amber-50 p-3 text-xs font-semibold text-amber-800"
+          >
+            رُفض مخرج Gemini لعدم اجتيازه فحوص السلامة المحلية. المعروض تنقية
+            محلية، والترجمة محجوبة.
+          </p>
+        )}
+        <div className="mt-3 space-y-2">
+          <EntityStatus label="النسخة العربية" check={entityChecks.arabic} />
+          {entityChecks.english ? (
+            <EntityStatus
+              label="النسخة الإنجليزية"
+              check={entityChecks.english}
+            />
+          ) : (
+            <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">
+              النسخة الإنجليزية غير متاحة للفحص.
+            </p>
+          )}
+          <QualityStatus label="النسخة العربية" check={report.quality.arabic} />
+          {report.quality.english && (
+            <QualityStatus
+              label="النسخة الإنجليزية"
+              check={report.quality.english}
+            />
+          )}
+        </div>
+        <p className="mt-3 text-xs text-slate-500">
+          فحوص الكيانات والجودة تقيس عناصر ظاهرة قابلة للمطابقة (لغة، نفي، كلمات
+          محتوى)؛ ليست ضماناً لحفظ المعنى أو جميع المتطلبات.
+        </p>
+      </section>
+    </div>
+  );
+}
+
+function MeasurementStep({
+  title,
+  before,
+  after,
+}: {
+  title: string;
+  before: TokenMeasurement;
+  after: TokenMeasurement;
+}) {
+  const comparable = before.source === after.source;
+  const saved = before.tokens - after.tokens;
+  const percent = before.tokens
+    ? Math.round((Math.abs(saved) / before.tokens) * 100)
+    : 0;
+  const difference = !comparable
+    ? "لا يمكن حساب الفرق بدقة لاختلاف مصدر العد"
+    : saved > 0
+      ? `توفير ${saved} توكن (${percent}%)`
+      : saved < 0
+        ? `زيادة ${-saved} توكن (${percent}%)`
+        : "لا تغير في عدد التوكنز";
+  return (
+    <div className="rounded-xl bg-slate-50 p-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-bold">{title}</span>
+        <span dir="ltr" className="font-semibold tabular-nums">
+          {before.tokens} → {after.tokens}
+        </span>
+      </div>
+      <p
+        className={`mt-1 text-xs ${comparable && saved > 0 ? "text-emerald-700" : "text-slate-600"}`}
+      >
+        {difference}
+      </p>
+      <p className="mt-1 text-[11px] text-slate-400">
+        {comparable
+          ? before.source === "provider"
+            ? "Gemini countTokens"
+            : "تقدير محلي"
+          : "قياس بمصادر مختلفة: Gemini أو تقدير محلي"}
+      </p>
+    </div>
+  );
+}
+
+function QualityStatus({
+  label,
+  check,
+}: {
+  label: string;
+  check: OptimizationReport["quality"]["arabic"];
+}) {
+  const coverage = check.keywordCoverage;
+  const clean = check.warnings.length === 0;
+  return (
+    <div
+      className={`rounded-xl p-3 text-xs ${clean ? "bg-sky-50 text-sky-800" : "bg-amber-50 text-amber-800"}`}
+    >
+      <span className="font-bold">{label} — فحص الجودة: </span>
+      {clean
+        ? coverage !== null
+          ? `سليم ظاهرياً — تغطية كلمات المحتوى ~${Math.round(coverage * 100)}%`
+          : "سليم ظاهرياً"
+        : check.warnings.join("؛ ")}
+    </div>
+  );
+}
+
+function EntityStatus({
+  label,
+  check,
+}: {
+  label: string;
+  check: OptimizationReport["entityChecks"]["arabic"];
+}) {
+  const message = !check.checked
+    ? "لا توجد كيانات مدعومة للفحص"
+    : check.preserved
+      ? `لم يُرصد فقد في ${check.checked} كيان قابل للفحص`
+      : `تعذّر حفظ ${check.missing.length} من ${check.checked} كيان`;
+  return (
+    <div
+      className={`rounded-xl p-3 text-xs ${check.checked && check.preserved ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}
+    >
+      <span className="font-bold">{label}: </span>
+      {message}
+      {check.missing.length > 0 && (
+        <p dir="auto" className="mt-1 break-all">
+          المفقود:{" "}
+          {check.missing
+            .slice(0, 5)
+            .map(({ value }) => value)
+            .join("، ")}
+          {check.missing.length > 5 ? "…" : ""}
+        </p>
+      )}
+    </div>
+  );
+}
+
+const usageFields: { key: keyof InteractionUsage; label: string }[] = [
+  { key: "total_input_tokens", label: "مدخلات الاستدعاء" },
+  { key: "total_output_tokens", label: "المخرجات" },
+  { key: "total_thought_tokens", label: "التفكير" },
+  { key: "total_cached_tokens", label: "المخزّن مؤقتاً" },
+  { key: "total_tool_use_tokens", label: "استخدام الأدوات" },
+  { key: "total_tokens", label: "الإجمالي حسب Gemini" },
+];
+
+export function OptimizationUsagePanel({
+  report,
+}: {
+  report: OptimizationReport;
+}) {
+  const usage = report.optimizationUsage;
+  return (
+    <section className="mb-5 rounded-3xl border border-blue-200 bg-white p-5 shadow-sm">
+      <h2 className="font-bold text-ink">استهلاك استدعاء التحسين الفعلي</h2>
+      {usage ? (
+        <>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {usageFields
+              .filter(({ key }) => usage[key] !== undefined)
+              .map(({ key, label }) => (
+                <Metric key={key} label={label} value={usage[key] ?? "—"} />
+              ))}
+          </div>
+          {report.rejectedByGuard && (
+            <p className="mt-3 text-xs text-amber-800">
+              حدث استدعاء Gemini فعلي، لكن حارس الكيانات رفض مخرجه؛ الأرقام تخص
+              الاستدعاء المرفوض.
+            </p>
+          )}
+          <p className="mt-3 text-xs text-slate-500">
+            أرقام Gemini لهذا الاستدعاء الناجح فقط؛ مدخلاته تشمل تعليمات النظام،
+            وليست عدّ البرومبت وحده. الحقول التفصيلية لا تُجمع يدويًا؛ الإجمالي
+            معروض كما أعاده Gemini.
+          </p>
+        </>
+      ) : (
+        <p className="mt-3 text-xs text-slate-500">
+          لا تتوفر بيانات استهلاك فعلية لهذا التشغيل؛ لن نعرض رقماً مفترضاً.
+        </p>
+      )}
+      <p className="mt-2 text-xs text-slate-500">
+        تقدير التكلفة أدناه يخص استخدام النص الناتج لاحقاً، وليس فاتورة هذا
+        الاستدعاء. لا تشمل هذه الأرقام طلبات عدّ التوكنز أو المحاولات الأخرى.
+      </p>
+    </section>
+  );
+}
 
 function CostBar({
   report,
@@ -508,16 +949,43 @@ function CostBar({
         )}
       </div>
       {report ? (
-        <div className="grid gap-3 md:grid-cols-2">
-          <CostGroup label="النسخة العربية" cost={report.arabic.cost} />
-          {report.english ? (
-            <CostGroup label="النسخة الإنجليزية" cost={report.english.cost} />
-          ) : (
-            <div className="grid place-items-center rounded-2xl bg-white/70 p-3 text-center text-xs text-slate-400">
-              توفير النسخة الإنجليزية يظهر مع الترجمة
-            </div>
-          )}
-        </div>
+        <>
+          <div className="grid gap-3 md:grid-cols-2">
+            <CostGroup
+              label="النسخة العربية"
+              cost={report.arabic.cost}
+              comparable={
+                report.originalMeasurement?.source ===
+                report.arabic.measurement?.source
+              }
+            />
+            {report.english ? (
+              <CostGroup
+                label="النسخة الإنجليزية"
+                cost={report.english.cost}
+                comparable={
+                  report.originalMeasurement?.source ===
+                  report.english.measurement?.source
+                }
+              />
+            ) : (
+              <div className="grid place-items-center rounded-2xl bg-white/70 p-3 text-center text-xs text-slate-400">
+                توفير النسخة الإنجليزية يظهر مع الترجمة
+              </div>
+            )}
+          </div>
+          {report.originalMeasurement &&
+            (report.originalMeasurement.source !==
+              report.arabic.measurement?.source ||
+              (report.english &&
+                report.originalMeasurement.source !==
+                  report.english.measurement?.source)) && (
+              <p className="mt-3 text-xs text-amber-800">
+                تختلف مصادر عد التوكنز بين المدخل والمخرج؛ أُخفيت نسبة التوفير
+                لأنها غير قابلة للمقارنة بدقة.
+              </p>
+            )}
+        </>
       ) : (
         <div className="rounded-2xl bg-white/70 p-4 text-center text-sm text-slate-400">
           {active
@@ -529,14 +997,25 @@ function CostBar({
   );
 }
 
-function CostGroup({ label, cost }: { label: string; cost: CostEstimate }) {
+function CostGroup({
+  label,
+  cost,
+  comparable = true,
+}: {
+  label: string;
+  cost: CostEstimate;
+  comparable?: boolean;
+}) {
   return (
     <div className="rounded-2xl bg-white p-3">
       <div className="mb-2 text-xs font-bold text-slate-500">{label}</div>
       <div className="grid grid-cols-3 gap-2 text-center">
         <Metric label="قبل" value={formatCost(cost.original)} />
         <Metric label="بعد" value={formatCost(cost.optimized)} />
-        <Metric label="التوفير" value={`${cost.savingPercent}%`} />
+        <Metric
+          label="التوفير"
+          value={comparable ? `${cost.savingPercent}%` : "—"}
+        />
       </div>
     </div>
   );

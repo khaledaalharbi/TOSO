@@ -54,3 +54,36 @@ export function countViaBpe(text: string): number | null {
   }
   return Math.max(1, Math.ceil(total));
 }
+
+export interface HeatmapEstimate {
+  segments: { text: string; tokens: number | null }[];
+  scoredSegments: number;
+  truncated: boolean;
+}
+
+export function estimateHeatmapSegments(
+  text: string,
+  maxSegments = 120,
+  maxCharacters = 2000,
+): HeatmapEstimate {
+  const segments: HeatmapEstimate["segments"] = [];
+  let scoredSegments = 0;
+  let previewLength = 0;
+  for (const match of text.matchAll(/\s+|\S+/gu)) {
+    const part = match[0];
+    const whitespace = /^\s/u.test(part);
+    if (
+      previewLength + part.length > maxCharacters ||
+      (!whitespace && scoredSegments >= maxSegments)
+    ) {
+      break;
+    }
+    segments.push({
+      text: part,
+      tokens: whitespace ? null : countViaBpe(part),
+    });
+    previewLength += part.length;
+    if (!whitespace) scoredSegments++;
+  }
+  return { segments, scoredSegments, truncated: previewLength < text.length };
+}
