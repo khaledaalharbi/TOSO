@@ -316,21 +316,24 @@ const results = [];
 async function runCall(caseDef, variant, preferredModel, cacheOnly = false) {
   const key = `${caseDef.id}:${variant}`;
   const instruction = instructionFor(variant, caseDef.text);
-  // Cached results are only valid for the SAME instruction text — a stale
-  // entry (older wording, or entries predating the fingerprint) must not be
-  // silently replayed as evidence for the current instruction.
+  // Cached results are only valid for the SAME instruction text. Legacy cache
+  // entries (written before the fingerprint existed) carry no `instruction`
+  // field — they cannot prove which wording produced them, so they are never
+  // replayed as evidence; they are re-run instead. This keeps the experiment
+  // honest when an instruction changes between rounds.
   const hit = cache[key];
-  const fresh =
-    hit &&
-    !hit.error &&
-    (hit.instruction === undefined || hit.instruction === instruction);
+  const fresh = Boolean(
+    hit && !hit.error && hit.instruction === instruction,
+  );
   if (fresh) {
     console.log(`· ${key} — cached (${hit.model})`);
     results.push({ case: caseDef, variant, ...hit });
     return hit.model;
   }
   if (hit && !hit.error) {
-    console.log(`· ${key} — cached result is stale (instruction changed)`);
+    console.log(
+      `· ${key} — cached result is stale (instruction changed or unfingerprinted)`,
+    );
   }
   if (cacheOnly) return null;
   const models = preferredModel ? [preferredModel] : MODEL_CANDIDATES;
@@ -368,9 +371,11 @@ async function runCall(caseDef, variant, preferredModel, cacheOnly = false) {
 for (const c of CASES) {
   // v1 + v2 replay from cache (already paid in round 1); v3 runs fresh and is
   // pinned to v2's model so both sides of a case share the same model.
+  // A legacy/unfingerprinted cache entry returns null here (no replay), and
+  // v3 then falls back to the default model ladder instead of a stale pin.
   await runCall(c, "v1", null, true);
   const v2Model = await runCall(c, "v2", null, true);
-  await runCall(c, "v3", v2Model);
+  await runCall(c, "v3", v2Model ?? null);
   await delay(3000);
 }
 
@@ -420,7 +425,7 @@ const lines = [
   `- التاريخ: ${new Date().toISOString()}`,
   `- مفتاح: **${KEY_LABEL}** — store:false — thinking:low`,
   `- ${VARIANT_LABELS.v1}؛ ${VARIANT_LABELS.v2}؛ ${VARIANT_LABELS.v3}.`,
-  `- v1/v2 معاد تشغيلها من كاش الجولة 1 (لا تكلفة جديدة)؛ v3 استدعاءات جديدة مثبّتة على نموذج v2 لكل حالة.`,
+  `- v1/v2 معاد تشغيلها من كاش الجولة 1 (لا تكلفة جديدة) — **السجلات القديمة الخالية من بصمة التعليمة لا تُعاد كدليل**، وتُعاد الإشارة إليها هنا فقط إن وُجدت بصمة مطابقة؛ v3 استدعاءات جديدة مثبّتة على نموذج v2 لكل حالة (أو على سلم النماذج الافتراضي إن لم يكن لـ v2 سجل صالح).`,
   `- **مقياس العدالة**: توكن النصوص تُقاس بـ countTokens على النص المدخل والنصوص المخرجة فقط؛ usage الاستدعاء (يشمل التعليمات) يُعرض منفصلاً للتشغيل.`,
   ``,
 ];
