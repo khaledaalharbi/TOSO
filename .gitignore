@@ -54,6 +54,10 @@ venv/
 .agents/
 .devin/skills/
 .skills/
+.devin/config.local.json
+
+# Test artifacts
+.playwright-mcp/
 
 # Temporary files
 *.tmp
