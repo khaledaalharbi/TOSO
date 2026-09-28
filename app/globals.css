@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #f5f8f9;
+  color: #0d1729;
+  font-family: Tahoma, Arial, sans-serif;
+}
+
+button,
+textarea,
+input,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: #b8f1e4;
+}
+
+/* ---- Pipeline light ---------------------------------------------------- */
+/* A beam of light that travels the tree while a stage is working. */
+@keyframes beam-travel {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+.beam {
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    #20b89a 45%,
+    #7fe8d2 55%,
+    transparent
+  );
+  animation: beam-travel 1.15s linear infinite;
+}
+
+/* Soft outward pulse on the badge of the stage currently running. */
+@keyframes node-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(32, 184, 154, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(32, 184, 154, 0);
+  }
+}
+.node-active {
+  animation: node-pulse 1.4s ease-out infinite;
+}

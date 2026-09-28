@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Exec(npm run)",
+      "Exec(npm install)",
+      "Exec(npm start)",
+      "Exec(npm test)",
+      "Exec(npx)",
+      "Exec(npx tsc)",
+      "Exec(npx eslint)",
+      "Exec(curl)",
+      "Exec(git status)",
+      "Exec(git diff)",
+      "Exec(git log)",
+      "Exec(git show)",
+      "Exec(git add)",
+      "Exec(git commit)"
+    ]
+  }
+}
