@@ -25,7 +25,7 @@ import { estimateHeatmapSegments } from "@/lib/token-engine/bpe-estimator";
 import { arabicRatio } from "@/lib/token-engine/token-engine";
 import type {
   CostEstimate,
-  InteractionUsage,
+  GeminiUsage,
   OptimizationReport,
   ProviderConfig,
   TokenMeasurement,
@@ -232,9 +232,7 @@ export function OptimizerWorkspace() {
                 <span
                   className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${dual.source === "gemini" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}
                 >
-                  {dual.source === "gemini"
-                    ? `${dual.model ?? "Gemini"}${dual.keyRole === "backup" ? " · مفتاح احتياطي" : ""}`
-                    : "محلي"}
+                  {dual.source === "gemini" ? (dual.model ?? "Gemini") : "محلي"}
                 </span>
               </div>
             ) : (
@@ -867,7 +865,7 @@ function EntityStatus({
   );
 }
 
-const usageFields: { key: keyof InteractionUsage; label: string }[] = [
+const usageFields: { key: keyof GeminiUsage; label: string }[] = [
   { key: "total_input_tokens", label: "مدخلات الاستدعاء" },
   { key: "total_output_tokens", label: "المخرجات" },
   { key: "total_thought_tokens", label: "التفكير" },

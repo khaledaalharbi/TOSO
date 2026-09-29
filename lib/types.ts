@@ -25,10 +25,9 @@ export interface TokenAnalysis {
 
 export interface OptimizationResult {
   optimizedPrompt: string;
-  notes: string[];
 }
 
-export interface InteractionUsage {
+export interface GeminiUsage {
   total_input_tokens?: number;
   total_output_tokens?: number;
   total_thought_tokens?: number;
@@ -70,9 +69,7 @@ export interface OptimizationReport {
   /** Approximate quality signals (language/negation/coverage) — hints, not proofs. */
   quality: { arabic: QualityCheck; english: QualityCheck | null };
   rejectedByGuard: boolean;
-  optimizationUsage: InteractionUsage | null;
-  /** Which configured Gemini key served the call; null for local fallback. */
-  keyRole: "primary" | "backup" | null;
+  optimizationUsage: GeminiUsage | null;
 }
 
 /** How the tokens were counted — the UI shows this as a live/estimate badge. */

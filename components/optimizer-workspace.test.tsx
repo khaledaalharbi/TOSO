@@ -47,7 +47,6 @@ const report: OptimizationReport = {
     english: null,
   },
   optimizationUsage: null,
-  keyRole: "primary",
 };
 
 const render = (value: OptimizationReport) =>

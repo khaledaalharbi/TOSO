@@ -8,7 +8,7 @@
  */
 
 import { optimizePrompt } from "@/lib/optimizer/mock-optimizer";
-import type { InteractionUsage } from "@/lib/types";
+import type { GeminiUsage } from "@/lib/types";
 
 export type OptimizerSource = "gemini" | "mock";
 
@@ -20,9 +20,7 @@ export interface DualOptimization {
   source: OptimizerSource;
   /** The Gemini model that produced the variants (may differ from the requested one on quota fallback). */
   model?: string;
-  /** Which configured key served the call — "backup" means the primary one hit quota. */
-  keyRole?: "primary" | "backup";
-  usage?: InteractionUsage | null;
+  usage?: GeminiUsage | null;
 }
 
 export async function optimizeDual(
@@ -42,10 +40,9 @@ export async function optimizeDual(
         english?: string;
         note?: string;
         model?: string;
-        keyRole?: "primary" | "backup";
         fallback?: boolean;
         reason?: string;
-        usage?: InteractionUsage | null;
+        usage?: GeminiUsage | null;
       };
       if (
         !payload.fallback &&
@@ -60,7 +57,6 @@ export async function optimizeDual(
             "فُهمت النية وأُعيدت الصياغة عبر Gemini دون فقدان المعلومات الأساسية.",
           source: "gemini",
           model: payload.model,
-          keyRole: payload.keyRole,
           usage: payload.usage ?? null,
         };
       }
@@ -87,6 +83,7 @@ export async function optimizeDual(
 function localNoteFor(reason: string | null): string {
   switch (reason) {
     case null:
+    case "no_api_key":
       return "وضع محلي بدون مفتاح Gemini: تنقيح عربي فقط — الترجمة الإنجليزية غير متاحة.";
     case "network":
       return "تعذّر الاتصال بـ Gemini؛ استُخدمت تنقية محلية دون ترجمة.";

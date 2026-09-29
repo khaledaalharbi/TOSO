@@ -5,8 +5,8 @@
  *   v1 = legacy English SYSTEM_INSTRUCTION + reconstructed dialect hint
  *   v2 = Arabic instruction v2 ("follow the user's style")
  *   v3 = Arabic instruction v3 (keep dialect WORDS verbatim + length cap)
- * Same schema, store:false, thinking_level:"low" — identical request shape to
- * the route, and each case's sides are pinned to the same model.
+ * Same JSON schema and low thinking level as the route; each case's sides are
+ * pinned to the same model.
  *
  * Resumable: successful results cache in outputs/.compare-cache.json — rerun
  * only pays for missing calls. Round-1 keys (old/new) migrate to v1/v2.
@@ -15,7 +15,7 @@
  * the TEXT tokens via the free countTokens endpoint — instruction overhead is
  * reported separately as "usage" and never mixed into the comparison.
  *
- * Reads GEMINI_API_KEY_BACKUP (fallback: GEMINI_API_KEY) from .env.local.
+ * Reads GEMINI_API_KEY from .env.local.
  * The key is never printed. Env overrides: COMPARE_MODEL, COMPARE_WAIT_MS,
  * COMPARE_REPORT (default outputs/instruction-compare-v3.md).
  */
@@ -34,14 +34,14 @@ for (const line of readFileSync(".env.local", "utf8").split(/\r?\n/)) {
     .replace(/^["']|["']$/g, "");
 }
 
-const API_KEY = env.GEMINI_API_KEY_BACKUP || env.GEMINI_API_KEY;
+const API_KEY = env.GEMINI_API_KEY;
 if (!API_KEY) {
-  console.error("No GEMINI_API_KEY_BACKUP / GEMINI_API_KEY in .env.local");
+  console.error("No GEMINI_API_KEY in .env.local");
   process.exit(1);
 }
-const KEY_LABEL = env.GEMINI_API_KEY_BACKUP ? "backup" : "primary";
 
-const URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
+const VERTEX_MODELS_URL =
+  "https://aiplatform.googleapis.com/v1/publishers/google/models";
 const MODEL_CANDIDATES = [
   process.env.COMPARE_MODEL || "gemini-3.5-flash-lite",
   "gemini-3.8-flash",
@@ -54,11 +54,11 @@ const REPORT_FILE =
   process.env.COMPARE_REPORT || "outputs/instruction-compare-v3.md";
 
 const SCHEMA = {
-  type: "OBJECT",
+  type: "object",
   properties: {
-    arabic: { type: "STRING" },
-    english: { type: "STRING" },
-    note: { type: "STRING" },
+    arabic: { type: "string" },
+    english: { type: "string" },
+    note: { type: "string" },
   },
   required: ["arabic", "english", "note"],
 };
@@ -228,35 +228,33 @@ function missingIn(source, output) {
 }
 
 async function callGemini(instruction, input, model) {
-  const res = await fetch(URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": API_KEY,
-      "Api-Revision": "2026-05-20",
+  const res = await fetch(
+    `${VERTEX_MODELS_URL}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(API_KEY)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: instruction }] },
+        contents: [{ role: "user", parts: [{ text: input }] }],
+        generationConfig: {
+          responseFormat: [
+            {
+              text: { mimeType: "APPLICATION_JSON", schema: SCHEMA },
+            },
+          ],
+          thinkingConfig: { thinkingLevel: "LOW" },
+        },
+      }),
+      signal: AbortSignal.timeout(60_000),
     },
-    body: JSON.stringify({
-      model,
-      system_instruction: instruction,
-      input,
-      store: false,
-      response_format: [
-        { type: "text", mime_type: "application/json", schema: SCHEMA },
-      ],
-      generation_config: { thinking_level: "low" },
-    }),
-    signal: AbortSignal.timeout(60_000),
-  });
+  );
   if (!res.ok) {
     return { error: `http_${res.status}`, usage: null, parsed: null, model };
   }
   const payload = await res.json();
-  const out = [...(payload.steps ?? [])]
-    .reverse()
-    .find((s) => s.type === "model_output");
-  const raw = (out?.content ?? [])
-    .filter((p) => p.type === "text")
-    .map((p) => p.text ?? "")
+  const raw = (payload.candidates?.[0]?.content?.parts ?? [])
+    .filter((part) => typeof part.text === "string")
+    .map((part) => part.text)
     .join("");
   let parsed = null;
   try {
@@ -266,9 +264,17 @@ async function callGemini(instruction, input, model) {
   } catch {
     parsed = null;
   }
+  const usage = payload.usageMetadata;
   return {
     error: parsed ? null : "bad_model_output",
-    usage: payload.usage ?? null,
+    usage: usage
+      ? {
+          total_input_tokens: usage.promptTokenCount,
+          total_output_tokens: usage.candidatesTokenCount,
+          total_thought_tokens: usage.thoughtsTokenCount,
+          total_tokens: usage.totalTokenCount,
+        }
+      : null,
     parsed,
     model,
   };
@@ -278,11 +284,13 @@ async function callGemini(instruction, input, model) {
 async function countTextTokens(text, model) {
   try {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:countTokens?key=${API_KEY}`,
+      `${VERTEX_MODELS_URL}/${encodeURIComponent(model)}:countTokens?key=${encodeURIComponent(API_KEY)}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text }] }] }),
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text }] }],
+        }),
         signal: AbortSignal.timeout(30_000),
       },
     );
@@ -297,16 +305,6 @@ async function countTextTokens(text, model) {
 const cache = existsSync(CACHE_FILE)
   ? JSON.parse(readFileSync(CACHE_FILE, "utf8"))
   : {};
-// Round-1 cache keys were ":old"/":new" — migrate to ":v1"/":v2" for free reuse.
-for (const key of Object.keys(cache)) {
-  if (key.endsWith(":old")) {
-    cache[key.replace(/:old$/, ":v1")] = cache[key];
-    delete cache[key];
-  } else if (key.endsWith(":new")) {
-    cache[key.replace(/:new$/, ":v2")] = cache[key];
-    delete cache[key];
-  }
-}
 const results = [];
 
 /**
@@ -314,7 +312,7 @@ const results = [];
  * first successful model wins. Cached successes are reused — never re-paid.
  */
 async function runCall(caseDef, variant, preferredModel, cacheOnly = false) {
-  const key = `${caseDef.id}:${variant}`;
+  const key = `vertex:${caseDef.id}:${variant}`;
   const instruction = instructionFor(variant, caseDef.text);
   // Cached results are only valid for the SAME instruction text. Legacy cache
   // entries (written before the fingerprint existed) carry no `instruction`
@@ -322,9 +320,7 @@ async function runCall(caseDef, variant, preferredModel, cacheOnly = false) {
   // replayed as evidence; they are re-run instead. This keeps the experiment
   // honest when an instruction changes between rounds.
   const hit = cache[key];
-  const fresh = Boolean(
-    hit && !hit.error && hit.instruction === instruction,
-  );
+  const fresh = Boolean(hit && !hit.error && hit.instruction === instruction);
   if (fresh) {
     console.log(`· ${key} — cached (${hit.model})`);
     results.push({ case: caseDef, variant, ...hit });
@@ -420,10 +416,10 @@ const sumUsage = (variant) =>
     );
 
 const lines = [
-  `# مقارنة تعليمات التحسين — الجولة 2 (مدفوعة، Interactions API)`,
+  `# مقارنة تعليمات التحسين — الجولة 2 (Agent Platform)`,
   ``,
   `- التاريخ: ${new Date().toISOString()}`,
-  `- مفتاح: **${KEY_LABEL}** — store:false — thinking:low`,
+  `- مفتاح: **primary** — Agent Platform — thinking:LOW`,
   `- ${VARIANT_LABELS.v1}؛ ${VARIANT_LABELS.v2}؛ ${VARIANT_LABELS.v3}.`,
   `- v1/v2 معاد تشغيلها من كاش الجولة 1 (لا تكلفة جديدة) — **السجلات القديمة الخالية من بصمة التعليمة لا تُعاد كدليل**، وتُعاد الإشارة إليها هنا فقط إن وُجدت بصمة مطابقة؛ v3 استدعاءات جديدة مثبّتة على نموذج v2 لكل حالة (أو على سلم النماذج الافتراضي إن لم يكن لـ v2 سجل صالح).`,
   `- **مقياس العدالة**: توكن النصوص تُقاس بـ countTokens على النص المدخل والنصوص المخرجة فقط؛ usage الاستدعاء (يشمل التعليمات) يُعرض منفصلاً للتشغيل.`,

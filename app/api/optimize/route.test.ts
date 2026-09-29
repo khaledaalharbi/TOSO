@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST, safeParseDual } from "./route";
 
+const generateContentPayload = (
+  text: string,
+  usageMetadata?: Record<string, number>,
+) => ({
+  candidates: [{ content: { parts: [{ text }] } }],
+  ...(usageMetadata ? { usageMetadata } : {}),
+});
+
 describe("safeParseDual", () => {
   it("parses a clean JSON object", () => {
     expect(safeParseDual('{"arabic":"أ","english":"e","note":"n"}')).toEqual({
@@ -42,30 +50,21 @@ afterEach(() => {
 });
 
 describe("POST", () => {
-  it("sends user input separately from style-neutral instructions and retains the three output fields", async () => {
+  it("sends separate system and user content through Agent Platform and maps usage", async () => {
     vi.stubEnv("GEMINI_API_KEY", "test-key");
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({
-        usage: {
-          total_input_tokens: 12,
-          total_output_tokens: 20,
-          total_thought_tokens: 4,
-          total_tokens: 36,
-          total_cached_tokens: 0,
-        },
-        steps: [
+      json: async () =>
+        generateContentPayload(
+          '{"arabic":"شلون","english":"how","note":"ok"}',
           {
-            type: "model_output",
-            content: [
-              {
-                type: "text",
-                text: '{"arabic":"شلون","english":"how","note":"ok"}',
-              },
-            ],
+            promptTokenCount: 12,
+            candidatesTokenCount: 20,
+            thoughtsTokenCount: 4,
+            totalTokenCount: 36,
+            cachedContentTokenCount: 0,
           },
-        ],
-      }),
+        ),
     });
     vi.stubGlobal("fetch", fetchMock);
     const response = await POST(
@@ -76,7 +75,7 @@ describe("POST", () => {
     );
     expect(response.status).toBe(200);
     const payload = await response.json();
-    expect(payload.keyRole).toBe("primary");
+    expect(payload).not.toHaveProperty("keyRole");
     expect(payload.usage).toEqual({
       total_input_tokens: 12,
       total_output_tokens: 20,
@@ -84,32 +83,61 @@ describe("POST", () => {
       total_tokens: 36,
       total_cached_tokens: 0,
     });
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-3.8-flash:generateContent?key=test-key",
+    );
     const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(requestBody.system_instruction).toContain("أسلوب المستخدم");
-    expect(requestBody.system_instruction).toContain("لا تفرض لهجة");
-    expect(requestBody.system_instruction).toContain(
+    expect(requestBody.systemInstruction.parts[0].text).toContain(
+      "أسلوب المستخدم",
+    );
+    expect(requestBody.systemInstruction.parts[0].text).toContain(
+      "لا تفرض لهجة",
+    );
+    expect(requestBody.systemInstruction.parts[0].text).toContain(
       "الأولوية لحفظ المقصود قبل تقليل التوكنز",
     );
-    expect(requestBody.system_instruction).toContain(
+    expect(requestBody.systemInstruction.parts[0].text).toContain(
       "احفظ المهمة والنفي والشروط والاستثناءات",
     );
-    expect(requestBody.system_instruction).toContain("إذا أضر الاختصار بالدقة");
-    expect(requestBody.system_instruction).toContain("أبقِ كلمات اللهجة");
-    expect(requestBody.system_instruction).toContain("أوجز من نص المدخل");
-    expect(requestBody.system_instruction).toContain("عربية دائماً");
-    expect(requestBody.system_instruction).toContain(
+    expect(requestBody.systemInstruction.parts[0].text).toContain(
+      "إذا أضر الاختصار بالدقة",
+    );
+    expect(requestBody.systemInstruction.parts[0].text).toContain(
+      "أبقِ كلمات اللهجة",
+    );
+    expect(requestBody.systemInstruction.parts[0].text).toContain(
+      "أوجز من نص المدخل",
+    );
+    expect(requestBody.systemInstruction.parts[0].text).toContain(
+      "عربية دائماً",
+    );
+    expect(requestBody.systemInstruction.parts[0].text).toContain(
       '"note": جملة عربية قصيرة',
     );
-    expect(requestBody.system_instruction).not.toContain("Detected dialect:");
-    expect(requestBody.system_instruction).not.toContain("Gulf Arabic");
-    expect(requestBody.input).toBe("شلون أسويه؟");
-    expect(requestBody.response_format[0].schema.required).toEqual([
-      "arabic",
-      "english",
-      "note",
+    expect(requestBody.systemInstruction.parts[0].text).not.toContain(
+      "Detected dialect:",
+    );
+    expect(requestBody.systemInstruction.parts[0].text).not.toContain(
+      "Gulf Arabic",
+    );
+    expect(requestBody.contents[0]).toEqual({
+      role: "user",
+      parts: [{ text: "شلون أسويه؟" }],
+    });
+    expect(requestBody.generationConfig.responseFormat).toEqual([
+      {
+        text: {
+          mimeType: "APPLICATION_JSON",
+          schema: expect.objectContaining({
+            required: ["arabic", "english", "note"],
+          }),
+        },
+      },
     ]);
-    expect(requestBody.store).toBe(false);
-    expect(requestBody).not.toHaveProperty("previous_interaction_id");
+    expect(requestBody.generationConfig.thinkingConfig.thinkingLevel).toBe(
+      "LOW",
+    );
+    expect(requestBody).not.toHaveProperty("store");
   });
 
   it.each([
@@ -120,19 +148,10 @@ describe("POST", () => {
     vi.stubEnv("GEMINI_API_KEY", "test-key");
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({
-        steps: [
-          {
-            type: "model_output",
-            content: [
-              {
-                type: "text",
-                text: '{"arabic":"صغ الطلب","english":"Rewrite the request","note":"صيغ بإيجاز"}',
-              },
-            ],
-          },
-        ],
-      }),
+      json: async () =>
+        generateContentPayload(
+          '{"arabic":"صغ الطلب","english":"Rewrite the request","note":"صيغ بإيجاز"}',
+        ),
     });
     vi.stubGlobal("fetch", fetchMock);
     await POST(
@@ -141,10 +160,14 @@ describe("POST", () => {
         body: JSON.stringify({ text }),
       }),
     );
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(body.input).toBe(text);
-    expect(body.system_instruction).toContain("أسلوب المستخدم");
-    expect(body.system_instruction).not.toContain("Detected dialect:");
+    const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(requestBody.contents[0].parts[0].text).toBe(text);
+    expect(requestBody.systemInstruction.parts[0].text).toContain(
+      "أسلوب المستخدم",
+    );
+    expect(requestBody.systemInstruction.parts[0].text).not.toContain(
+      "Detected dialect:",
+    );
   });
 
   it("omits invalid counters without treating missing usage as zero", async () => {
@@ -153,19 +176,12 @@ describe("POST", () => {
       "fetch",
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({
-          usage: {
-            total_input_tokens: 0,
-            total_output_tokens: -2,
-            total_tokens: "37",
-          },
-          steps: [
-            {
-              type: "model_output",
-              content: [{ type: "text", text: '{"arabic":"أ","english":"a"}' }],
-            },
-          ],
-        }),
+        json: async () =>
+          generateContentPayload('{"arabic":"أ","english":"a"}', {
+            promptTokenCount: 0,
+            candidatesTokenCount: -2,
+            totalTokenCount: 37,
+          }),
       }),
     );
     const response = await POST(
@@ -174,7 +190,10 @@ describe("POST", () => {
         body: JSON.stringify({ text: "حلل" }),
       }),
     );
-    expect((await response.json()).usage).toEqual({ total_input_tokens: 0 });
+    expect((await response.json()).usage).toEqual({
+      total_input_tokens: 0,
+      total_tokens: 37,
+    });
   });
 
   it("returns null usage when a valid optimization has no usage block", async () => {
@@ -183,16 +202,8 @@ describe("POST", () => {
       "fetch",
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({
-          steps: [
-            {
-              type: "model_output",
-              content: [
-                { type: "text", text: '{"arabic":"حلل","english":"Analyze"}' },
-              ],
-            },
-          ],
-        }),
+        json: async () =>
+          generateContentPayload('{"arabic":"حلل","english":"Analyze"}'),
       }),
     );
     const response = await POST(
@@ -222,32 +233,11 @@ describe("POST", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("falls back to GEMINI_API_KEY_BACKUP after the primary key hits quota", async () => {
+  it("tries every model on quota and never touches a second key", async () => {
     vi.stubEnv("GEMINI_API_KEY", "primary-key");
     vi.stubEnv("GEMINI_API_KEY_BACKUP", "backup-key");
     const quota = { ok: false, status: 429 };
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(quota)
-      .mockResolvedValueOnce(quota)
-      .mockResolvedValueOnce(quota)
-      .mockResolvedValueOnce(quota)
-      .mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          steps: [
-            {
-              type: "model_output",
-              content: [
-                {
-                  type: "text",
-                  text: '{"arabic":"حلل","english":"Analyze","note":"تم"}',
-                },
-              ],
-            },
-          ],
-        }),
-      });
+    const fetchMock = vi.fn().mockResolvedValue(quota);
     vi.stubGlobal("fetch", fetchMock);
     const response = await POST(
       new Request("http://localhost/api/optimize", {
@@ -255,36 +245,47 @@ describe("POST", () => {
         body: JSON.stringify({ text: "حلل التقرير" }),
       }),
     );
-    const body = await response.json();
-    expect(body.fallback).toBe(false);
-    expect(body.keyRole).toBe("backup");
-    expect(body.model).toBe("gemini-3.8-flash");
-    const usedKeys = fetchMock.mock.calls.map(
-      (call) => (call[1].headers as Record<string, string>)["x-goog-api-key"],
+    expect(await response.json()).toEqual({
+      fallback: true,
+      reason: "http_429",
+    });
+    const usedKeys = fetchMock.mock.calls.map((call) =>
+      new URL(String(call[0])).searchParams.get("key"),
     );
-    expect(usedKeys.slice(0, 4)).toEqual([
-      "primary-key",
-      "primary-key",
-      "primary-key",
-      "primary-key",
-    ]);
-    expect(usedKeys[4]).toBe("backup-key");
-    expect(fetchMock).toHaveBeenCalledTimes(5);
+    // One attempt per candidate model — the backup env var is never read.
+    expect(new Set(usedKeys)).toEqual(new Set(["primary-key"]));
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
-  it("does not try the backup key for non-quota failures", async () => {
+  it("treats an unparseable 200 body as bad model output, not a crash", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => {
+          throw new Error("invalid json");
+        },
+      }),
+    );
+    const response = await POST(
+      new Request("http://localhost/api/optimize", {
+        method: "POST",
+        body: JSON.stringify({ text: "حلل التقرير" }),
+      }),
+    );
+    expect(await response.json()).toEqual({
+      fallback: true,
+      reason: "bad_model_output",
+    });
+  });
+
+  it("does not fall back to a second key on malformed model output", async () => {
     vi.stubEnv("GEMINI_API_KEY", "primary-key");
     vi.stubEnv("GEMINI_API_KEY_BACKUP", "backup-key");
     const badOutput = {
       ok: true,
-      json: async () => ({
-        steps: [
-          {
-            type: "model_output",
-            content: [{ type: "text", text: "not json at all" }],
-          },
-        ],
-      }),
+      json: async () => generateContentPayload("not json at all"),
     };
     const fetchMock = vi.fn().mockResolvedValue(badOutput);
     vi.stubGlobal("fetch", fetchMock);
@@ -299,8 +300,8 @@ describe("POST", () => {
       reason: "bad_model_output",
     });
     const usedKeys = new Set(
-      fetchMock.mock.calls.map(
-        (call) => (call[1].headers as Record<string, string>)["x-goog-api-key"],
+      fetchMock.mock.calls.map((call) =>
+        new URL(String(call[0])).searchParams.get("key"),
       ),
     );
     expect(usedKeys).toEqual(new Set(["primary-key"]));

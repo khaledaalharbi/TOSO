@@ -26,6 +26,9 @@ yarn-error.log*
 .env.development
 .env.production
 
+# GCP service account key — NEVER commit
+gcp-key.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

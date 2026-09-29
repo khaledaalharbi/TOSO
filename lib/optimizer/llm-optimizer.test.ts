@@ -28,18 +28,30 @@ describe("optimizeDual usage", () => {
   it("does not fabricate usage or English output on local fallback", async () => {
     vi.stubGlobal(
       "fetch",
-      vi
-        .fn()
-        .mockResolvedValue({
-          ok: true,
-          json: async () => ({ fallback: true, reason: "no_api_key" }),
-        }),
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ fallback: true, reason: "no_api_key" }),
+      }),
     );
     expect(await optimizeDual("حلل 50%")).toMatchObject({
       source: "mock",
       english: null,
       usage: null,
     });
+  });
+
+  it("maps the no_api_key reason to the no-key note, not a raw code", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ fallback: true, reason: "no_api_key" }),
+      }),
+    );
+    const result = await optimizeDual("حلل 50%");
+    expect(result.source).toBe("mock");
+    expect(result.note).toContain("بدون مفتاح");
+    expect(result.note).not.toContain("no_api_key");
   });
 
   it("reports the real fallback reason instead of always blaming the key", async () => {

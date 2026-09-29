@@ -1,7 +1,7 @@
 /**
  * Token counting endpoint — the ONLY place that touches a provider secret.
  *
- * Flow:  browser → /api/tokens/count → Gemini countTokens → count back.
+ * Flow:  browser → /api/tokens/count → Agent Platform countTokens → count back.
  * The API key lives in process.env on the server and never reaches the client.
  *
  * The route answers `{ tokens, fallback: true }` (HTTP 200) when no key is
@@ -20,7 +20,8 @@ interface CountRequest {
   model?: string;
 }
 
-const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+const VERTEX_MODELS_URL =
+  "https://aiplatform.googleapis.com/v1/publishers/google/models";
 
 export async function POST(request: Request): Promise<NextResponse> {
   let body: CountRequest;
@@ -39,11 +40,8 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  const apiKeys = [
-    process.env.GEMINI_API_KEY,
-    process.env.GEMINI_API_KEY_BACKUP,
-  ].filter((key): key is string => Boolean(key));
-  if (!apiKeys.length) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
     // No key configured → tell the client to estimate locally.
     return NextResponse.json({
       tokens: heuristicCount(text),
@@ -54,51 +52,55 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const model = resolveProviderModel("google", body.model).id;
 
-  for (const apiKey of apiKeys) {
-    try {
-      const response = await fetch(
-        `${GEMINI_BASE}/${model}:countTokens?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ contents: [{ parts: [{ text }] }] }),
-          cache: "no-store",
-          signal: AbortSignal.timeout(15_000),
-        },
+  try {
+    const response = await fetch(
+      `${VERTEX_MODELS_URL}/${encodeURIComponent(model)}:countTokens?key=${encodeURIComponent(apiKey)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text }] }],
+        }),
+        cache: "no-store",
+        signal: AbortSignal.timeout(15_000),
+      },
+    );
+
+    if (!response.ok) {
+      // Key/quota problems are recoverable for the user; surface a stable code.
+      const errorPayload = await response.json().catch(() => ({}));
+      const errorCode =
+        typeof errorPayload === "object" &&
+        errorPayload !== null &&
+        "error" in errorPayload
+          ? ((errorPayload.error as { status?: string }).status ??
+            `http_${response.status}`)
+          : `http_${response.status}`;
+      return NextResponse.json(
+        { tokens: heuristicCount(text), fallback: true, errorCode },
+        { status: 200 },
       );
+    }
 
-      if (response.status === 429) continue; // quota on this key → try the backup
-      if (!response.ok) {
-        // Key problems are recoverable for the user; surface a stable code.
-        const errorPayload = await response.json().catch(() => ({}));
-        const errorCode =
-          typeof errorPayload === "object" &&
-          errorPayload !== null &&
-          "error" in errorPayload
-            ? ((errorPayload.error as { status?: string }).status ??
-              `http_${response.status}`)
-            : `http_${response.status}`;
-        return NextResponse.json(
-          { tokens: heuristicCount(text), fallback: true, errorCode },
-          { status: 200 },
-        );
-      }
-
-      const payload = (await response.json()) as { totalTokens?: number };
-      const tokens = Math.max(0, Math.round(payload.totalTokens ?? 0));
-      return NextResponse.json({ tokens, fallback: false, model });
-    } catch {
-      // Network/timeout on this key — not key-specific, don't burn the backup.
+    const payload = (await response.json()) as { totalTokens?: unknown };
+    const tokens = payload.totalTokens;
+    // A 200 without a valid count is not an official zero — estimate honestly.
+    if (typeof tokens !== "number" || !Number.isFinite(tokens) || tokens < 0) {
       return NextResponse.json({
         tokens: heuristicCount(text),
         fallback: true,
       });
     }
+    return NextResponse.json({
+      tokens: Math.round(tokens),
+      fallback: false,
+      model,
+    });
+  } catch {
+    // Network/timeout — degrade to local estimation.
+    return NextResponse.json({
+      tokens: heuristicCount(text),
+      fallback: true,
+    });
   }
-  // Every configured key hit quota.
-  return NextResponse.json({
-    tokens: heuristicCount(text),
-    fallback: true,
-    errorCode: "http_429",
-  });
 }

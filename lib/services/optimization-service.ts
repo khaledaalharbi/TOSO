@@ -138,7 +138,6 @@ export async function runOptimization(
     rejectedByGuard,
     optimizationUsage:
       result.source === "gemini" ? (result.usage ?? null) : null,
-    keyRole: result.source === "gemini" ? (result.keyRole ?? null) : null,
   };
 }
 

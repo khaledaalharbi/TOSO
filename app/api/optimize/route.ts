@@ -1,8 +1,8 @@
 /**
  * Optimization endpoint — the ONLY place that rewrites prompts via Gemini.
  *
- * Flow:  browser → /api/optimize → Gemini Interactions API → {arabic, english} back.
- * The API keys live in process.env on the server and never reach the client.
+ * Flow:  browser → /api/optimize → Vertex AI Agent Platform → {arabic, english} back.
+ * The API key lives in process.env on the server and never reaches the client.
  *
  * The system instruction (the carefully drawn "background injection") forces
  * both output languages in a single call, with strict intent-preservation
@@ -14,7 +14,7 @@
 
 import { NextResponse } from "next/server";
 import { providers, resolveProviderModel } from "@/lib/providers/registry";
-import type { InteractionUsage } from "@/lib/types";
+import type { GeminiUsage } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -29,17 +29,16 @@ interface DualOutput {
   note?: string;
 }
 
-const INTERACTIONS_URL =
-  "https://generativelanguage.googleapis.com/v1beta/interactions";
-const API_REVISION = "2026-05-20";
+const VERTEX_MODELS_URL =
+  "https://aiplatform.googleapis.com/v1/publishers/google/models";
 
-/** Structured-output schema — the API enforces this shape, no fence-stripping needed. */
+/** Structured-output schema (JSON Schema for generationConfig.responseFormat). */
 const DUAL_SCHEMA = {
-  type: "OBJECT",
+  type: "object",
   properties: {
-    arabic: { type: "STRING" },
-    english: { type: "STRING" },
-    note: { type: "STRING" },
+    arabic: { type: "string" },
+    english: { type: "string" },
+    note: { type: "string" },
   },
   required: ["arabic", "english", "note"],
 };
@@ -75,40 +74,33 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  // GEMINI_API_KEY_BACKUP is an optional experiment key — it only runs after
-  // the primary key exhausts its quota (a 429 anywhere in the model sweep).
-  const apiKeys = [
-    process.env.GEMINI_API_KEY,
-    process.env.GEMINI_API_KEY_BACKUP,
-  ].filter((key): key is string => Boolean(key));
-  if (!apiKeys.length) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
     // No key configured → client falls back to the local mock optimizer.
     return NextResponse.json({ fallback: true, reason: "no_api_key" });
   }
 
   const model = resolveProviderModel("google", body.model).id;
-  // Per-candidate body — "model" lives inside the request for this API.
-  const requestBody = (candidate: string) =>
+  const requestBody = () =>
     JSON.stringify({
-      model: candidate,
-      system_instruction: SYSTEM_INSTRUCTION,
-      input: text,
-      // store=false: user prompts are not retained server-side (no
-      // previous_interaction_id / background usage in this app anyway).
-      store: false,
-      response_format: [
-        { type: "text", mime_type: "application/json", schema: DUAL_SCHEMA },
-      ],
-      generation_config: {
+      systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+      contents: [{ role: "user", parts: [{ text }] }],
+      generationConfig: {
+        // responseMimeType/responseSchema are deprecated in v1 — the
+        // responseFormat union is the current structured-output contract.
+        responseFormat: [
+          {
+            text: { mimeType: "APPLICATION_JSON", schema: DUAL_SCHEMA },
+          },
+        ],
         // Rewriting is not deep reasoning — keep thought tokens (cost+latency) down.
-        thinking_level: "low",
+        thinkingConfig: { thinkingLevel: "LOW" },
       },
     });
 
   /**
    * Candidate chain: the resolved model first, then the other Gemini models.
-   * Free-tier quotas are per model per day, so a 429 on the default does not
-   * mean the optimization has to fail — the response reports which model ran.
+   * Quota availability can differ by model; the response reports which model ran.
    */
   const candidateModels = [
     model,
@@ -118,95 +110,81 @@ export async function POST(request: Request): Promise<NextResponse> {
   ];
 
   let lastReason = "exhausted";
-  for (const [keyIndex, apiKey] of apiKeys.entries()) {
-    let sawQuotaError = false;
-    for (const candidate of candidateModels) {
-      let retries5xx = 0;
-      while (true) {
-        let response: Response;
-        try {
-          response = await fetch(INTERACTIONS_URL, {
+  for (const candidate of candidateModels) {
+    let retries5xx = 0;
+    while (true) {
+      let response: Response;
+      try {
+        response = await fetch(
+          `${VERTEX_MODELS_URL}/${encodeURIComponent(candidate)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+          {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-goog-api-key": apiKey,
-              "Api-Revision": API_REVISION,
-            },
-            body: requestBody(candidate),
+            headers: { "Content-Type": "application/json" },
+            body: requestBody(),
             cache: "no-store",
             // Bound every attempt — a stalled Gemini connection must not
             // freeze the whole optimization (and the user's UI) forever.
             signal: AbortSignal.timeout(15_000),
-          });
-        } catch {
-          lastReason = "network";
-          break;
-        }
-
-        if (!response.ok) {
-          lastReason = `http_${response.status}`;
-          // 429 is a per-model quota → try the next model. 5xx is transient →
-          // a couple of quick retries, then move on.
-          if (response.status === 429) sawQuotaError = true;
-          if (response.status >= 500 && retries5xx < 2) {
-            retries5xx += 1;
-            await new Promise((resolve) => setTimeout(resolve, 700));
-            continue;
-          }
-          break;
-        }
-
-        const payload = (await response.json()) as {
-          status?: string;
-          usage?: unknown;
-          steps?: {
-            type?: string;
-            content?: { type?: string; text?: string }[];
-          }[];
-        };
-        // The answer sits in the last model_output step; earlier steps may be thoughts.
-        const outputStep = [...(payload.steps ?? [])]
-          .reverse()
-          .find((step) => step.type === "model_output");
-        const raw = (outputStep?.content ?? [])
-          .filter((part) => part.type === "text")
-          .map((part) => part.text ?? "")
-          .join("");
-        const parsed = safeParseDual(raw);
-        if (!parsed) {
-          lastReason = "bad_model_output";
-          break;
-        }
-        return NextResponse.json({
-          ...parsed,
-          model: candidate,
-          fallback: false,
-          keyRole: keyIndex === 0 ? "primary" : "backup",
-          usage: parseInteractionUsage(payload.usage),
-        });
+          },
+        );
+      } catch {
+        lastReason = "network";
+        break;
       }
+
+      if (!response.ok) {
+        lastReason = `http_${response.status}`;
+        // 429 may be model-specific → try the next model. 5xx is transient →
+        // a couple of quick retries, then move on.
+        if (response.status >= 500 && retries5xx < 2) {
+          retries5xx += 1;
+          await new Promise((resolve) => setTimeout(resolve, 700));
+          continue;
+        }
+        break;
+      }
+
+      // A 200 with an unparseable body degrades to fallback, not a 500.
+      const payload = (await response.json().catch(() => null)) as {
+        candidates?: {
+          content?: { parts?: { text?: string }[] };
+        }[];
+        usageMetadata?: unknown;
+      } | null;
+      const raw = (payload?.candidates?.[0]?.content?.parts ?? [])
+        .filter((part) => typeof part.text === "string")
+        .map((part) => part.text ?? "")
+        .join("");
+      const parsed = safeParseDual(raw);
+      if (!parsed) {
+        lastReason = "bad_model_output";
+        break;
+      }
+      return NextResponse.json({
+        ...parsed,
+        model: candidate,
+        fallback: false,
+        usage: parseVertexUsage(payload?.usageMetadata),
+      });
     }
-    // A quota hit means this key may be tapped out — a backup key gets one
-    // clean sweep; any other failure stands as-is.
-    if (!sawQuotaError) break;
   }
   return NextResponse.json({ fallback: true, reason: lastReason });
 }
 
-function parseInteractionUsage(raw: unknown): InteractionUsage | null {
+function parseVertexUsage(raw: unknown): GeminiUsage | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const payload = raw as Record<string, unknown>;
   const fields = [
-    "total_input_tokens",
-    "total_output_tokens",
-    "total_thought_tokens",
-    "total_cached_tokens",
-    "total_tool_use_tokens",
-    "total_tokens",
+    ["total_input_tokens", "promptTokenCount"],
+    ["total_output_tokens", "candidatesTokenCount"],
+    ["total_thought_tokens", "thoughtsTokenCount"],
+    ["total_cached_tokens", "cachedContentTokenCount"],
+    ["total_tool_use_tokens", "toolUsePromptTokenCount"],
+    ["total_tokens", "totalTokenCount"],
   ] as const;
-  const usage: InteractionUsage = {};
-  for (const field of fields) {
-    const value = payload[field];
+  const usage: GeminiUsage = {};
+  for (const [field, sourceField] of fields) {
+    const value = payload[sourceField];
     if (
       typeof value === "number" &&
       Number.isSafeInteger(value) &&
