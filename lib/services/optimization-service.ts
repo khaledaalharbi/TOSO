@@ -38,14 +38,15 @@ export async function runOptimization(
   const normalizedPrompt = checkEntities(prompt, candidate).preserved
     ? candidate
     : prompt;
-  const originalPromise = analyzeTokens(prompt);
+  const originalPromise = analyzeTokens(prompt, config.userKey);
   const normalizedPromise =
     normalizedPrompt === prompt
       ? originalPromise
-      : analyzeTokens(normalizedPrompt);
+      : analyzeTokens(normalizedPrompt, config.userKey);
   const optimizedPromise = optimizeDual(
     normalizedPrompt,
-    config.provider === "google" ? model.id : undefined,
+    model.id,
+    config.userKey,
   );
 
   const original = await originalPromise;
@@ -91,12 +92,12 @@ export async function runOptimization(
       ? normalizedPromise
       : optimized.arabic === prompt
         ? originalPromise
-        : analyzeTokens(optimized.arabic);
+        : analyzeTokens(optimized.arabic, config.userKey);
   const [normalizedMeasurement, arabicM, englishM] = await Promise.all([
     normalizedPromise,
     arabicPromise,
     optimized.english
-      ? analyzeTokens(optimized.english)
+      ? analyzeTokens(optimized.english, config.userKey)
       : Promise.resolve(null),
   ]);
 

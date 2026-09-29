@@ -12,7 +12,7 @@ import {
   Sparkles,
   Wand2,
 } from "lucide-react";
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { SettingsModal } from "@/components/settings-modal";
 import type { DualOptimization } from "@/lib/optimizer/llm-optimizer";
 import {
@@ -39,6 +39,9 @@ const initialConfig: ProviderConfig = {
   model: DEFAULT_MODEL,
 };
 
+/** BYOK key lives in browser storage only — sent per request as a header. */
+const USER_KEY_STORAGE = "toso.userGeminiKey";
+
 const formatCost = (value: number) =>
   value === 0
     ? "مجاني"
@@ -63,6 +66,22 @@ export function OptimizerWorkspace() {
   const [report, setReport] = useState<OptimizationReport | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [config, setConfig] = useState<ProviderConfig>(initialConfig);
+  const [keyHydrated, setKeyHydrated] = useState(false);
+
+  // Hydrate the BYOK key once on mount, then mirror every change to storage.
+  useEffect(() => {
+    const stored = window.localStorage.getItem(USER_KEY_STORAGE);
+    if (stored) setConfig((c) => ({ ...c, userKey: stored }));
+    setKeyHydrated(true);
+  }, []);
+  useEffect(() => {
+    if (!keyHydrated) return;
+    if (config.userKey) {
+      window.localStorage.setItem(USER_KEY_STORAGE, config.userKey);
+    } else {
+      window.localStorage.removeItem(USER_KEY_STORAGE);
+    }
+  }, [config.userKey, keyHydrated]);
 
   async function handleRun() {
     if (!prompt.trim() || running) return;
@@ -232,7 +251,9 @@ export function OptimizerWorkspace() {
                 <span
                   className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${dual.source === "gemini" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}
                 >
-                  {dual.source === "gemini" ? (dual.model ?? "Gemini") : "محلي"}
+                  {dual.source === "gemini"
+                    ? `${dual.model ?? "Gemini"}${dual.viaUserKey ? " · مفتاحك" : ""}`
+                    : "محلي"}
                 </span>
               </div>
             ) : (

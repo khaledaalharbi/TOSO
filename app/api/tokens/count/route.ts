@@ -22,6 +22,9 @@ interface CountRequest {
 
 const VERTEX_MODELS_URL =
   "https://aiplatform.googleapis.com/v1/publishers/google/models";
+/** AI Studio host — the only endpoint that accepts user-provided (BYOK) keys. */
+const AI_STUDIO_MODELS_URL =
+  "https://generativelanguage.googleapis.com/v1beta/models";
 
 export async function POST(request: Request): Promise<NextResponse> {
   let body: CountRequest;
@@ -40,7 +43,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  // BYOK: a user-supplied key wins over the server env key, and its origin
+  // decides the host — AI Studio keys only work on generativelanguage.
+  const userKey = request.headers.get("x-user-gemini-key")?.trim() || null;
+  const apiKey = userKey ?? process.env.GEMINI_API_KEY;
   if (!apiKey) {
     // No key configured → tell the client to estimate locally.
     return NextResponse.json({
@@ -50,11 +56,12 @@ export async function POST(request: Request): Promise<NextResponse> {
     });
   }
 
+  const baseUrl = userKey ? AI_STUDIO_MODELS_URL : VERTEX_MODELS_URL;
   const model = resolveProviderModel("google", body.model).id;
 
   try {
     const response = await fetch(
-      `${VERTEX_MODELS_URL}/${encodeURIComponent(model)}:countTokens?key=${encodeURIComponent(apiKey)}`,
+      `${baseUrl}/${encodeURIComponent(model)}:countTokens?key=${encodeURIComponent(apiKey)}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -67,12 +74,21 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
 
     if (!response.ok) {
-      // Key/quota problems are recoverable for the user; surface a stable code.
+      // Key/quota problems are recoverable for the user; surface a stable
+      // code. User-key failures keep a user_key_* prefix so the client can
+      // say "your key" rather than blaming the server.
       const errorPayload = await response.json().catch(() => ({}));
-      const errorCode =
-        typeof errorPayload === "object" &&
-        errorPayload !== null &&
-        "error" in errorPayload
+      const errorCode = userKey
+        ? response.status === 429
+          ? "user_key_quota"
+          : response.status === 400 ||
+              response.status === 401 ||
+              response.status === 403
+            ? "user_key_invalid"
+            : `user_key_http_${response.status}`
+        : typeof errorPayload === "object" &&
+            errorPayload !== null &&
+            "error" in errorPayload
           ? ((errorPayload.error as { status?: string }).status ??
             `http_${response.status}`)
           : `http_${response.status}`;

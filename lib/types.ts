@@ -1,7 +1,7 @@
 import type { EntityCheck } from "@/lib/optimizer/entity-guard";
 import type { QualityCheck } from "@/lib/optimizer/quality-guard";
 
-export type ProviderId = "openai" | "anthropic" | "google" | "local";
+export type ProviderId = "google";
 
 export interface ModelOption {
   id: string;
@@ -13,6 +13,12 @@ export interface ModelOption {
 export interface ProviderConfig {
   provider: ProviderId;
   model: string;
+  /**
+   * BYOK: the user's own Gemini API key, entered in settings and kept in
+   * browser storage. Forwarded as the `x-user-gemini-key` request header —
+   * never persisted or logged server-side.
+   */
+  userKey?: string;
 }
 
 export interface TokenAnalysis {

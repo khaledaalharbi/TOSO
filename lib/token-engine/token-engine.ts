@@ -20,13 +20,16 @@ export interface TokenMeasurement {
 }
 
 /** Public contract used across the app. */
-export async function analyzeTokens(text: string): Promise<TokenMeasurement> {
+export async function analyzeTokens(
+  text: string,
+  userKey?: string,
+): Promise<TokenMeasurement> {
   const normalized = text.trim();
   const characters = normalized.length;
   const words = normalized ? normalized.split(/\s+/).length : 0;
   if (!characters) return { tokens: 0, characters, words, source: "heuristic" };
 
-  const providerTokens = await countViaProvider(normalized);
+  const providerTokens = await countViaProvider(normalized, userKey);
   if (providerTokens !== null) {
     return { tokens: providerTokens, characters, words, source: "provider" };
   }
@@ -50,12 +53,18 @@ export async function analyzeTokens(text: string): Promise<TokenMeasurement> {
 
 let providerUnavailable = false;
 
-async function countViaProvider(text: string): Promise<number | null> {
+async function countViaProvider(
+  text: string,
+  userKey?: string,
+): Promise<number | null> {
   if (providerUnavailable) return null;
   try {
     const response = await fetch("/api/tokens/count", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(userKey ? { "x-user-gemini-key": userKey } : {}),
+      },
       body: JSON.stringify({ text }),
     });
     if (!response.ok) return null;

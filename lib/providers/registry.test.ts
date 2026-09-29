@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { getModel, providers, resolveProviderModel } from "./registry";
 
+describe("registry", () => {
+  it("offers Gemini as the only real provider", () => {
+    expect(Object.keys(providers)).toEqual(["google"]);
+    expect(providers.google.models.length).toBeGreaterThan(1);
+  });
+});
+
 describe("resolveProviderModel", () => {
   it("returns the requested model when it exists", () => {
     expect(resolveProviderModel("google", "gemini-3.5-flash").id).toBe(
@@ -23,13 +30,13 @@ describe("resolveProviderModel", () => {
 
 describe("getModel", () => {
   it("returns the exact model for a valid pair", () => {
-    const model = getModel("openai", "gpt-4.1");
-    expect(model.id).toBe("gpt-4.1");
+    const model = getModel("google", "gemini-3.5-flash");
+    expect(model.id).toBe("gemini-3.5-flash");
   });
 
   it("never throws for a stale stored selection", () => {
-    expect(getModel("anthropic", "deleted-model").id).toBe(
-      providers.anthropic.models[0].id,
+    expect(getModel("google", "deleted-model").id).toBe(
+      providers.google.models[0].id,
     );
   });
 });

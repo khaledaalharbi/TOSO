@@ -1,37 +1,14 @@
 import type { ModelOption, ProviderId } from "@/lib/types";
 
+/**
+ * Gemini is the only real provider: it is the engine that actually rewrites
+ * prompts and owns the countTokens endpoint used for official counts.
+ * The record shape stays extensible — a future real adapter can add a key.
+ */
 export const providers: Record<
   ProviderId,
   { label: string; models: ModelOption[] }
 > = {
-  openai: {
-    label: "OpenAI",
-    models: [
-      {
-        id: "gpt-4.1-mini",
-        label: "GPT-4.1 mini",
-        inputCostPerMillion: 0.4,
-        outputCostPerMillion: 1.6,
-      },
-      {
-        id: "gpt-4.1",
-        label: "GPT-4.1",
-        inputCostPerMillion: 2,
-        outputCostPerMillion: 8,
-      },
-    ],
-  },
-  anthropic: {
-    label: "Anthropic",
-    models: [
-      {
-        id: "claude-sonnet",
-        label: "Claude Sonnet",
-        inputCostPerMillion: 3,
-        outputCostPerMillion: 15,
-      },
-    ],
-  },
   google: {
     label: "Google Gemini",
     models: [
@@ -58,17 +35,6 @@ export const providers: Record<
         label: "Gemini 3.1 Pro",
         inputCostPerMillion: 1.25,
         outputCostPerMillion: 5,
-      },
-    ],
-  },
-  local: {
-    label: "محلي / تجريبي",
-    models: [
-      {
-        id: "mock-arabic-optimizer",
-        label: "Mock Arabic Optimizer",
-        inputCostPerMillion: 0,
-        outputCostPerMillion: 0,
       },
     ],
   },

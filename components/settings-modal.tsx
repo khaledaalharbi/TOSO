@@ -1,8 +1,8 @@
 "use client";
 
-import { KeyRound, ShieldCheck, X } from "lucide-react";
+import { KeyRound, ShieldCheck, Trash2, X } from "lucide-react";
 import { providers } from "@/lib/providers/registry";
-import type { ProviderConfig, ProviderId } from "@/lib/types";
+import type { ProviderConfig } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -13,7 +13,8 @@ interface Props {
 
 export function SettingsModal({ open, onClose, config, onChange }: Props) {
   if (!open) return null;
-  const options = providers[config.provider].models;
+  const options = providers.google.models;
+  const userKey = config.userKey ?? "";
   return (
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4"
@@ -33,30 +34,11 @@ export function SettingsModal({ open, onClose, config, onChange }: Props) {
           <div>
             <h2 className="text-lg font-bold">إعدادات النموذج</h2>
             <p className="text-sm text-slate-500">
-              اختيار تجريبي لحساب التكلفة
+              محرك المعالجة: Google Gemini
             </p>
           </div>
         </div>
         <div className="space-y-4">
-          <label className="block text-sm font-semibold">
-            المزوّد
-            <select
-              id="provider"
-              name="provider"
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 outline-none focus:border-brand-500"
-              value={config.provider}
-              onChange={(event) => {
-                const provider = event.target.value as ProviderId;
-                onChange({ provider, model: providers[provider].models[0].id });
-              }}
-            >
-              {Object.entries(providers).map(([id, provider]) => (
-                <option key={id} value={id}>
-                  {provider.label}
-                </option>
-              ))}
-            </select>
-          </label>
           <label className="block text-sm font-semibold">
             النموذج
             <select
@@ -76,9 +58,9 @@ export function SettingsModal({ open, onClose, config, onChange }: Props) {
             </select>
           </label>
           <label className="block text-sm font-semibold">
-            مفتاح API{" "}
+            مفتاح Gemini الخاص بك{" "}
             <span className="font-normal text-slate-400">
-              اختياري في النموذج الأولي
+              اختياري — استخدم حصتك أنت (BYOK)
             </span>
             <div className="relative mt-2">
               <KeyRound
@@ -86,20 +68,43 @@ export function SettingsModal({ open, onClose, config, onChange }: Props) {
                 size={18}
               />
               <input
-                id="api-key"
-                name="api-key"
+                id="user-gemini-key"
+                name="user-gemini-key"
                 type="password"
                 autoComplete="off"
-                placeholder="لن يُخزّن أو يُرسل"
+                value={userKey}
+                onChange={(event) =>
+                  onChange({ ...config, userKey: event.target.value.trim() })
+                }
+                placeholder="مفتاح AI Studio — يُحفظ في متصفحك فقط"
                 className="w-full rounded-xl border border-slate-200 py-3 pr-10 pl-3 outline-none focus:border-brand-500"
+                dir="ltr"
               />
             </div>
           </label>
+          {userKey ? (
+            <div className="flex items-center justify-between rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-800">
+              <span>
+                مفتاح محفوظ في متصفحك — تُحمَّل الطلبات على حصتك (
+                <span dir="ltr">••••{userKey.slice(-4)}</span>)
+              </span>
+              <button
+                type="button"
+                onClick={() => onChange({ ...config, userKey: undefined })}
+                className="flex items-center gap-1 font-bold text-rose-600 hover:text-rose-700"
+              >
+                <Trash2 size={14} />
+                مسح
+              </button>
+            </div>
+          ) : null}
           <div className="flex gap-2 rounded-xl bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">
             <ShieldCheck className="shrink-0" size={18} />
             <span>
-              المفتاح محفوظ في خادم التطوير فقط (.env.local) ولا يُرسل للمتصفح.
-              القياس يتم عبر واجهة Google الرسمية.
+              أنشئ مفتاحاً مجانياً من <span dir="ltr">aistudio.google.com</span>
+              . يُحفظ في localStorage بجهازك ويُرسل إلى خادمك المحلي مع كل طلب —
+              لا يُخزَّن ولا يُسجَّل في الخادم. بدونه يُستخدم مفتاح الخادم إن
+              وُجد، وإلا تعمل التنقية المحلية.
             </span>
           </div>
         </div>

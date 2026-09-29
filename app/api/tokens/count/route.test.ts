@@ -74,6 +74,57 @@ describe("POST /api/tokens/count", () => {
     expect(data.tokens).toBeGreaterThan(0);
   });
 
+  it("routes a user BYOK key to the AI Studio host", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "server-key");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ totalTokens: 9 }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const request = new Request("http://localhost/api/tokens/count", {
+      method: "POST",
+      body: JSON.stringify({ text: "مرحبا بك" }),
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-gemini-key": "user-ai-key",
+      },
+    });
+    const response = await POST(request);
+    expect(await response.json()).toEqual({
+      tokens: 9,
+      fallback: false,
+      model: "gemini-3.8-flash",
+    });
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:countTokens?key=user-ai-key",
+    );
+  });
+
+  it("tags user-key failures with user_key_* codes", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "server-key");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 403,
+        json: async () => ({}),
+      }),
+    );
+    const request = new Request("http://localhost/api/tokens/count", {
+      method: "POST",
+      body: JSON.stringify({ text: "مرحبا بك" }),
+      headers: { "x-user-gemini-key": "bad-key" },
+    });
+    const response = await POST(request);
+    const data = (await response.json()) as {
+      fallback: boolean;
+      errorCode?: string;
+    };
+    expect(data.fallback).toBe(true);
+    expect(data.errorCode).toBe("user_key_invalid");
+  });
+
   it("returns fallback with reason no_api_key when GEMINI_API_KEY is unset", async () => {
     vi.stubEnv("GEMINI_API_KEY", "");
     const fetchMock = vi.fn();

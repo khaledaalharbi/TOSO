@@ -31,8 +31,11 @@ interface DualOutput {
 
 const VERTEX_MODELS_URL =
   "https://aiplatform.googleapis.com/v1/publishers/google/models";
+/** AI Studio host — the only endpoint that accepts user-provided (BYOK) keys. */
+const AI_STUDIO_MODELS_URL =
+  "https://generativelanguage.googleapis.com/v1beta/models";
 
-/** Structured-output schema (JSON Schema for generationConfig.responseFormat). */
+/** Structured-output schema — JSON Schema for both host contracts. */
 const DUAL_SCHEMA = {
   type: "object",
   properties: {
@@ -74,28 +77,44 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  // BYOK: a user-supplied key (browser storage → x-user-gemini-key header)
+  // wins over the server env key. The key's origin decides the host —
+  // AI Studio keys only work on generativelanguage (verified: each host
+  // rejects the other's keys with 403).
+  const userKey = request.headers.get("x-user-gemini-key")?.trim() || null;
+  const apiKey = userKey ?? process.env.GEMINI_API_KEY;
   if (!apiKey) {
     // No key configured → client falls back to the local mock optimizer.
     return NextResponse.json({ fallback: true, reason: "no_api_key" });
   }
 
+  const baseUrl = userKey ? AI_STUDIO_MODELS_URL : VERTEX_MODELS_URL;
   const model = resolveProviderModel("google", body.model).id;
   const requestBody = () =>
     JSON.stringify({
       systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
       contents: [{ role: "user", parts: [{ text }] }],
-      generationConfig: {
-        // responseMimeType/responseSchema are deprecated in v1 — the
-        // responseFormat union is the current structured-output contract.
-        responseFormat: [
-          {
-            text: { mimeType: "APPLICATION_JSON", schema: DUAL_SCHEMA },
+      generationConfig: userKey
+        ? {
+            // AI Studio (generativelanguage) contract — verified live:
+            // responseMimeType/responseSchema accepted; the responseFormat
+            // union is rejected with 400 on this host.
+            responseMimeType: "application/json",
+            responseSchema: DUAL_SCHEMA,
+            // Rewriting is not deep reasoning — keep thought tokens down.
+            thinkingConfig: { thinkingLevel: "LOW" },
+          }
+        : {
+            // Agent Platform contract: responseFormat union is the
+            // structured-output field; responseMimeType/responseSchema are
+            // deprecated in v1.
+            responseFormat: [
+              {
+                text: { mimeType: "APPLICATION_JSON", schema: DUAL_SCHEMA },
+              },
+            ],
+            thinkingConfig: { thinkingLevel: "LOW" },
           },
-        ],
-        // Rewriting is not deep reasoning — keep thought tokens (cost+latency) down.
-        thinkingConfig: { thinkingLevel: "LOW" },
-      },
     });
 
   /**
@@ -116,7 +135,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       let response: Response;
       try {
         response = await fetch(
-          `${VERTEX_MODELS_URL}/${encodeURIComponent(candidate)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+          `${baseUrl}/${encodeURIComponent(candidate)}:generateContent?key=${encodeURIComponent(apiKey)}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -133,7 +152,19 @@ export async function POST(request: Request): Promise<NextResponse> {
       }
 
       if (!response.ok) {
-        lastReason = `http_${response.status}`;
+        // A failing user key reports user-scoped reasons so the UI can say
+        // "YOUR key" instead of blaming the server — and we never silently
+        // retry on the server key (that would bill the operator while the
+        // user believes their own quota paid).
+        lastReason = userKey
+          ? response.status === 429
+            ? "user_key_quota"
+            : response.status === 400 ||
+                response.status === 401 ||
+                response.status === 403
+              ? "user_key_invalid"
+              : `user_key_http_${response.status}`
+          : `http_${response.status}`;
         // 429 may be model-specific → try the next model. 5xx is transient →
         // a couple of quick retries, then move on.
         if (response.status >= 500 && retries5xx < 2) {
@@ -164,6 +195,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         ...parsed,
         model: candidate,
         fallback: false,
+        viaUserKey: userKey !== null,
         usage: parseVertexUsage(payload?.usageMetadata),
       });
     }

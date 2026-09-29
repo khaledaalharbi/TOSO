@@ -37,7 +37,11 @@ describe("runOptimization", () => {
       },
     });
     const report = await runOptimization("من فضلك عايز حلل 50%", config);
-    expect(mockedOptimize).toHaveBeenCalledWith("عايز حلل 50%", config.model);
+    expect(mockedOptimize).toHaveBeenCalledWith(
+      "عايز حلل 50%",
+      config.model,
+      undefined,
+    );
     expect(vi.mocked(analyzeTokens).mock.calls[0][0]).toBe(
       "من فضلك عايز حلل 50%",
     );
@@ -76,7 +80,11 @@ describe("runOptimization", () => {
       `من فضلك لَخِّصْ ${payload} ثم أَجِبْ`,
       config,
     );
-    expect(mockedOptimize).toHaveBeenCalledWith(normalized, config.model);
+    expect(mockedOptimize).toHaveBeenCalledWith(
+      normalized,
+      config.model,
+      undefined,
+    );
     expect(report.normalizedPrompt).toBe(normalized);
     expect(report.entityChecks.arabic.preserved).toBe(true);
     expect(report.arabic.measurement).toBe(report.normalizedMeasurement);

@@ -20,18 +20,24 @@ export interface DualOptimization {
   source: OptimizerSource;
   /** The Gemini model that produced the variants (may differ from the requested one on quota fallback). */
   model?: string;
+  /** True when the call ran on the user's own BYOK key (their quota paid). */
+  viaUserKey?: boolean;
   usage?: GeminiUsage | null;
 }
 
 export async function optimizeDual(
   prompt: string,
   model?: string,
+  userKey?: string,
 ): Promise<DualOptimization> {
   let fallbackReason: string | null = null;
   try {
     const response = await fetch("/api/optimize", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(userKey ? { "x-user-gemini-key": userKey } : {}),
+      },
       body: JSON.stringify({ text: prompt, model }),
     });
     if (response.ok) {
@@ -42,6 +48,7 @@ export async function optimizeDual(
         model?: string;
         fallback?: boolean;
         reason?: string;
+        viaUserKey?: boolean;
         usage?: GeminiUsage | null;
       };
       if (
@@ -57,6 +64,7 @@ export async function optimizeDual(
             "فُهمت النية وأُعيدت الصياغة عبر Gemini دون فقدان المعلومات الأساسية.",
           source: "gemini",
           model: payload.model,
+          viaUserKey: payload.viaUserKey === true,
           usage: payload.usage ?? null,
         };
       }
@@ -89,9 +97,16 @@ function localNoteFor(reason: string | null): string {
       return "تعذّر الاتصال بـ Gemini؛ استُخدمت تنقية محلية دون ترجمة.";
     case "bad_model_output":
       return "أعاد Gemini ردًا غير صالح؛ استُخدمت تنقية محلية دون ترجمة.";
+    case "user_key_quota":
+      return "حصة مفتاحك في AI Studio استُنزفت مؤقتاً؛ استُخدمت تنقية محلية. راجع حصتك أو امسح المفتاح من الإعدادات.";
+    case "user_key_invalid":
+      return "مفتاحك مرفوض من Google؛ تحقق منه في الإعدادات — استُخدمت تنقية محلية.";
     default:
       if (reason.startsWith("http_429")) {
         return "حصة نماذج Gemini مستنزفة حالياً؛ استُخدمت تنقية محلية دون ترجمة.";
+      }
+      if (reason.startsWith("user_key_")) {
+        return `تعذّر استدعاء Gemini بمفتاحك (${reason})؛ استُخدمت تنقية محلية دون ترجمة.`;
       }
       return `تعذّر استدعاء Gemini (${reason})؛ استُخدمت تنقية محلية دون ترجمة.`;
   }

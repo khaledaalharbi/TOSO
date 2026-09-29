@@ -306,4 +306,97 @@ describe("POST", () => {
     );
     expect(usedKeys).toEqual(new Set(["primary-key"]));
   });
+
+  it("routes a user BYOK key to the AI Studio host with the classic schema", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "server-key");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () =>
+        generateContentPayload('{"arabic":"أ","english":"e","note":"n"}'),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(
+      new Request("http://localhost/api/optimize", {
+        method: "POST",
+        headers: { "x-user-gemini-key": "user-ai-key" },
+        body: JSON.stringify({ text: "حلل" }),
+      }),
+    );
+    const payload = await response.json();
+    expect(payload.fallback).toBe(false);
+    expect(payload.viaUserKey).toBe(true);
+    // User key wins over the server key AND moves the call to the
+    // generativelanguage host — the only one that accepts AI Studio keys.
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=user-ai-key",
+    );
+    const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(requestBody.generationConfig.responseMimeType).toBe(
+      "application/json",
+    );
+    expect(requestBody.generationConfig.responseSchema.required).toEqual([
+      "arabic",
+      "english",
+      "note",
+    ]);
+    expect(requestBody.generationConfig).not.toHaveProperty("responseFormat");
+  });
+
+  it("marks server-key calls as viaUserKey false", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "server-key");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () =>
+        generateContentPayload('{"arabic":"أ","english":"e","note":"n"}'),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(
+      new Request("http://localhost/api/optimize", {
+        method: "POST",
+        body: JSON.stringify({ text: "حلل" }),
+      }),
+    );
+    expect((await response.json()).viaUserKey).toBe(false);
+  });
+
+  it("reports user_key_quota when the user's key exhausts on every model", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "server-key");
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 429 });
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(
+      new Request("http://localhost/api/optimize", {
+        method: "POST",
+        headers: { "x-user-gemini-key": "user-ai-key" },
+        body: JSON.stringify({ text: "حلل" }),
+      }),
+    );
+    expect(await response.json()).toEqual({
+      fallback: true,
+      reason: "user_key_quota",
+    });
+    // Never silently billed to the server key.
+    const usedKeys = new Set(
+      fetchMock.mock.calls.map((call) =>
+        new URL(String(call[0])).searchParams.get("key"),
+      ),
+    );
+    expect(usedKeys).toEqual(new Set(["user-ai-key"]));
+  });
+
+  it("reports user_key_invalid when the user's key is rejected", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 403 });
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(
+      new Request("http://localhost/api/optimize", {
+        method: "POST",
+        headers: { "x-user-gemini-key": "bad-key" },
+        body: JSON.stringify({ text: "حلل" }),
+      }),
+    );
+    expect(await response.json()).toEqual({
+      fallback: true,
+      reason: "user_key_invalid",
+    });
+  });
 });
