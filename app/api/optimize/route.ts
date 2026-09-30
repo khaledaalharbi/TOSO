@@ -82,7 +82,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   // AI Studio keys only work on generativelanguage (verified: each host
   // rejects the other's keys with 403).
   const userKey = request.headers.get("x-user-gemini-key")?.trim() || null;
-  const apiKey = userKey ?? process.env.GEMINI_API_KEY;
+  const apiKey = userKey ?? process.env.AGENT_PLATFORM_API_KEY;
   if (!apiKey) {
     // No key configured → client falls back to the local mock optimizer.
     return NextResponse.json({ fallback: true, reason: "no_api_key" });

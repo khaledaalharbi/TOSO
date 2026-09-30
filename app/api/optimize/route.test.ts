@@ -51,7 +51,7 @@ afterEach(() => {
 
 describe("POST", () => {
   it("sends separate system and user content through Agent Platform and maps usage", async () => {
-    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("AGENT_PLATFORM_API_KEY", "test-key");
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () =>
@@ -145,7 +145,7 @@ describe("POST", () => {
     "عايز تلخص التقرير ده في ٣ نقاط بس، من غير توقعات، واحتفظ بـ {order_id}.",
     'حوّل البيانات {"count":2,"ratio":"٥٠٪"} إلى جدول من عمودين دون تغيير القيم.',
   ])("does not inject a guessed dialect for %s", async (text) => {
-    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("AGENT_PLATFORM_API_KEY", "test-key");
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () =>
@@ -171,7 +171,7 @@ describe("POST", () => {
   });
 
   it("omits invalid counters without treating missing usage as zero", async () => {
-    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("AGENT_PLATFORM_API_KEY", "test-key");
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -197,7 +197,7 @@ describe("POST", () => {
   });
 
   it("returns null usage when a valid optimization has no usage block", async () => {
-    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("AGENT_PLATFORM_API_KEY", "test-key");
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -216,8 +216,8 @@ describe("POST", () => {
   });
 
   it("does not invent usage when there is no API key", async () => {
-    vi.stubEnv("GEMINI_API_KEY", "");
-    vi.stubEnv("GEMINI_API_KEY_BACKUP", "");
+    vi.stubEnv("AGENT_PLATFORM_API_KEY", "");
+    vi.stubEnv("AGENT_PLATFORM_API_KEY_BACKUP", "");
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const response = await POST(
@@ -234,8 +234,8 @@ describe("POST", () => {
   });
 
   it("tries every model on quota and never touches a second key", async () => {
-    vi.stubEnv("GEMINI_API_KEY", "primary-key");
-    vi.stubEnv("GEMINI_API_KEY_BACKUP", "backup-key");
+    vi.stubEnv("AGENT_PLATFORM_API_KEY", "primary-key");
+    vi.stubEnv("AGENT_PLATFORM_API_KEY_BACKUP", "backup-key");
     const quota = { ok: false, status: 429 };
     const fetchMock = vi.fn().mockResolvedValue(quota);
     vi.stubGlobal("fetch", fetchMock);
@@ -258,7 +258,7 @@ describe("POST", () => {
   });
 
   it("treats an unparseable 200 body as bad model output, not a crash", async () => {
-    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("AGENT_PLATFORM_API_KEY", "test-key");
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -281,8 +281,8 @@ describe("POST", () => {
   });
 
   it("does not fall back to a second key on malformed model output", async () => {
-    vi.stubEnv("GEMINI_API_KEY", "primary-key");
-    vi.stubEnv("GEMINI_API_KEY_BACKUP", "backup-key");
+    vi.stubEnv("AGENT_PLATFORM_API_KEY", "primary-key");
+    vi.stubEnv("AGENT_PLATFORM_API_KEY_BACKUP", "backup-key");
     const badOutput = {
       ok: true,
       json: async () => generateContentPayload("not json at all"),
@@ -308,7 +308,7 @@ describe("POST", () => {
   });
 
   it("routes a user BYOK key to the AI Studio host with the classic schema", async () => {
-    vi.stubEnv("GEMINI_API_KEY", "server-key");
+    vi.stubEnv("AGENT_PLATFORM_API_KEY", "server-key");
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () =>
@@ -344,7 +344,7 @@ describe("POST", () => {
   });
 
   it("marks server-key calls as viaUserKey false", async () => {
-    vi.stubEnv("GEMINI_API_KEY", "server-key");
+    vi.stubEnv("AGENT_PLATFORM_API_KEY", "server-key");
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () =>
@@ -361,7 +361,7 @@ describe("POST", () => {
   });
 
   it("reports user_key_quota when the user's key exhausts on every model", async () => {
-    vi.stubEnv("GEMINI_API_KEY", "server-key");
+    vi.stubEnv("AGENT_PLATFORM_API_KEY", "server-key");
     const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 429 });
     vi.stubGlobal("fetch", fetchMock);
     const response = await POST(

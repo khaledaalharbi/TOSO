@@ -46,7 +46,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   // BYOK: a user-supplied key wins over the server env key, and its origin
   // decides the host — AI Studio keys only work on generativelanguage.
   const userKey = request.headers.get("x-user-gemini-key")?.trim() || null;
-  const apiKey = userKey ?? process.env.GEMINI_API_KEY;
+  const apiKey = userKey ?? process.env.AGENT_PLATFORM_API_KEY;
   if (!apiKey) {
     // No key configured → tell the client to estimate locally.
     return NextResponse.json({

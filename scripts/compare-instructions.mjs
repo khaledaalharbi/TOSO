@@ -15,7 +15,7 @@
  * the TEXT tokens via the free countTokens endpoint — instruction overhead is
  * reported separately as "usage" and never mixed into the comparison.
  *
- * Reads GEMINI_API_KEY from .env.local.
+ * Reads AGENT_PLATFORM_API_KEY from .env.local.
  * The key is never printed. Env overrides: COMPARE_MODEL, COMPARE_WAIT_MS,
  * COMPARE_REPORT (default outputs/instruction-compare-v3.md).
  */
@@ -34,9 +34,9 @@ for (const line of readFileSync(".env.local", "utf8").split(/\r?\n/)) {
     .replace(/^["']|["']$/g, "");
 }
 
-const API_KEY = env.GEMINI_API_KEY;
+const API_KEY = env.AGENT_PLATFORM_API_KEY;
 if (!API_KEY) {
-  console.error("No GEMINI_API_KEY in .env.local");
+  console.error("No AGENT_PLATFORM_API_KEY in .env.local");
   process.exit(1);
 }
 

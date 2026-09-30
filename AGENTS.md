@@ -27,8 +27,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## قواعد معمارية وتشغيلية
 
-- `GEMINI_API_KEY` يُقرأ فقط في Route Handlers — لا يصل للمتصفح أبدًا؛ مفتاح `.env.local` هو الوحيد المستخدم في المشروع ولا توجد مفاتيح احتياطية. الحصة مرتبطة بالمشروع لا بالمفتاح.
-- **حجب متغيرات البيئة:** Next.js لا يتجاوز متغيراً موجوداً مسبقاً في `process.env` — متغير مستخدم قديم في Windows (`GEMINI_API_KEY` بقيمة مختلفة) حجب `.env.local` وتسبب بـ`http_403` على كل النماذج رغم صحة مفتاح الملف. عند `403` جماعي: قارن بصمة المفتاح في `process.env` مع `.env.local` (`Remove-Item Env:GEMINI_API_KEY` في جلسة الطرفية، أو حذفه من نطاق المستخدم).
+- `AGENT_PLATFORM_API_KEY` يُقرأ فقط في Route Handlers — لا يصل للمتصفح أبدًا؛ مفتاح `.env.local` هو الوحيد المستخدم في المشروع ولا توجد مفاتيح احتياطية. الحصة مرتبطة بالمشروع لا بالمفتاح.
+- **حجب متغيرات البيئة:** Next.js لا يتجاوز متغيراً موجوداً مسبقاً في `process.env` — متغير مستخدم قديم في Windows (`AGENT_PLATFORM_API_KEY` بقيمة مختلفة) حجب `.env.local` وتسبب بـ`http_403` على كل النماذج رغم صحة مفتاح الملف. عند `403` جماعي: قارن بصمة المفتاح في `process.env` مع `.env.local` (`Remove-Item Env:AGENT_PLATFORM_API_KEY` في جلسة الطرفية، أو حذفه من نطاق المستخدم).
 - التحسين عبر Vertex AI Agent Platform Express mode (`POST /v1/publishers/google/models/{model}:generateContent`)؛ قياس الـTokens عبر `countTokens` في `/api/tokens/count`. مفتاح Agent Platform يبقى في Route Handlers فقط.
 - عند غياب المفتاح أو فشل النماذج: سقوط صادق إلى mock محلي — لا تختلق مخرجات إنجليزية في وضع محلي.
 - منع شلالات الشبكة (Waterfalls): العمليات المستقلة تُطلق بالتوازي فوراً عبر الوعود.
