@@ -42,7 +42,8 @@ describe("SettingsModal key status", () => {
     expect(markup).toContain("bg-slate-300");
     expect(markup).toContain("تحقق");
     expect(markup).toContain("••••1234");
-    expect(markup).not.toContain("رفض هذا المفتاح");
+    expect(markup).not.toContain("مرفوض");
+    expect(markup).not.toContain("الحصة منتهية");
   });
 
   it("shows the quota state when the last run drained the same key", () => {
@@ -51,7 +52,8 @@ describe("SettingsModal key status", () => {
       signal: "user_key_quota",
     });
     expect(markup).toContain("bg-amber-500");
-    expect(markup).toContain("حصة مفتاحك مستنزفة");
+    expect(markup).toContain("الحصة منتهية");
+    expect(markup).toContain("راجع حصتك في AI Studio");
   });
 
   it("shows the invalid state for a rejected user key", () => {
@@ -60,7 +62,8 @@ describe("SettingsModal key status", () => {
       signal: "user_key_invalid",
     });
     expect(markup).toContain("bg-rose-500");
-    expect(markup).toContain("رفض هذا المفتاح");
+    expect(markup).toContain("مرفوض");
+    expect(markup).toContain("منسوخ كاملاً");
   });
 
   it("shows green when the same key actually served a run", () => {
@@ -69,7 +72,8 @@ describe("SettingsModal key status", () => {
       signal: "ok",
     });
     expect(markup).toContain("bg-emerald-500");
-    expect(markup).toContain("تحقّقت Google من المفتاح");
+    // "يعمل" also appears inside the guide text — pin it to the bold label.
+    expect(markup).toContain('font-bold">يعمل<');
   });
 
   it("ignores a signal bound to a different key value", () => {
@@ -78,13 +82,13 @@ describe("SettingsModal key status", () => {
       signal: "user_key_invalid",
     });
     expect(markup).toContain("bg-slate-300");
-    expect(markup).not.toContain("رفض هذا المفتاح");
+    expect(markup).not.toContain("مرفوض");
   });
 
   it("hides the status block entirely without a saved key", () => {
     const markup = render(config());
     expect(markup).not.toContain("تحقق");
-    expect(markup).not.toContain("مفتاح محفوظ");
+    expect(markup).not.toContain("••••");
   });
 
   it("mentions the AQ. prefix hint inside the guide", () => {

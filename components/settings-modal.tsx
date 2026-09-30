@@ -47,12 +47,19 @@ const chipTone: Record<KeyStatus, string> = {
   unreachable: "bg-sky-50 text-sky-800",
 };
 
-const statusMessage: Partial<Record<KeyStatus, string>> = {
-  ok: "تحقّقت Google من المفتاح الآن — الطلبات تُحمَّل على حصتك.",
-  invalid:
-    "Google رفض هذا المفتاح — تأكد أنه منسوخ كاملاً من AI Studio ويبدأ بـ AQ.",
-  quota: "حصة مفتاحك مستنزفة مؤقتاً — راجع حسابك في AI Studio.",
-  unreachable: "تعذّر الفحص الآن — لم يُتحقق من المفتاح (شبكة أو خادم).",
+/** One-word status shown inline next to the masked key. */
+const statusLabel: Partial<Record<KeyStatus, string>> = {
+  ok: "يعمل",
+  invalid: "مرفوض",
+  quota: "الحصة منتهية",
+  unreachable: "تعذّر الفحص",
+};
+
+/** Short actionable hint — surfaced only on failure states. */
+const statusHint: Partial<Record<KeyStatus, string>> = {
+  invalid: "تأكد أنه منسوخ كاملاً من AI Studio ويبدأ بـ AQ.",
+  quota: "راجع حصتك في AI Studio.",
+  unreachable: "أعد المحاولة بعد قليل أو راجع الاتصال.",
 };
 
 interface Props {
@@ -189,10 +196,12 @@ export function SettingsModal({
                     className={`h-2 w-2 shrink-0 rounded-full ${dotClass[status]}`}
                     aria-hidden="true"
                   />
-                  <span className="truncate">
-                    مفتاح محفوظ في متصفحك — تُحمَّل الطلبات على حصتك (
-                    <span dir="ltr">••••{userKey.slice(-4)}</span>)
+                  <span dir="ltr" className="font-semibold">
+                    ••••{userKey.slice(-4)}
                   </span>
+                  {statusLabel[status] ? (
+                    <span className="font-bold">{statusLabel[status]}</span>
+                  ) : null}
                 </span>
                 <div className="flex shrink-0 items-center gap-2">
                   <button
@@ -213,8 +222,8 @@ export function SettingsModal({
                   </button>
                 </div>
               </div>
-              {statusMessage[status] ? (
-                <p className="mt-1.5 leading-5">{statusMessage[status]}</p>
+              {statusHint[status] ? (
+                <p className="mt-1 leading-5">{statusHint[status]}</p>
               ) : null}
             </div>
           ) : null}
