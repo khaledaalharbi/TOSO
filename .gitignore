@@ -40,6 +40,8 @@ next-env.d.ts
 # Hermes / Skills
 .hermes/cache/
 .hermes/logs/
+.hermes/skills/
+.hermes/config.local.json
 *.log
 
 # Python
