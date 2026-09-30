@@ -1,6 +1,7 @@
 "use client";
 
-import { KeyRound, ShieldCheck, Trash2, X } from "lucide-react";
+import { KeyRound, Trash2, X } from "lucide-react";
+import { GeminiKeyGuide } from "@/components/gemini-key-guide";
 import { providers } from "@/lib/providers/registry";
 import type { ProviderConfig } from "@/lib/types";
 
@@ -98,15 +99,7 @@ export function SettingsModal({ open, onClose, config, onChange }: Props) {
               </button>
             </div>
           ) : null}
-          <div className="flex gap-2 rounded-xl bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">
-            <ShieldCheck className="shrink-0" size={18} />
-            <span>
-              أنشئ مفتاحاً مجانياً من <span dir="ltr">aistudio.google.com</span>
-              . يُحفظ في localStorage بجهازك ويُرسل إلى خادمك المحلي مع كل طلب —
-              لا يُخزَّن ولا يُسجَّل في الخادم. بدونه يُستخدم مفتاح الخادم إن
-              وُجد، وإلا تعمل التنقية المحلية.
-            </span>
-          </div>
+          <GeminiKeyGuide />
         </div>
         <button
           onClick={onClose}
