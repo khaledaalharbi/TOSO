@@ -66,3 +66,6 @@ venv/
 *.tmp
 *.temp
 .tmp/
+
+# Understand-Anything knowledge graph (generated, large)
+.ua/

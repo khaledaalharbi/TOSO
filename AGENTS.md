@@ -10,17 +10,26 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # قواعد المشروع — TOSO
 
-## المهارات (`.devin/skills/`)
+## المهارات
 
-- **`gemini-api-dev`** — قبل كتابة أو تعديل أي كود يستدعي Gemini API (التوليد، الإخراج المهيكل، streaming، الأدوات، الترحيل بين الإصدارات أو النماذج): راجع `.devin/skills/gemini-api-dev/SKILL.md` أولًا، وتحقق من التوثيق الرسمي المستضاف المرتبط فيه (`ai.google.dev`) قبل افتراض عقود API من الذاكرة.
-- **`vercel-react-best-practices`** — عند كتابة أو مراجعة أو تحسين كود React/Next.js: راجع المهارة في `.devin/skills/vercel-react-best-practices/` مع التركيز على إلغاء الشلالات (`async-parallel`)، وعزل إعادة التصيير، وتجنب التقسيم الديناميكي للمكونات متناهية الصغر (<10KB).
+يستخدم المشروع مسارين للمهارات حسب الوكيل:
+
+| الوكيل     | المسار            |
+| ---------- | ----------------- |
+| **Hermes** | `.hermes/skills/` |
+| **Devin**  | `.devin/skills/`  |
+
+المحتوى **متطابق** في المسارين (نسخة/رابط). راجع المهارة المناسبة للوكيل اللي تشتغل معه.
+
+- **`gemini-api-dev`** — قبل كتابة أو تعديل أي كود يستدعي Gemini API (التوليد، الإخراج المهيكل، streaming، الأدوات، الترحيل بين الإصدارات أو النماذج): راجع `SKILL.md` في مسار مهارات وكيلك، وتحقق من التوثيق الرسمي المستضاف المرتبط فيه (`ai.google.dev`) قبل افتراض عقود API من الذاكرة.
+- **`vercel-react-best-practices`** — عند كتابة أو مراجعة أو تحسين كود React/Next.js: راجع المهارة في مسار مهارات وكيلك مع التركيز على إلغاء الشلالات (`async-parallel`)، وعزل إعادة التصيير، وتجنب التقسيم الديناميكي للمكونات متناهية الصغر (<10KB).
+- **`understand-*` (9 مهارات)** — Understand-Anything لتحليل المستودع إلى رسم معرفي (`understand`, `understand-dashboard`, `understand-explain`, `understand-diff`, `understand-chat`, `understand-domain`, `understand-knowledge`, `understand-onboard`, `understand-figma`). نسخ فعلية (ليست symlinks) من الإضافة المستنسخة في `~/.understand-anything/repo` — تحديث المصدر لا ينعكس تلقائياً. تعتمد على رابط `~/.understand-anything-plugin` → `understand-anything-plugin/` لحل PLUGIN_ROOT، وعلى `packages/core/dist` المبني (Node ≥22 + pnpm ≥10). مخرجات التحليل في `.ua/` (gitignored). **علة MSYS:** مرّر دائماً مسارات ويندوز صريحة `C:/...` لسكربتات Node الخاصة بالأداة — مسارات POSIX `/c/...` تُحوَّل إلى `C:\c\...` وتفشل بـENOENT صامت (سبب فشل git clone الأول).
 
 ## قواعد معمارية وتشغيلية
 
-- `GEMINI_API_KEY` يُقرأ فقط في Route Handlers — لا يصل للمتصفح أبدًا؛ لا توجد مفاتيح احتياطية في البيئة. الحصة مرتبطة بالمشروع لا بالمفتاح.
-- **BYOK:** مفتاح المستخدم يُخزَّن في `localStorage` متصفحه (`toso.userGeminiKey`) ويصل الخادم كترويسة `x-user-gemini-key` في `/api/optimize` و`/api/tokens/count` — **لا يُسجَّل ولا يُخزَّن server-side أبداً** (لا console/log/رد يحويه). مصدر المفتاح يحدد المضيف إلزامياً: مفتاح المستخدم → `generativelanguage.googleapis.com` بعقد `responseMimeType`+`responseSchema`؛ مفتاح البيئة → `aiplatform.googleapis.com` بعقد `responseFormat` — كل مضيف يرفض مفاتيح الآخر بـ403 (مُثبت حياً). فشل مفتاح المستخدم يُبلَّغ بأسباب `user_key_*` ولا يسقط على مفتاح الخادم أبداً.
+- `GEMINI_API_KEY` يُقرأ فقط في Route Handlers — لا يصل للمتصفح أبدًا؛ مفتاح `.env.local` هو الوحيد المستخدم في المشروع ولا توجد مفاتيح احتياطية. الحصة مرتبطة بالمشروع لا بالمفتاح.
 - **حجب متغيرات البيئة:** Next.js لا يتجاوز متغيراً موجوداً مسبقاً في `process.env` — متغير مستخدم قديم في Windows (`GEMINI_API_KEY` بقيمة مختلفة) حجب `.env.local` وتسبب بـ`http_403` على كل النماذج رغم صحة مفتاح الملف. عند `403` جماعي: قارن بصمة المفتاح في `process.env` مع `.env.local` (`Remove-Item Env:GEMINI_API_KEY` في جلسة الطرفية، أو حذفه من نطاق المستخدم).
-- التحسين عبر `generateContent` على مضيفين بحسب مصدر المفتاح (أعلاه)؛ قياس الـTokens عبر `countTokens` في `/api/tokens/count` بالقاعدة نفسها. المزوّد الوحيد الحقيقي هو Google — لا مزوّدون آخرون في السجل أو الواجهة.
+- التحسين عبر Vertex AI Agent Platform Express mode (`POST /v1/publishers/google/models/{model}:generateContent`)؛ قياس الـTokens عبر `countTokens` في `/api/tokens/count`. مفتاح Agent Platform يبقى في Route Handlers فقط.
 - عند غياب المفتاح أو فشل النماذج: سقوط صادق إلى mock محلي — لا تختلق مخرجات إنجليزية في وضع محلي.
 - منع شلالات الشبكة (Waterfalls): العمليات المستقلة تُطلق بالتوازي فوراً عبر الوعود.
 - حماية حالة الواجهة: أي إجراء غير متزامن يجب تأمينه بـ `try ... finally` لضمان تحرير حالة `running`.
@@ -40,8 +49,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - تقسيم محافظ للنص أثناء التنقية: JSON/أقواس متداخلة، كود داخل backticks أو سياج Markdown، روابط ومقتبسات تُحفظ حرفيًا؛ النثر المحيط وحده يتغير. المقاطع غير المغلقة تُحمى حتى النهاية.
 - `usage` الفعلي لاستدعاء التحسين الناجح يصل من `usageMetadata` في رد `generateContent` عبر `app/api/optimize/route.ts` إلى التقرير والواجهة؛ الحقول اختياريّة ومتحقق منها، وتبقى محفوظة إذا رفض الحارس مخرج Gemini. هي مستقلة عن تقدير تكلفة استخدام النص الناتج ولا تُستعمل للفوترة.
 - خريطة حرارية محلية للأصل والمخرجات عبر `countViaBpe` لكل مقطع، بمفتاح ألوان وثلاثة مقاطع بارزة لكل نسخة وتحذير معاينة محدودة (120 مقطع أو 2000 حرف). `originalPrompt` ثابت في التقرير حتى لو عُدّل حقل الإدخال بعد التشغيل؛ التقدير الحراري ليس عدّ Gemini ولا يُجمع ليطابق الإجمالي. تعرض بطاقة التوفير معاينة النص المنقّى دون تخمين اللهجة.
-- سلسلة سقوط بين نماذج Gemini في `/api/optimize`: كل محاولة مربوطة بمهلة 15 ثانية، و`429` ينتقل للنموذج التالي و`5xx` يعيد المحاولة مرتين. مفتاح واحد لكل طلب: `x-user-gemini-key` ثم `GEMINI_API_KEY` — لا احتياطي ولا مزج.
-- عقدا الاستدعاء مُتحقق منهما حياً: Agent Platform (`responseFormat`/`thinkingLevel`/`usageMetadata`) وAI Studio (`responseMimeType`/`responseSchema`) كلاهما أعادا JSON مهيكلاً واستخداماً فعلياً؛ `countTokens` يعمل على المضيفين؛ وسلسلة السقوط أثبتت حياً (`3.8-flash` تعذّر فخدم `3.5-flash-lite` بحقل `model` صادق)، وBYOK أثبت عبر الترويسة (`viaUserKey: true` وأسباب `user_key_*` صادقة).
+- سلسلة سقوط بين نماذج Gemini في `/api/optimize`: كل محاولة مربوطة بمهلة 15 ثانية، و`429` ينتقل للنموذج التالي و`5xx` يعيد المحاولة مرتين. مفتاح واحد فقط — لا احتياطي.
 - فحص جودة ظاهري حتمي — `lib/optimizer/quality-guard.ts`: لغة المخرج فعلياً، بقاء أدوات النفي، وتغطية كلمات المحتوى. الرفض الصارم للناتج المحلي على فقد الكيانات أو خرق اللغة فقط؛ النفي والتغطية تحذيرات ظاهرة في الواجهة لا ادعاء معنى.
 - ملاحظة السقوط المحلي تعكس سبب الرد الفعلي (حصة/شبكة/رد غير صالح/غياب مفتاح)، وبطاقة العربية تُوسم «تنقية محلية» في وضع mock. التكلفة تُسعَّر على النموذج الذي خدم الرد فعلياً، وتُخفى نسبة التوفير عند اختلاف مصدر العد.
 - المنقّح يحمي أيضاً سطور الكود الحرّ غير المسيّج (import/const/SQL/npm…) عند بداية السطر.
