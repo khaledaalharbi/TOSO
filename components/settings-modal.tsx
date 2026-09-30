@@ -6,7 +6,7 @@ import { GeminiKeyGuide } from "@/components/gemini-key-guide";
 import { providers } from "@/lib/providers/registry";
 import type { ProviderConfig } from "@/lib/types";
 
-type KeyStatus =
+export type KeyStatus =
   | "idle"
   | "checking"
   | "ok"
@@ -29,7 +29,7 @@ export function statusFromKeySignal(
   return signal ? "unreachable" : "idle";
 }
 
-const dotClass: Record<KeyStatus, string> = {
+export const dotClass: Record<KeyStatus, string> = {
   idle: "bg-slate-300",
   checking: "bg-brand-400 animate-pulse",
   ok: "bg-emerald-500",
@@ -60,8 +60,10 @@ interface Props {
   onClose: () => void;
   config: ProviderConfig;
   onChange: (config: ProviderConfig) => void;
-  /** Latest user-key evidence from the run loop, bound to the key it saw. */
+  /** Latest user-key evidence — a run result or a manual verify — bound to the key it saw. */
   keySignal?: { key: string; signal: string } | null;
+  /** Reports a fresh verify result into the shared signal channel. */
+  onSignal?: (next: { key: string; signal: string }) => void;
 }
 
 export function SettingsModal({
@@ -70,27 +72,14 @@ export function SettingsModal({
   config,
   onChange,
   keySignal,
+  onSignal,
 }: Props) {
   const [checking, setChecking] = useState(false);
-  // A manual verify is honored only while the same key + latest run signal
-  // hold — editing the key or a newer run re-derives instead of showing a
-  // stale result.
-  const [check, setCheck] = useState<{
-    key: string;
-    signal: string | null;
-    status: KeyStatus;
-  } | null>(null);
 
   const userKey = config.userKey ?? "";
   const signal =
     keySignal && keySignal.key === userKey ? keySignal.signal : null;
-  const status: KeyStatus = checking
-    ? "checking"
-    : check && check.key === userKey && check.signal === signal
-      ? check.status
-      : signal
-        ? statusFromKeySignal(signal)
-        : "idle";
+  const status: KeyStatus = checking ? "checking" : statusFromKeySignal(signal);
 
   async function verifyKey() {
     const key = config.userKey?.trim();
@@ -109,16 +98,15 @@ export function SettingsModal({
         fallback?: boolean;
         errorCode?: string;
       };
-      setCheck({
+      onSignal?.({
         key,
-        signal,
-        status:
+        signal:
           response.ok && payload.fallback === false
             ? "ok"
-            : statusFromKeySignal(payload.errorCode ?? "unreachable"),
+            : (payload.errorCode ?? "unreachable"),
       });
     } catch {
-      setCheck({ key, signal, status: "unreachable" });
+      onSignal?.({ key, signal: "unreachable" });
     } finally {
       setChecking(false);
     }

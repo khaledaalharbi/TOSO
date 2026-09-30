@@ -5,6 +5,7 @@ import {
   Coins,
   Copy,
   Gauge,
+  Info,
   Languages,
   Play,
   RotateCcw,
@@ -13,7 +14,12 @@ import {
   Wand2,
 } from "lucide-react";
 import { memo, useEffect, useState } from "react";
-import { SettingsModal } from "@/components/settings-modal";
+import {
+  SettingsModal,
+  dotClass,
+  statusFromKeySignal,
+  type KeyStatus,
+} from "@/components/settings-modal";
 import type { DualOptimization } from "@/lib/optimizer/llm-optimizer";
 import {
   DEFAULT_MODEL,
@@ -136,6 +142,12 @@ export function OptimizerWorkspace() {
   const modelLabel = providers[config.provider].models.find(
     (item) => item.id === config.model,
   )?.label;
+  // Header dot mirrors the shared user-key signal; null hides it entirely.
+  const savedKeyStatus: KeyStatus | null = config.userKey
+    ? statusFromKeySignal(
+        keySignal && keySignal.key === config.userKey ? keySignal.signal : null,
+      )
+    : null;
   const s1: NodeStatus =
     phase === "analyzing" ? "active" : original ? "done" : "idle";
   const s2: NodeStatus =
@@ -148,12 +160,15 @@ export function OptimizerWorkspace() {
     <main className="min-h-screen bg-[radial-gradient(circle_at_80%_0%,#d9faf2,transparent_27%),radial-gradient(circle_at_10%_35%,#e5efff,transparent_24%)] px-4 py-8 sm:px-7">
       <div className="mx-auto max-w-5xl">
         <header className="mb-8 flex items-center justify-between">
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold shadow-sm hover:border-brand-400"
-          >
-            <Settings2 size={17} /> الإعدادات
-          </button>
+          <div className="flex items-center gap-2">
+            {savedKeyStatus ? <KeyStatusHint status={savedKeyStatus} /> : null}
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold shadow-sm hover:border-brand-400"
+            >
+              <Settings2 size={17} /> الإعدادات
+            </button>
+          </div>
           <div className="text-right">
             <div className="flex items-center gap-2 text-xl font-black">
               <Sparkles className="text-brand-500" /> مُحسّن البرومبت العربي
@@ -342,6 +357,7 @@ export function OptimizerWorkspace() {
           config={config}
           onChange={setConfig}
           keySignal={keySignal}
+          onSignal={setKeySignal}
         />
       </div>
     </main>
@@ -416,6 +432,51 @@ function Placeholder({ active, text }: { active: boolean; text: string }) {
       className={`rounded-2xl border border-dashed p-4 text-center text-sm ${active ? "border-brand-400/60 text-slate-500" : "border-slate-200 text-slate-400"}`}
     >
       {active ? "جارٍ المعالجة…" : text}
+    </div>
+  );
+}
+
+/** Header dot + legend for the saved BYOK key's latest evidence. */
+const keyStatusLegend: { status: KeyStatus; label: string }[] = [
+  {
+    status: "idle",
+    label: "مفتاح محفوظ لم يُفحص بعد — اضغط «تحقق» في الإعدادات",
+  },
+  { status: "ok", label: "يعمل — آخر تشغيل أو فحص نجح على مفتاحك" },
+  { status: "invalid", label: "مرفوض من Google في آخر محاولة" },
+  { status: "quota", label: "حصة مفتاحك مستنزفة مؤقتاً" },
+  { status: "unreachable", label: "تعذّر الفحص — الشبكة أو الخادم" },
+];
+
+function KeyStatusHint({ status }: { status: KeyStatus }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span
+        className={`h-2.5 w-2.5 rounded-full ${dotClass[status]}`}
+        aria-hidden="true"
+      />
+      <details className="group relative">
+        <summary
+          className="flex cursor-pointer list-none items-center text-slate-400 transition hover:text-slate-600 [&::-webkit-details-marker]:hidden"
+          aria-label="معنى ألوان حالة المفتاح"
+        >
+          <Info size={15} />
+        </summary>
+        <div className="absolute start-0 top-6 z-40 w-64 rounded-xl border border-slate-200 bg-white p-3 text-xs leading-5 text-slate-600 shadow-lg">
+          <p className="mb-2 font-bold text-slate-700">حالة مفتاحك المحفوظ</p>
+          <ul className="space-y-1.5">
+            {keyStatusLegend.map((item) => (
+              <li key={item.status} className="flex items-center gap-2">
+                <span
+                  className={`h-2 w-2 shrink-0 rounded-full ${dotClass[item.status]}`}
+                  aria-hidden="true"
+                />
+                {item.label}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </details>
     </div>
   );
 }
