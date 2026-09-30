@@ -67,6 +67,12 @@ export function OptimizerWorkspace() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [config, setConfig] = useState<ProviderConfig>(initialConfig);
   const [keyHydrated, setKeyHydrated] = useState(false);
+  // Latest user-key signal: ok (served), user_key_* reason, or null (no
+  // user-key evidence this run). Bound to the key value it describes.
+  const [keySignal, setKeySignal] = useState<{
+    key: string;
+    signal: string;
+  } | null>(null);
 
   // Hydrate the BYOK key once on mount, then mirror every change to storage.
   useEffect(() => {
@@ -101,6 +107,15 @@ export function OptimizerWorkspace() {
         onOptimized: (optimized) => {
           setDual(optimized);
           setPhase("measuring");
+          setKeySignal(
+            config.userKey
+              ? optimized.source === "gemini" && optimized.viaUserKey
+                ? { key: config.userKey, signal: "ok" }
+                : optimized.fallbackReason?.startsWith("user_key_")
+                  ? { key: config.userKey, signal: optimized.fallbackReason }
+                  : null
+              : null,
+          );
         },
       });
       setReport(nextReport);
@@ -326,6 +341,7 @@ export function OptimizerWorkspace() {
           onClose={() => setSettingsOpen(false)}
           config={config}
           onChange={setConfig}
+          keySignal={keySignal}
         />
       </div>
     </main>

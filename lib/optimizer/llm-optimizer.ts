@@ -23,6 +23,8 @@ export interface DualOptimization {
   /** True when the call ran on the user's own BYOK key (their quota paid). */
   viaUserKey?: boolean;
   usage?: GeminiUsage | null;
+  /** Raw route reason when the run fell back locally (e.g. user_key_quota). */
+  fallbackReason?: string;
 }
 
 export async function optimizeDual(
@@ -84,6 +86,7 @@ export async function optimizeDual(
     note: localNoteFor(fallbackReason),
     source: "mock",
     usage: null,
+    fallbackReason: fallbackReason ?? undefined,
   };
 }
 
