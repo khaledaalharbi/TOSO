@@ -180,7 +180,8 @@ export function RadialPipeline({
                 }
                 strokeWidth={state === "active" ? 2 : 1.3}
               />
-              {/* station number lives inside the ring; a check when done */}
+              {/* the ring shows status only — the spec number always lives
+                  in the callout label so ordering stays visible after a run */}
               {state === "done" ? (
                 <path
                   d={`M${s.x - 4.5} ${s.y} l3 3 l6 -6`}
@@ -190,16 +191,12 @@ export function RadialPipeline({
                   strokeLinecap="square"
                 />
               ) : (
-                <text
-                  x={s.x}
-                  y={s.y + 3.4}
-                  textAnchor="middle"
-                  className={`font-mono text-[9.5px] font-medium ${
-                    state === "active" ? "fill-brand-600" : "fill-slate-400"
-                  }`}
-                >
-                  {String(s.id).padStart(2, "0")}
-                </text>
+                <circle
+                  cx={s.x}
+                  cy={s.y}
+                  r="4"
+                  fill={state === "active" ? "#20b89a" : "#cbd5e1"}
+                />
               )}
               {state === "active" && (
                 <circle
@@ -225,7 +222,7 @@ export function RadialPipeline({
                   />
                 </circle>
               )}
-              {/* one-line bilingual callout — AR primary, EN spec suffix */}
+              {/* one-line spec callout — number beside the name, always visible */}
               <text
                 x={s.x}
                 y={s.labelY}
@@ -238,7 +235,14 @@ export function RadialPipeline({
                       : "fill-slate-500"
                 }`}
               >
-                {s.ar}
+                <tspan
+                  className={`font-mono text-[10px] ${
+                    state === "idle" ? "fill-slate-400" : "fill-brand-600"
+                  }`}
+                >
+                  {String(s.id).padStart(2, "0")}
+                </tspan>
+                <tspan dx="5">{s.ar}</tspan>
                 <tspan
                   className="fill-slate-400 font-mono text-[8px] font-medium"
                   dx="5"

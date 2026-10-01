@@ -222,7 +222,7 @@ export function OptimizerWorkspace() {
           note="أربع محطات — تُضاء عند اكتمالها فعلياً"
         />
         <section className="grid gap-4 lg:grid-cols-[minmax(0,21rem)_minmax(0,1fr)]">
-          <div className="border border-ink bg-white p-4 shadow-hard">
+          <div className="self-start border border-ink bg-white p-4 shadow-hard">
             <RadialPipeline
               phase={phase}
               running={running}
