@@ -18,6 +18,7 @@ const measure = (
 });
 
 const report: OptimizationReport = {
+  direction: "ar",
   original: { tokens: 100, characters: 100, words: 1 },
   originalPrompt: "أريد منك أن تَحْلُلَ التقرير   ثم تقارنه ببيانات ٢٠٢٥",
   originalMeasurement: measure(100),
@@ -94,7 +95,7 @@ describe("OptimizationInsights", () => {
   it("keeps English savings separate and identifies missing entities", () => {
     const markup = render({
       ...report,
-      english: { ...report.arabic, text: "English" },
+      english: { ...report.arabic!, text: "English" },
       entityChecks: {
         arabic: {
           preserved: false,
@@ -124,7 +125,8 @@ describe("TokenHeatmap", () => {
     expect(markup).toContain("أثقل المقاطع في المعاينة");
     expect(markup).toContain("تقدير محلي");
     expect(markup).toContain("ليست تفكيكاً رسمياً من Gemini");
-    expect(markup).toContain("الإنجليزية غير متاحة في هذا التشغيل");
+    expect(markup).toContain("النسخة الإنجليزية");
+    expect(markup).toContain("غير متاحة في هذا التشغيل");
     expect(markup).toContain("٢٠٢٥");
   });
 
@@ -134,7 +136,7 @@ describe("TokenHeatmap", () => {
         report={{
           ...report,
           originalPrompt: "تحليل ".repeat(130),
-          english: { ...report.arabic, text: "Analyze this report" },
+          english: { ...report.arabic!, text: "Analyze this report" },
         }}
       />,
     );

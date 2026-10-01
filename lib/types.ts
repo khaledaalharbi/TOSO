@@ -62,7 +62,14 @@ export interface OptimizationReport {
   originalPrompt: string;
   original: TokenAnalysis;
   originalMeasurement?: TokenMeasurement;
-  arabic: VariantReport;
+  /**
+   * Pipeline direction. "ar" (default): Arabic input → Arabic is the polished
+   * primary, English the companion translation. "en": input carried zero
+   * Arabic script → English is the polished primary, Arabic the translation.
+   */
+  direction: "ar" | "en";
+  /** Null when direction is "en" and no Arabic translation exists. */
+  arabic: VariantReport | null;
   /** Null when the optimizer ran locally without a key — translation needs Gemini. */
   english: VariantReport | null;
   /** One-line description of what the optimizer changed. */
@@ -71,9 +78,9 @@ export interface OptimizationReport {
   source: "gemini" | "mock";
   normalizedPrompt: string;
   normalizedMeasurement: TokenMeasurement;
-  entityChecks: { arabic: EntityCheck; english: EntityCheck | null };
+  entityChecks: { arabic: EntityCheck | null; english: EntityCheck | null };
   /** Approximate quality signals (language/negation/coverage) — hints, not proofs. */
-  quality: { arabic: QualityCheck; english: QualityCheck | null };
+  quality: { arabic: QualityCheck | null; english: QualityCheck | null };
   rejectedByGuard: boolean;
   optimizationUsage: GeminiUsage | null;
 }

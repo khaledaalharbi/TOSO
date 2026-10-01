@@ -22,6 +22,8 @@ import {
   type KeyStatus,
 } from "@/components/settings-modal";
 import type { DualOptimization } from "@/lib/optimizer/llm-optimizer";
+import type { EntityCheck } from "@/lib/optimizer/entity-guard";
+import type { QualityCheck } from "@/lib/optimizer/quality-guard";
 import {
   DEFAULT_MODEL,
   DEFAULT_PROVIDER,
@@ -156,6 +158,10 @@ export function OptimizerWorkspace() {
   const s3: NodeStatus =
     phase === "measuring" ? "active" : report ? "done" : "idle";
   const englishUnavailable = dual !== null && dual.english === null;
+  const arabicUnavailable = dual !== null && dual.arabic === null;
+  // "en" reverses the output cards when the input carried zero Arabic script.
+  const direction = report?.direction ?? "ar";
+  const inputIsEnglish = prompt.trim() !== "" && arabicRatio(prompt) === 0;
 
   return (
     <main className="blueprint-grid min-h-screen px-4 py-8 sm:px-7">
@@ -304,7 +310,11 @@ export function OptimizerWorkspace() {
             ) : (
               <Placeholder
                 active={s2 === "active"}
-                text="تُنقّى العربية محلياً، ويُنشئ Gemini الترجمة عند توفره"
+                text={
+                  inputIsEnglish
+                    ? "يُنقّى النص محلياً، وتُنتج Gemini النسخة العربية عند توفره"
+                    : "تُنقّى العربية محلياً، ويُنشئ Gemini الترجمة عند توفره"
+                }
               />
             )}
           </SpecCard>
@@ -317,32 +327,54 @@ export function OptimizerWorkspace() {
           note="النسختان العربية والإنجليزية"
         />
         <div className="grid gap-4 md:grid-cols-2">
-          <OutputCard
-            lang="ar"
-            title="Optimized Output"
-            chip={
-              report?.source === "mock" || dual?.source === "mock"
-                ? "تنقية محلية"
-                : "العربية"
-            }
-            status={s3}
-            text={report?.arabic.text ?? dual?.arabic ?? null}
-            report={report?.arabic ?? null}
-          />
-          <OutputCard
-            lang="en"
-            title="Optimized Output"
-            chip="English"
-            status={s3}
-            text={report?.english?.text ?? dual?.english ?? null}
-            unavailable={englishUnavailable}
-            unavailableReason={
-              report?.rejectedByGuard
-                ? "حُجبت الترجمة لأن مخرج Gemini لم يحفظ بعض الكيانات؛ عُرضت النسخة المحلية بدلاً منه."
-                : "الترجمة الإنجليزية غير متاحة في الوضع المحلي أو عند تعذّر Gemini."
-            }
-            report={report?.english ?? null}
-          />
+          {(() => {
+            const isMock = report?.source === "mock" || dual?.source === "mock";
+            const arabicCard = (
+              <OutputCard
+                key="ar"
+                lang="ar"
+                title="Optimized Output"
+                chip={
+                  isMock && (report?.arabic?.text ?? dual?.arabic ?? null)
+                    ? "تنقية محلية"
+                    : "العربية"
+                }
+                status={s3}
+                text={report?.arabic?.text ?? dual?.arabic ?? null}
+                unavailable={arabicUnavailable}
+                unavailableReason={
+                  report?.rejectedByGuard
+                    ? "حُجبت النسخة العربية لأن مخرج Gemini لم يجتز فحوص السلامة؛ عُرض النص المنقّى محلياً."
+                    : "الترجمة العربية غير متاحة في الوضع المحلي أو عند تعذّر Gemini."
+                }
+                report={report?.arabic ?? null}
+              />
+            );
+            const englishCard = (
+              <OutputCard
+                key="en"
+                lang="en"
+                title="Optimized Output"
+                chip={
+                  isMock && (report?.english?.text ?? dual?.english ?? null)
+                    ? "تنقية محلية"
+                    : "English"
+                }
+                status={s3}
+                text={report?.english?.text ?? dual?.english ?? null}
+                unavailable={englishUnavailable}
+                unavailableReason={
+                  report?.rejectedByGuard
+                    ? "حُجبت الترجمة لأن مخرج Gemini لم يحفظ بعض الكيانات؛ عُرضت النسخة المحلية بدلاً منه."
+                    : "الترجمة الإنجليزية غير متاحة في الوضع المحلي أو عند تعذّر Gemini."
+                }
+                report={report?.english ?? null}
+              />
+            );
+            return direction === "en"
+              ? [englishCard, arabicCard]
+              : [arabicCard, englishCard];
+          })()}
         </div>
 
         {/* 04 — ANALYSIS */}
@@ -711,30 +743,40 @@ export const TokenHeatmap = memo(function TokenHeatmap({
         ))}
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-        <HeatmapVariant
-          title="النص الأصلي"
-          text={report.originalPrompt}
-          direction="rtl"
-        />
-        <HeatmapVariant
-          title="النسخة العربية"
-          text={report.arabic.text}
-          direction="rtl"
-        />
-        {report.english ? (
-          <HeatmapVariant
-            title="النسخة الإنجليزية"
-            text={report.english.text}
-            direction="ltr"
-          />
-        ) : (
-          <div className="border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
-            <h3 className="font-bold text-slate-700">النسخة الإنجليزية</h3>
-            <p className="mt-3">
-              الإنجليزية غير متاحة في هذا التشغيل؛ لا توجد خريطة لنص غير موجود.
-            </p>
-          </div>
-        )}
+        {(() => {
+          const arabicVariant = report.arabic ? (
+            <HeatmapVariant
+              key="ar"
+              title="النسخة العربية"
+              text={report.arabic.text}
+              direction="rtl"
+            />
+          ) : (
+            <HeatmapUnavailable key="ar" title="النسخة العربية" />
+          );
+          const englishVariant = report.english ? (
+            <HeatmapVariant
+              key="en"
+              title="النسخة الإنجليزية"
+              text={report.english.text}
+              direction="ltr"
+            />
+          ) : (
+            <HeatmapUnavailable key="en" title="النسخة الإنجليزية" />
+          );
+          return (
+            <>
+              <HeatmapVariant
+                title="النص الأصلي"
+                text={report.originalPrompt}
+                direction={report.direction === "en" ? "ltr" : "rtl"}
+              />
+              {report.direction === "en"
+                ? [englishVariant, arabicVariant]
+                : [arabicVariant, englishVariant]}
+            </>
+          );
+        })()}
       </div>
       <p className="mt-4 border border-violet-200 bg-violet-50 px-4 py-3 text-xs leading-6 text-violet-900">
         الألوان تقدير لطول المقطع ونوع حروفه، وليست تفكيكاً رسمياً من Gemini. لا
@@ -744,6 +786,17 @@ export const TokenHeatmap = memo(function TokenHeatmap({
     </section>
   );
 });
+
+function HeatmapUnavailable({ title }: { title: string }) {
+  return (
+    <div className="border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
+      <h3 className="font-bold text-slate-700">{title}</h3>
+      <p className="mt-3">
+        غير متاحة في هذا التشغيل؛ لا توجد خريطة لنص غير موجود.
+      </p>
+    </div>
+  );
+}
 
 function HeatmapVariant({
   title,
@@ -838,15 +891,62 @@ export function OptimizationInsights({
     arabic,
     english,
     entityChecks,
+    direction,
   } = report;
-  if (!originalMeasurement || !arabic.measurement) return null;
+  // The polished primary follows the pipeline direction, not a fixed field.
+  const primary = direction === "en" ? english : arabic;
+  if (!originalMeasurement || !primary?.measurement) return null;
+
+  const arabicEntity = entityChecks.arabic ? (
+    <EntityStatus
+      key="ar-entity"
+      label="النسخة العربية"
+      check={entityChecks.arabic}
+    />
+  ) : (
+    <p
+      key="ar-entity"
+      className="border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500"
+    >
+      النسخة العربية غير متاحة للفحص.
+    </p>
+  );
+  const englishEntity = entityChecks.english ? (
+    <EntityStatus
+      key="en-entity"
+      label="النسخة الإنجليزية"
+      check={entityChecks.english}
+    />
+  ) : (
+    <p
+      key="en-entity"
+      className="border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500"
+    >
+      النسخة الإنجليزية غير متاحة للفحص.
+    </p>
+  );
+  const arabicQuality = report.quality.arabic ? (
+    <QualityStatus
+      key="ar-quality"
+      label="النسخة العربية"
+      check={report.quality.arabic}
+    />
+  ) : null;
+  const englishQuality = report.quality.english ? (
+    <QualityStatus
+      key="en-quality"
+      label="النسخة الإنجليزية"
+      check={report.quality.english}
+    />
+  ) : null;
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <section className="border border-ink bg-white p-5">
         <h2 className="font-bold text-ink">تفصيل التوفير في توكنز الإدخال</h2>
         <p className="mt-1 text-xs text-slate-500">
-          مقارنة النص الأصلي بالمنقّح محلياً، ثم بالنسخة العربية النهائية.
+          مقارنة النص الأصلي بالمنقّح محلياً، ثم بالنسخة{" "}
+          {direction === "en" ? "الإنجليزية" : "العربية"} النهائية.
         </p>
         <div className="mt-4 space-y-3">
           <MeasurementStep
@@ -861,7 +961,7 @@ export function OptimizationInsights({
                 : "تعديل إضافي محلي"
             }
             before={normalizedMeasurement}
-            after={arabic.measurement}
+            after={primary.measurement}
           />
         </div>
         <details className="mt-4 border border-teal-200 bg-teal-50/50 p-3 text-xs">
@@ -875,12 +975,19 @@ export function OptimizationInsights({
             {report.normalizedPrompt}
           </p>
         </details>
-        {english && (
-          <p className="mt-3 text-xs text-slate-500">
-            الإنجليزية بديل مستقل مقارنة بالنص الأصلي؛ لا تُضاف وفوراتها إلى
-            العربية.
-          </p>
-        )}
+        {direction === "en"
+          ? arabic && (
+              <p className="mt-3 text-xs text-slate-500">
+                العربية نسخة مرافقة منقولة للمعنى؛ لا تُضاف وفوراتها إلى
+                الإنجليزية.
+              </p>
+            )
+          : english && (
+              <p className="mt-3 text-xs text-slate-500">
+                الإنجليزية بديل مستقل مقارنة بالنص الأصلي؛ لا تُضاف وفوراتها إلى
+                العربية.
+              </p>
+            )}
       </section>
       <section className="border border-ink bg-white p-5">
         <h2 className="font-bold text-ink">فحص الكيانات والجودة الظاهرة</h2>
@@ -894,24 +1001,9 @@ export function OptimizationInsights({
           </p>
         )}
         <div className="mt-3 space-y-2">
-          <EntityStatus label="النسخة العربية" check={entityChecks.arabic} />
-          {entityChecks.english ? (
-            <EntityStatus
-              label="النسخة الإنجليزية"
-              check={entityChecks.english}
-            />
-          ) : (
-            <p className="border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
-              النسخة الإنجليزية غير متاحة للفحص.
-            </p>
-          )}
-          <QualityStatus label="النسخة العربية" check={report.quality.arabic} />
-          {report.quality.english && (
-            <QualityStatus
-              label="النسخة الإنجليزية"
-              check={report.quality.english}
-            />
-          )}
+          {direction === "en"
+            ? [englishEntity, arabicEntity, englishQuality, arabicQuality]
+            : [arabicEntity, englishEntity, arabicQuality, englishQuality]}
         </div>
         <p className="mt-3 text-xs text-slate-500">
           فحوص الكيانات والجودة تقيس عناصر ظاهرة قابلة للمطابقة (لغة، نفي، كلمات
@@ -972,7 +1064,7 @@ function QualityStatus({
   check,
 }: {
   label: string;
-  check: OptimizationReport["quality"]["arabic"];
+  check: QualityCheck;
 }) {
   const coverage = check.keywordCoverage;
   const clean = check.warnings.length === 0;
@@ -990,13 +1082,7 @@ function QualityStatus({
   );
 }
 
-function EntityStatus({
-  label,
-  check,
-}: {
-  label: string;
-  check: OptimizationReport["entityChecks"]["arabic"];
-}) {
+function EntityStatus({ label, check }: { label: string; check: EntityCheck }) {
   const message = !check.checked
     ? "لا توجد كيانات مدعومة للفحص"
     : check.preserved
@@ -1106,32 +1192,52 @@ function CostBar({
       {report ? (
         <>
           <div className="grid gap-3 md:grid-cols-2">
-            <CostGroup
-              label="النسخة العربية"
-              cost={report.arabic.cost}
-              comparable={
-                report.originalMeasurement?.source ===
-                report.arabic.measurement?.source
-              }
-            />
-            {report.english ? (
-              <CostGroup
-                label="النسخة الإنجليزية"
-                cost={report.english.cost}
-                comparable={
-                  report.originalMeasurement?.source ===
-                  report.english.measurement?.source
-                }
-              />
-            ) : (
-              <div className="grid place-items-center border border-slate-200 bg-white/70 p-3 text-center text-xs text-slate-400">
-                توفير النسخة الإنجليزية يظهر مع الترجمة
-              </div>
-            )}
+            {(() => {
+              const arabicGroup = report.arabic ? (
+                <CostGroup
+                  key="ar"
+                  label="النسخة العربية"
+                  cost={report.arabic.cost}
+                  comparable={
+                    report.originalMeasurement?.source ===
+                    report.arabic.measurement?.source
+                  }
+                />
+              ) : (
+                <div
+                  key="ar"
+                  className="grid place-items-center border border-slate-200 bg-white/70 p-3 text-center text-xs text-slate-400"
+                >
+                  توفير النسخة العربية يظهر مع الترجمة
+                </div>
+              );
+              const englishGroup = report.english ? (
+                <CostGroup
+                  key="en"
+                  label="النسخة الإنجليزية"
+                  cost={report.english.cost}
+                  comparable={
+                    report.originalMeasurement?.source ===
+                    report.english.measurement?.source
+                  }
+                />
+              ) : (
+                <div
+                  key="en"
+                  className="grid place-items-center border border-slate-200 bg-white/70 p-3 text-center text-xs text-slate-400"
+                >
+                  توفير النسخة الإنجليزية يظهر مع الترجمة
+                </div>
+              );
+              return report.direction === "en"
+                ? [englishGroup, arabicGroup]
+                : [arabicGroup, englishGroup];
+            })()}
           </div>
           {report.originalMeasurement &&
-            (report.originalMeasurement.source !==
-              report.arabic.measurement?.source ||
+            ((report.arabic &&
+              report.originalMeasurement.source !==
+                report.arabic.measurement?.source) ||
               (report.english &&
                 report.originalMeasurement.source !==
                   report.english.measurement?.source)) && (

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { optimizeDual } from "@/lib/optimizer/llm-optimizer";
-import { analyzeTokens } from "@/lib/token-engine/token-engine";
+import { analyzeTokens, arabicRatio } from "@/lib/token-engine/token-engine";
 import { runOptimization } from "./optimization-service";
 
 vi.mock("@/lib/optimizer/llm-optimizer", () => ({ optimizeDual: vi.fn() }));
@@ -20,6 +20,8 @@ const mockedOptimize = vi.mocked(optimizeDual);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // vi.clearAllMocks does not reset implementations — re-pin the default.
+  vi.mocked(arabicRatio).mockReturnValue(1);
 });
 
 describe("runOptimization", () => {
@@ -56,7 +58,7 @@ describe("runOptimization", () => {
     ]);
     expect(report).not.toHaveProperty("dialect");
     expect(report.note).toBe("منقح");
-    expect(report.entityChecks.arabic.preserved).toBe(true);
+    expect(report.entityChecks.arabic?.preserved).toBe(true);
     expect(report.entityChecks.english?.preserved).toBe(true);
     expect(report.rejectedByGuard).toBe(false);
     expect(report.optimizationUsage).toEqual({
@@ -86,8 +88,8 @@ describe("runOptimization", () => {
       undefined,
     );
     expect(report.normalizedPrompt).toBe(normalized);
-    expect(report.entityChecks.arabic.preserved).toBe(true);
-    expect(report.arabic.measurement).toBe(report.normalizedMeasurement);
+    expect(report.entityChecks.arabic?.preserved).toBe(true);
+    expect(report.arabic?.measurement).toBe(report.normalizedMeasurement);
   });
 
   it("starts the normalization measurement and optimization before awaiting the original count", async () => {
@@ -138,8 +140,8 @@ describe("runOptimization", () => {
       total_tokens: 42,
     });
     expect(report.source).toBe("mock");
-    expect(report.arabic.text).toBe("حلل 42% من البيانات");
-    expect(report.arabic.measurement).toBe(report.normalizedMeasurement);
+    expect(report.arabic?.text).toBe("حلل 42% من البيانات");
+    expect(report.arabic?.measurement).toBe(report.normalizedMeasurement);
     expect(vi.mocked(analyzeTokens).mock.calls).toHaveLength(2);
     expect(report.english).toBeNull();
     expect(onOptimized).toHaveBeenCalledWith(
@@ -161,8 +163,8 @@ describe("runOptimization", () => {
     expect(report.rejectedByGuard).toBe(true);
     expect(report.source).toBe("mock");
     expect(report.english).toBeNull();
-    expect(report.arabic.text).toBe("اكتب رسالة اعتذار للعميل");
-    expect(report.quality.arabic.languageOk).toBe(true);
+    expect(report.arabic?.text).toBe("اكتب رسالة اعتذار للعميل");
+    expect(report.quality.arabic?.languageOk).toBe(true);
     expect(report.quality.english).toBeNull();
   });
 
@@ -176,7 +178,7 @@ describe("runOptimization", () => {
     const report = await runOptimization("حلل 50%", config);
     expect(report.rejectedByGuard).toBe(true);
     expect(report.english).toBeNull();
-    expect(report.arabic.text).toBe("حلل 50%");
+    expect(report.arabic?.text).toBe("حلل 50%");
   });
 
   it("retains honest mock fallback and does not invent an English variant", async () => {
@@ -192,6 +194,63 @@ describe("runOptimization", () => {
     expect(report.optimizationUsage).toBeNull();
     expect(report.normalizedMeasurement).toBe(report.originalMeasurement);
     expect(vi.mocked(analyzeTokens).mock.calls).toHaveLength(1);
-    expect(report.entityChecks.arabic.preserved).toBe(true);
+    expect(report.entityChecks.arabic?.preserved).toBe(true);
+  });
+
+  it("reverses to an English-primary direction when the input carries no Arabic", async () => {
+    vi.mocked(arabicRatio).mockReturnValue(0);
+    mockedOptimize.mockResolvedValue({
+      arabic: "لخص التقرير الفصلي",
+      english: "Summarize the quarterly report concisely",
+      note: "تم",
+      source: "gemini",
+    });
+    const report = await runOptimization(
+      "Please analyze this quarterly report in detail",
+      config,
+    );
+    expect(report.direction).toBe("en");
+    expect(report.rejectedByGuard).toBe(false);
+    expect(report.english?.text).toBe(
+      "Summarize the quarterly report concisely",
+    );
+    expect(report.arabic?.text).toBe("لخص التقرير الفصلي");
+    expect(report.entityChecks.english?.preserved).toBe(true);
+  });
+
+  it("rejects a Gemini run whose english field is absent for a no-Arabic input", async () => {
+    vi.mocked(arabicRatio).mockReturnValue(0);
+    mockedOptimize.mockResolvedValue({
+      arabic: "لخص التقرير",
+      english: null,
+      note: "تم",
+      source: "gemini",
+    });
+    const report = await runOptimization("Summarize the report please", config);
+    // Without the polished English primary the run is a provable failure —
+    // the cleaned original lands in the english slot, Arabic stays honest null.
+    expect(report.rejectedByGuard).toBe(true);
+    expect(report.source).toBe("mock");
+    expect(report.arabic).toBeNull();
+    expect(report.english?.text).toBe("Summarize the report please");
+    expect(report.entityChecks.arabic).toBeNull();
+    expect(report.entityChecks.english?.preserved).toBe(true);
+    expect(report.quality.arabic).toBeNull();
+    expect(report.quality.english?.languageOk).toBe(true);
+  });
+
+  it("keeps the cleaned English text in the english slot on local fallback", async () => {
+    vi.mocked(arabicRatio).mockReturnValue(0);
+    mockedOptimize.mockResolvedValue({
+      arabic: null,
+      english: "Summarize the report",
+      note: "محلي",
+      source: "mock",
+    });
+    const report = await runOptimization("Summarize the report", config);
+    expect(report.direction).toBe("en");
+    expect(report.arabic).toBeNull();
+    expect(report.english?.text).toBe("Summarize the report");
+    expect(report.entityChecks.arabic).toBeNull();
   });
 });

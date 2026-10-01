@@ -33,6 +33,9 @@ export async function runOptimization(
   events: OptimizationEvents = {},
 ): Promise<OptimizationReport> {
   warmTokenizer();
+  // No Arabic script at all → reversed pipeline: English is the polished
+  // primary and Arabic becomes the companion translation.
+  const direction = arabicRatio(prompt) === 0 ? "en" : "ar";
   const model = getModel(config.provider, config.model);
   const candidate = normalizeArabic(prompt);
   const normalizedPrompt = checkEntities(prompt, candidate).preserved
@@ -53,42 +56,70 @@ export async function runOptimization(
   events.onOriginalMeasured?.(original);
 
   const result = await optimizedPromise;
-  const arabicCheck = checkEntities(prompt, result.arabic);
+  const arabicCheck = result.arabic
+    ? checkEntities(prompt, result.arabic)
+    : null;
   const englishCheck = result.english
     ? checkEntities(prompt, result.english, false)
     : null;
-  const arabicQuality = checkQuality(prompt, result.arabic, "ar");
+  const arabicQuality = result.arabic
+    ? checkQuality(prompt, result.arabic, "ar")
+    : null;
   const englishQuality = result.english
     ? checkQuality(prompt, result.english, "en")
     : null;
   // Hard-reject on provable failures only (lost entities, wrong language);
   // soft signals (negation, coverage) surface as warnings instead.
+  // The language contract binds the primary slot of the active direction:
+  // ar → the arabic field must be Arabic; en → the english field must exist
+  // and be English (it's the polished output now, not a translation extra).
   const rejectedByGuard =
     result.source === "gemini" &&
-    (!arabicCheck.preserved ||
+    ((arabicCheck !== null && !arabicCheck.preserved) ||
       (englishCheck !== null && !englishCheck.preserved) ||
-      !arabicQuality.languageOk);
+      (direction === "en"
+        ? !englishQuality?.languageOk
+        : !arabicQuality?.languageOk));
   const optimized: DualOptimization = rejectedByGuard
-    ? {
-        arabic: normalizedPrompt,
-        english: null,
-        source: "mock",
-        note: "لم يجتز مخرج Gemini فحوص السلامة المحلية (كيانات أو لغة)؛ استُخدمت تنقية محلية آمنة دون ترجمة.",
-      }
+    ? direction === "en"
+      ? {
+          arabic: null,
+          english: normalizedPrompt,
+          source: "mock",
+          note: "لم يجتز مخرج Gemini فحوص السلامة المحلية؛ عُرض النص المنقّى محلياً والنسخة العربية محجوبة.",
+        }
+      : {
+          arabic: normalizedPrompt,
+          english: null,
+          source: "mock",
+          note: "لم يجتز مخرج Gemini فحوص السلامة المحلية (كيانات أو لغة)؛ استُخدمت تنقية محلية آمنة دون ترجمة.",
+        }
     : result;
   events.onOptimized?.(optimized);
   const entityChecks = rejectedByGuard
-    ? { arabic: checkEntities(prompt, normalizedPrompt), english: null }
+    ? direction === "en"
+      ? {
+          arabic: null,
+          english: checkEntities(prompt, normalizedPrompt, false),
+        }
+      : { arabic: checkEntities(prompt, normalizedPrompt), english: null }
     : { arabic: arabicCheck, english: englishCheck };
   const quality = {
     arabic: rejectedByGuard
-      ? checkQuality(prompt, normalizedPrompt, "ar")
+      ? direction === "en"
+        ? null
+        : checkQuality(prompt, normalizedPrompt, "ar")
       : arabicQuality,
-    english: rejectedByGuard ? null : englishQuality,
+    english: rejectedByGuard
+      ? direction === "en"
+        ? checkQuality(prompt, normalizedPrompt, "en")
+        : null
+      : englishQuality,
   };
 
-  const arabicPromise =
-    optimized.arabic === normalizedPrompt
+  const arabicPromise = !optimized.arabic
+    ? Promise.resolve(null)
+    : optimized.arabic === normalizedPrompt
       ? normalizedPromise
       : optimized.arabic === prompt
         ? originalPromise
@@ -110,17 +141,16 @@ export async function runOptimization(
 
   return {
     originalPrompt: prompt,
+    direction,
     original: {
       ...measurementToAnalysis(original),
       arabicRatio: arabicRatio(prompt),
     },
     originalMeasurement: original,
-    arabic: variantReport(
-      optimized.arabic,
-      arabicM,
-      original.tokens,
-      pricedModel,
-    ),
+    arabic:
+      optimized.arabic && arabicM
+        ? variantReport(optimized.arabic, arabicM, original.tokens, pricedModel)
+        : null,
     english:
       optimized.english && englishM
         ? variantReport(
