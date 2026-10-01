@@ -13,42 +13,10 @@ const CX = 210;
 const CY = 150;
 
 const STATIONS = [
-  {
-    id: 1,
-    ar: "قياس الأصل",
-    en: "MEASURE.IN",
-    x: 210,
-    y: 52,
-    labelY: { ar: 26, en: 16 },
-    boxY: 71,
-  },
-  {
-    id: 2,
-    ar: "المعالجة",
-    en: "PROCESS",
-    x: 312,
-    y: 150,
-    labelY: { ar: 106, en: 96 },
-    boxY: 169,
-  },
-  {
-    id: 3,
-    ar: "قياس الناتج",
-    en: "MEASURE.OUT",
-    x: 210,
-    y: 244,
-    labelY: { ar: 286, en: 295 },
-    boxY: 225,
-  },
-  {
-    id: 4,
-    ar: "التقرير",
-    en: "REPORT",
-    x: 108,
-    y: 150,
-    labelY: { ar: 106, en: 96 },
-    boxY: 169,
-  },
+  { id: 1, ar: "قياس الأصل", en: "MEASURE.IN", x: 210, y: 52, labelY: 28 },
+  { id: 2, ar: "المعالجة", en: "PROCESS", x: 312, y: 150, labelY: 114 },
+  { id: 3, ar: "قياس الناتج", en: "MEASURE.OUT", x: 210, y: 244, labelY: 282 },
+  { id: 4, ar: "التقرير", en: "REPORT", x: 108, y: 150, labelY: 114 },
 ] as const;
 
 export function RadialPipeline({
@@ -212,6 +180,7 @@ export function RadialPipeline({
                 }
                 strokeWidth={state === "active" ? 2 : 1.3}
               />
+              {/* station number lives inside the ring; a check when done */}
               {state === "done" ? (
                 <path
                   d={`M${s.x - 4.5} ${s.y} l3 3 l6 -6`}
@@ -221,46 +190,45 @@ export function RadialPipeline({
                   strokeLinecap="square"
                 />
               ) : (
+                <text
+                  x={s.x}
+                  y={s.y + 3.4}
+                  textAnchor="middle"
+                  className={`font-mono text-[9.5px] font-medium ${
+                    state === "active" ? "fill-brand-600" : "fill-slate-400"
+                  }`}
+                >
+                  {String(s.id).padStart(2, "0")}
+                </text>
+              )}
+              {state === "active" && (
                 <circle
                   cx={s.x}
                   cy={s.y}
-                  r="4"
-                  fill={state === "active" ? "#20b89a" : "#cbd5e1"}
+                  r="15"
+                  fill="none"
+                  stroke="#20b89a"
+                  strokeWidth="1.4"
+                  opacity="0.8"
                 >
-                  {state === "active" && (
-                    <animate
-                      attributeName="r"
-                      values="4;6;4"
-                      dur="1.1s"
-                      repeatCount="indefinite"
-                    />
-                  )}
+                  <animate
+                    attributeName="r"
+                    values="15;21;15"
+                    dur="1.1s"
+                    repeatCount="indefinite"
+                  />
+                  <animate
+                    attributeName="opacity"
+                    values="0.8;0.15;0.8"
+                    dur="1.1s"
+                    repeatCount="indefinite"
+                  />
                 </circle>
               )}
-              {/* boxed station number beside the spoke */}
-              <rect
-                x={s.x - 10}
-                y={s.boxY}
-                width="20"
-                height="12.5"
-                fill="#ffffff"
-                stroke={state === "idle" ? "#cbd5e1" : "#0d1729"}
-                strokeWidth="1"
-              />
+              {/* one-line bilingual callout — AR primary, EN spec suffix */}
               <text
                 x={s.x}
-                y={s.boxY + 9.5}
-                textAnchor="middle"
-                className={`font-mono text-[8.5px] font-medium ${
-                  state === "idle" ? "fill-slate-400" : "fill-ink"
-                }`}
-              >
-                {String(s.id).padStart(2, "0")}
-              </text>
-              {/* bilingual callout label — positioned inside the viewBox */}
-              <text
-                x={s.x}
-                y={s.labelY.ar}
+                y={s.labelY}
                 textAnchor="middle"
                 className={`text-[12.5px] font-bold ${
                   state === "active"
@@ -271,14 +239,12 @@ export function RadialPipeline({
                 }`}
               >
                 {s.ar}
-              </text>
-              <text
-                x={s.x}
-                y={s.labelY.en}
-                textAnchor="middle"
-                className="fill-slate-400 font-mono text-[8px]"
-              >
-                {s.en}
+                <tspan
+                  className="fill-slate-400 font-mono text-[8px] font-medium"
+                  dx="5"
+                >
+                  · {s.en}
+                </tspan>
               </text>
             </g>
           );
