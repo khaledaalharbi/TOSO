@@ -1,4 +1,9 @@
 import type { Metadata } from "next";
+import "@fontsource/ibm-plex-sans-arabic/400.css";
+import "@fontsource/ibm-plex-sans-arabic/500.css";
+import "@fontsource/ibm-plex-sans-arabic/700.css";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -6,7 +11,9 @@ export const metadata: Metadata = {
   description: "نموذج أولي لتحليل وتحسين تكلفة البرومبتات العربية",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ar" dir="rtl">
       <body>{children}</body>

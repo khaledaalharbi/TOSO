@@ -14,6 +14,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { memo, useEffect, useState } from "react";
+import { RadialPipeline } from "@/components/radial-pipeline";
 import {
   SettingsModal,
   dotClass,
@@ -53,7 +54,7 @@ const formatCost = (value: number) =>
     ? "مجاني"
     : `$${value < 0.001 ? value.toFixed(5) : value.toFixed(3)}`;
 
-type Phase = "idle" | "analyzing" | "optimizing" | "measuring" | "done";
+export type Phase = "idle" | "analyzing" | "optimizing" | "measuring" | "done";
 type NodeStatus = "idle" | "active" | "done";
 
 const runLabel: Record<Exclude<Phase, "idle" | "done">, string> = {
@@ -157,14 +158,14 @@ export function OptimizerWorkspace() {
   const englishUnavailable = dual !== null && dual.english === null;
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_80%_0%,#d9faf2,transparent_27%),radial-gradient(circle_at_10%_35%,#e5efff,transparent_24%)] px-4 py-8 sm:px-7">
+    <main className="blueprint-grid min-h-screen px-4 py-8 sm:px-7">
       <div className="mx-auto max-w-5xl">
-        <header className="mb-8 flex items-center justify-between">
+        <header className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
             {savedKeyStatus ? <KeyStatusHint status={savedKeyStatus} /> : null}
             <button
               onClick={() => setSettingsOpen(true)}
-              className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold shadow-sm hover:border-brand-400"
+              className="flex items-center gap-2 border border-ink bg-white px-3 py-2 text-sm font-semibold transition hover:bg-slate-50"
             >
               <Settings2 size={17} /> الإعدادات
             </button>
@@ -173,16 +174,17 @@ export function OptimizerWorkspace() {
             <div className="flex items-center gap-2 text-xl font-black">
               <Sparkles className="text-brand-500" /> مُحسّن البرومبت العربي
             </div>
-            <p className="mt-1 text-sm text-slate-500">
-              فهم النية، إعادة الصياغة، والترجمة للإنجليزية لتوفير الـTokens
+            <p className="mt-1 font-mono text-[11px] text-slate-500">
+              TOSO — قياس وتقليص تكلفة البرومبت / Prompt Workbench
             </p>
           </div>
         </header>
 
-        {/* INPUT */}
-        <section className="rounded-3xl bg-ink p-5 text-white shadow-glow sm:p-7">
-          <div className="mb-4 flex items-center justify-between">
-            <span className="rounded-full bg-white/10 px-3 py-1 text-xs">
+        {/* 01 — INPUT */}
+        <SpecHead num="01" title="المدخلات" note="البرومبت العربي الأصلي" />
+        <section className="bg-ink p-5 text-white shadow-hard sm:p-7">
+          <div className="mb-4 flex items-center justify-between border-b border-white/15 pb-3">
+            <span className="border border-white/25 px-2.5 py-1 font-mono text-[11px]">
               {modelLabel}
             </span>
             <h1 className="text-xl font-bold">اكتب طلبك بالعربية</h1>
@@ -193,7 +195,7 @@ export function OptimizerWorkspace() {
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
             placeholder="مثال: حلّل لي أداء الشركة خلال آخر ستة أشهر..."
-            className="min-h-32 w-full resize-y rounded-2xl border border-white/10 bg-white/10 p-4 leading-8 text-white placeholder:text-slate-400 outline-none transition focus:border-brand-400 focus:bg-white/15"
+            className="min-h-32 w-full resize-y border border-white/20 bg-white/[0.07] p-4 leading-8 text-white placeholder:text-slate-500 outline-none transition focus:border-brand-400"
           />
           <div className="mt-4 flex items-center justify-between gap-3">
             <span className="text-xs text-slate-400">
@@ -203,7 +205,7 @@ export function OptimizerWorkspace() {
             <button
               disabled={!prompt.trim() || running}
               onClick={handleRun}
-              className="flex items-center gap-2 rounded-xl bg-brand-400 px-5 py-3 font-bold text-ink transition hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex items-center gap-2 border border-ink bg-brand-400 px-5 py-3 font-bold text-ink transition shadow-hard-sm hover:bg-brand-500 active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
             >
               {running
                 ? (runLabel[phase as keyof typeof runLabel] ?? "جارٍ المعالجة…")
@@ -213,13 +215,33 @@ export function OptimizerWorkspace() {
           </div>
         </section>
 
-        {/* PIPELINE — containers are fixed; the traveling light shows progress */}
-        <div className="mt-6">
-          <Beam on={phase === "analyzing"} done={s1 === "done"} />
-          <Node
-            number={1}
-            title="Token Analysis"
-            subtitle="قياس النص الأصلي"
+        {/* 02 — PROCESS MAP */}
+        <SpecHead
+          num="02"
+          title="مخطط دورة المعالجة"
+          note="أربع محطات — تُضاء عند اكتمالها فعلياً"
+        />
+        <section className="border border-ink bg-white p-4 shadow-hard sm:p-6">
+          <RadialPipeline
+            phase={phase}
+            running={running}
+            hasOriginal={original !== null}
+            hasDual={dual !== null}
+            hasReport={report !== null}
+          />
+        </section>
+
+        {/* 03 — STATION RESULTS */}
+        <SpecHead
+          num="03"
+          title="نتائج المحطات"
+          note="تفاصيل كل محطة من مخطط المعالجة"
+        />
+        <div className="space-y-4">
+          <SpecCard
+            tag="ST-01"
+            title="قياس الأصل"
+            subtitle="Token Analysis — قياس النص الأصلي"
             status={s1}
           >
             {original ? (
@@ -237,19 +259,19 @@ export function OptimizerWorkspace() {
                   <Metric label="حرف" value={original.characters} />
                 </div>
                 {originalRatio !== null && (
-                  <div className="mt-3 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                  <div className="mt-3 flex items-center gap-2 border border-slate-300 bg-slate-50 px-3 py-2 text-xs">
                     <span className="font-bold text-slate-500">
                       نسبة العربية
                     </span>
-                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200">
+                    <div className="h-2 flex-1 overflow-hidden bg-slate-200">
                       <div
-                        className="h-full rounded-full bg-brand-500 transition-all"
+                        className="h-full bg-brand-500 transition-all"
                         style={{
                           width: `${Math.round(originalRatio * 100)}%`,
                         }}
                       />
                     </div>
-                    <span className="font-black text-ink">
+                    <span className="font-mono font-black text-ink">
                       {Math.round(originalRatio * 100)}%
                     </span>
                   </div>
@@ -265,21 +287,20 @@ export function OptimizerWorkspace() {
                 text="ستظهر قياسات النص الأصلي هنا"
               />
             )}
-          </Node>
+          </SpecCard>
 
-          <Beam on={phase === "optimizing"} done={s2 === "done"} />
-          <Node
-            number={2}
-            title="Processing / Optimization"
+          <SpecCard
+            tag="ST-02"
+            title="المعالجة"
             subtitle="تنقية محلية ثم إعادة صياغة عبر Gemini عند توفره"
             status={s2}
           >
             {dual ? (
-              <div className="flex items-center gap-3 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+              <div className="flex items-center gap-3 border border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
                 <Wand2 className="shrink-0 text-brand-500" />
                 <span className="flex-1">{dual.note}</span>
                 <span
-                  className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${dual.source === "gemini" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}
+                  className={`px-2.5 py-1 text-[11px] font-bold ${dual.source === "gemini" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}
                 >
                   {dual.source === "gemini"
                     ? `${dual.model ?? "Gemini"}${dual.viaUserKey ? " · مفتاحك" : ""}`
@@ -292,62 +313,64 @@ export function OptimizerWorkspace() {
                 text="تُنقّى العربية محلياً، ويُنشئ Gemini الترجمة عند توفره"
               />
             )}
-          </Node>
+          </SpecCard>
 
-          {/* fork into the two output branches */}
-          <Beam on={phase === "measuring"} done={dual !== null} />
-          <div
-            className={`mx-auto h-[3px] w-1/2 rounded-full transition-colors ${s3 === "idle" ? "bg-slate-200" : "bg-brand-500/60"}`}
-          />
           <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <Beam on={phase === "measuring"} done={dual !== null} short />
-              <OutputCard
-                lang="ar"
-                title="Optimized Output"
-                chip={
-                  report?.source === "mock" || dual?.source === "mock"
-                    ? "تنقية محلية"
-                    : "العربية"
-                }
-                status={s3}
-                text={report?.arabic.text ?? dual?.arabic ?? null}
-                report={report?.arabic ?? null}
-              />
-            </div>
-            <div>
-              <Beam on={phase === "measuring"} done={dual !== null} short />
-              <OutputCard
-                lang="en"
-                title="Optimized Output"
-                chip="English"
-                status={s3}
-                text={report?.english?.text ?? dual?.english ?? null}
-                unavailable={englishUnavailable}
-                unavailableReason={
-                  report?.rejectedByGuard
-                    ? "حُجبت الترجمة لأن مخرج Gemini لم يحفظ بعض الكيانات؛ عُرضت النسخة المحلية بدلاً منه."
-                    : "الترجمة الإنجليزية غير متاحة في الوضع المحلي أو عند تعذّر Gemini."
-                }
-                report={report?.english ?? null}
-              />
-            </div>
+            <OutputCard
+              lang="ar"
+              title="Optimized Output"
+              chip={
+                report?.source === "mock" || dual?.source === "mock"
+                  ? "تنقية محلية"
+                  : "العربية"
+              }
+              status={s3}
+              text={report?.arabic.text ?? dual?.arabic ?? null}
+              report={report?.arabic ?? null}
+            />
+            <OutputCard
+              lang="en"
+              title="Optimized Output"
+              chip="English"
+              status={s3}
+              text={report?.english?.text ?? dual?.english ?? null}
+              unavailable={englishUnavailable}
+              unavailableReason={
+                report?.rejectedByGuard
+                  ? "حُجبت الترجمة لأن مخرج Gemini لم يحفظ بعض الكيانات؛ عُرضت النسخة المحلية بدلاً منه."
+                  : "الترجمة الإنجليزية غير متاحة في الوضع المحلي أو عند تعذّر Gemini."
+              }
+              report={report?.english ?? null}
+            />
           </div>
-
-          {report && <TokenHeatmap report={report} />}
-          {report && <OptimizationInsights report={report} />}
-          {report && <OptimizationUsagePanel report={report} />}
-
-          <Beam on={phase === "measuring"} done={report !== null} />
-          <CostBar
-            report={report}
-            active={phase === "measuring"}
-            modelLabel={modelLabel}
-            onReset={reset}
-          />
         </div>
 
-        <footer className="mt-8 flex items-center justify-center gap-2 text-xs text-slate-400">
+        {/* 04 — ANALYSIS */}
+        {report && (
+          <>
+            <SpecHead
+              num="04"
+              title="التحليل"
+              note="خريطة الثقل وتفصيل التوفير واستهلاك الاستدعاء"
+            />
+            <div className="space-y-4">
+              <TokenHeatmap report={report} />
+              <OptimizationInsights report={report} />
+              <OptimizationUsagePanel report={report} />
+            </div>
+          </>
+        )}
+
+        {/* 05 — COST */}
+        <SpecHead num="05" title="التكلفة" note="تقدير تكلفة الإدخال" />
+        <CostBar
+          report={report}
+          active={phase === "measuring"}
+          modelLabel={modelLabel}
+          onReset={reset}
+        />
+
+        <footer className="mt-10 flex items-center justify-center gap-2 border-t border-slate-300 pt-4 text-xs text-slate-500">
           <Gauge size={15} /> القياس عبر Gemini countTokens عند توفره، وإلا
           بتقدير محلي · الترجمة تتطلب Gemini.
         </footer>
@@ -364,38 +387,39 @@ export function OptimizerWorkspace() {
   );
 }
 
-/* ---- pipeline plumbing -------------------------------------------------- */
+/* ---- spec-sheet chrome -------------------------------------------------- */
 
-function Beam({
-  on,
-  done,
-  short,
+function SpecHead({
+  num,
+  title,
+  note,
 }: {
-  on: boolean;
-  done: boolean;
-  short?: boolean;
+  num: string;
+  title: string;
+  note: string;
 }) {
   return (
-    <div
-      className={`relative mx-auto my-1 w-[3px] overflow-hidden rounded-full bg-slate-200 ${short ? "h-5" : "h-8"}`}
-    >
-      {on ? (
-        <div className="beam absolute inset-0" />
-      ) : done ? (
-        <div className="absolute inset-0 bg-brand-500/70" />
-      ) : null}
+    <div className="mt-8 mb-3 flex items-baseline gap-3">
+      <span className="font-mono text-sm font-medium text-brand-600">
+        {num}
+      </span>
+      <h2 className="text-base font-bold">{title}</h2>
+      <span className="hidden text-[11px] text-slate-500 sm:inline">
+        {note}
+      </span>
+      <div className="h-px flex-1 bg-ink/25" />
     </div>
   );
 }
 
-function Node({
-  number,
+function SpecCard({
+  tag,
   title,
   subtitle,
   status,
   children,
 }: {
-  number: number;
+  tag: string;
   title: string;
   subtitle: string;
   status: NodeStatus;
@@ -405,20 +429,32 @@ function Node({
   const done = status === "done";
   return (
     <section
-      className={`mx-auto max-w-3xl rounded-3xl border-2 p-5 transition ${active ? "border-brand-400 bg-white shadow-glow" : done ? "border-brand-400/50 bg-white" : "border-slate-200 bg-white/70"}`}
+      className={`border bg-white p-5 transition ${
+        active
+          ? "border-brand-500 shadow-hard-sm"
+          : done
+            ? "border-ink"
+            : "border-slate-300"
+      }`}
     >
       <div className="mb-4 flex items-center gap-3">
         <span
-          className={`grid h-9 w-9 place-items-center rounded-full font-bold ${active ? "node-active bg-brand-500 text-white" : done ? "bg-brand-500 text-white" : "bg-slate-100 text-slate-400"}`}
+          className={`grid h-8 min-w-14 place-items-center border px-2 font-mono text-[11px] font-medium ${
+            done
+              ? "border-ink bg-ink text-white"
+              : active
+                ? "border-brand-500 bg-brand-500/10 text-brand-600"
+                : "border-slate-300 bg-white text-slate-400"
+          }`}
         >
-          {done ? <Check size={18} /> : number}
+          {done ? <Check size={14} /> : tag}
         </span>
         <div>
-          <h2 className="font-bold">{title}</h2>
-          <p className="text-sm text-slate-500">{subtitle}</p>
+          <h3 className="font-bold leading-5">{title}</h3>
+          <p className="text-xs text-slate-500">{subtitle}</p>
         </div>
         {active && (
-          <span className="ms-auto h-2.5 w-2.5 animate-ping rounded-full bg-brand-400" />
+          <span className="ms-auto h-2.5 w-2.5 animate-ping bg-brand-400" />
         )}
       </div>
       {children}
@@ -429,7 +465,7 @@ function Node({
 function Placeholder({ active, text }: { active: boolean; text: string }) {
   return (
     <div
-      className={`rounded-2xl border border-dashed p-4 text-center text-sm ${active ? "border-brand-400/60 text-slate-500" : "border-slate-200 text-slate-400"}`}
+      className={`border border-dashed p-4 text-center text-sm ${active ? "border-brand-500/60 text-slate-500" : "border-slate-300 text-slate-400"}`}
     >
       {active ? "جارٍ المعالجة…" : text}
     </div>
@@ -451,10 +487,7 @@ const keyStatusLegend: { status: KeyStatus; label: string }[] = [
 function KeyStatusHint({ status }: { status: KeyStatus }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span
-        className={`h-2.5 w-2.5 rounded-full ${dotClass[status]}`}
-        aria-hidden="true"
-      />
+      <span className={`h-2.5 w-2.5 ${dotClass[status]}`} aria-hidden="true" />
       <details className="group relative">
         <summary
           className="flex cursor-pointer list-none items-center text-slate-400 transition hover:text-slate-600 [&::-webkit-details-marker]:hidden"
@@ -462,13 +495,13 @@ function KeyStatusHint({ status }: { status: KeyStatus }) {
         >
           <Info size={15} />
         </summary>
-        <div className="absolute start-0 top-6 z-40 w-64 rounded-xl border border-slate-200 bg-white p-3 text-xs leading-5 text-slate-600 shadow-lg">
+        <div className="absolute start-0 top-6 z-40 w-64 border border-ink bg-white p-3 text-xs leading-5 text-slate-600 shadow-hard-sm">
           <p className="mb-2 font-bold text-slate-700">حالة مفتاحك المحفوظ</p>
           <ul className="space-y-1.5">
             {keyStatusLegend.map((item) => (
               <li key={item.status} className="flex items-center gap-2">
                 <span
-                  className={`h-2 w-2 shrink-0 rounded-full ${dotClass[item.status]}`}
+                  className={`h-2 w-2 shrink-0 ${dotClass[item.status]}`}
                   aria-hidden="true"
                 />
                 {item.label}
@@ -503,63 +536,66 @@ function OutputCard({
   status: NodeStatus;
 }) {
   const emerald = lang === "ar";
-  const frame = emerald
-    ? "border-emerald-200 bg-emerald-50/70"
-    : "border-blue-200 bg-blue-50/70";
+  const bar = emerald ? "bg-emerald-500" : "bg-blue-500";
   const chipCls = emerald
     ? "bg-emerald-100 text-emerald-700"
     : "bg-blue-100 text-blue-700";
   const active = status === "active";
   return (
     <section
-      className={`rounded-3xl border-2 p-5 transition ${active ? `${frame} shadow-glow` : frame}`}
+      className={`border border-ink bg-white transition ${active ? "shadow-hard-sm" : ""}`}
     >
-      <div className="mb-4 flex items-center gap-2">
-        <span
-          className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${chipCls}`}
+      <div className={`h-1 ${bar}`} />
+      <div className="p-5">
+        <div className="mb-4 flex items-center gap-2 border-b border-slate-200 pb-3">
+          <span
+            className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold ${chipCls}`}
+          >
+            <Languages size={14} />
+            {chip}
+          </span>
+          <h3 className="font-bold">{title}</h3>
+          <div className="ms-auto">{text && <CopyButton text={text} />}</div>
+        </div>
+        <div
+          dir={lang === "en" ? "ltr" : "rtl"}
+          className={`min-h-56 border border-slate-200 bg-slate-50/60 p-4 leading-8 text-slate-700 whitespace-pre-wrap ${lang === "en" ? "text-left" : "text-right"}`}
         >
-          <Languages size={14} />
-          {chip}
-        </span>
-        <h2 className="font-bold">{title}</h2>
-        <div className="ms-auto">{text && <CopyButton text={text} />}</div>
-      </div>
-      <div
-        dir={lang === "en" ? "ltr" : "rtl"}
-        className={`min-h-56 rounded-2xl bg-white/85 p-4 leading-8 text-slate-700 whitespace-pre-wrap ${lang === "en" ? "text-left" : "text-right"}`}
-      >
-        {text ??
-          (unavailable ? (
-            <span className="text-sm text-slate-400">{unavailableReason}</span>
-          ) : (
-            <span className="text-sm text-slate-400">
-              {active ? "تُستكمل القياسات…" : "الناتج المحسّن سيظهر هنا"}
-            </span>
-          ))}
-      </div>
-      <div className="mt-3 flex items-center justify-between text-xs">
-        <span className="font-bold text-slate-600">
-          {report ? `${report.analysis.tokens} Tokens` : "— Tokens"}
-          {report?.analysis.arabicRatio !== undefined && (
-            <span className="ms-2 font-normal text-slate-400">
-              {Math.round(report.analysis.arabicRatio * 100)}% عربي
+          {text ??
+            (unavailable ? (
+              <span className="text-sm text-slate-400">
+                {unavailableReason}
+              </span>
+            ) : (
+              <span className="text-sm text-slate-400">
+                {active ? "تُستكمل القياسات…" : "الناتج المحسّن سيظهر هنا"}
+              </span>
+            ))}
+        </div>
+        <div className="mt-3 flex items-center justify-between text-xs">
+          <span className="font-mono font-bold text-slate-600">
+            {report ? `${report.analysis.tokens} Tokens` : "— Tokens"}
+            {report?.analysis.arabicRatio !== undefined && (
+              <span className="ms-2 font-sans font-normal text-slate-400">
+                {Math.round(report.analysis.arabicRatio * 100)}% عربي
+              </span>
+            )}
+          </span>
+          {report?.measurement && (
+            <span
+              className={`flex items-center gap-1.5 font-bold ${report.measurement.source === "provider" ? "text-emerald-600" : "text-amber-600"}`}
+            >
+              <span
+                className={`h-2 w-2 ${report.measurement.source === "provider" ? "bg-emerald-500" : "bg-amber-500"}`}
+              />
+              {report.measurement.source === "provider"
+                ? "قياس حقيقي"
+                : report.measurement.source === "bpe"
+                  ? "BPE محلي"
+                  : "تقدير"}
             </span>
           )}
-        </span>
-        {report?.measurement && (
-          <span
-            className={`flex items-center gap-1.5 font-bold ${report.measurement.source === "provider" ? "text-emerald-600" : "text-amber-600"}`}
-          >
-            <span
-              className={`h-2 w-2 rounded-full ${report.measurement.source === "provider" ? "bg-emerald-500" : "bg-amber-500"}`}
-            />
-            {report.measurement.source === "provider"
-              ? "قياس حقيقي"
-              : report.measurement.source === "bpe"
-                ? "BPE محلي"
-                : "تقدير"}
-          </span>
-        )}
+        </div>
       </div>
     </section>
   );
@@ -579,7 +615,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={copy}
-      className="flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1.5 text-xs font-bold text-slate-600 shadow-sm transition hover:text-ink"
+      className="flex items-center gap-1.5 border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-600 transition hover:border-ink hover:text-ink"
     >
       {copied ? (
         <Check size={14} className="text-emerald-600" />
@@ -622,9 +658,9 @@ export const TokenHeatmap = memo(function TokenHeatmap({
   return (
     <section
       aria-labelledby="heatmap-title"
-      className="mt-5 rounded-3xl border border-violet-200 bg-white p-5 shadow-sm sm:p-6"
+      className="border border-ink bg-white p-5 sm:p-6"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-4">
         <div>
           <h2 id="heatmap-title" className="text-lg font-bold text-ink">
             خريطة ثقل المقاطع
@@ -634,7 +670,7 @@ export const TokenHeatmap = memo(function TokenHeatmap({
             مقطع إلى مزود الخدمة.
           </p>
         </div>
-        <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-800">
+        <span className="border border-violet-300 bg-violet-50 px-3 py-1 font-mono text-xs font-bold text-violet-800">
           تقدير محلي
         </span>
       </div>
@@ -645,7 +681,7 @@ export const TokenHeatmap = memo(function TokenHeatmap({
         {heatLevels.map(({ label, className }) => (
           <span
             key={label}
-            className={`rounded-lg px-2.5 py-1.5 font-semibold ring-1 ring-inset ${className}`}
+            className={`px-2.5 py-1.5 font-semibold ring-1 ring-inset ${className}`}
           >
             {label} توكن لكل مقطع
           </span>
@@ -669,7 +705,7 @@ export const TokenHeatmap = memo(function TokenHeatmap({
             direction="ltr"
           />
         ) : (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+          <div className="border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
             <h3 className="font-bold text-slate-700">النسخة الإنجليزية</h3>
             <p className="mt-3">
               الإنجليزية غير متاحة في هذا التشغيل؛ لا توجد خريطة لنص غير موجود.
@@ -677,7 +713,7 @@ export const TokenHeatmap = memo(function TokenHeatmap({
           </div>
         )}
       </div>
-      <p className="mt-4 rounded-xl bg-violet-50 px-4 py-3 text-xs leading-6 text-violet-900">
+      <p className="mt-4 border border-violet-200 bg-violet-50 px-4 py-3 text-xs leading-6 text-violet-900">
         الألوان تقدير لطول المقطع ونوع حروفه، وليست تفكيكاً رسمياً من Gemini. لا
         تجمع تقديرات المقاطع لتطابق إجمالي countTokens؛ الأرقام الرسمية والتكلفة
         المعروضة أعلاه/أدناه منفصلة عن هذه الخريطة.
@@ -701,16 +737,16 @@ function HeatmapVariant({
     .sort((a, b) => (b.tokens ?? 0) - (a.tokens ?? 0))
     .slice(0, 3);
   return (
-    <div className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50/60 p-3 sm:p-4">
+    <div className="min-w-0 border border-slate-300 bg-slate-50/60 p-3 sm:p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-bold text-ink">{title}</h3>
-        <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-600">
+        <span className="border border-slate-200 bg-white px-2 py-1 font-mono text-[11px] font-semibold text-slate-600">
           {scoredSegments} مقطع في المعاينة
         </span>
       </div>
       <div
         dir={direction}
-        className="max-h-52 min-h-32 overflow-y-auto rounded-xl border border-slate-100 bg-white p-3 text-sm leading-9 whitespace-pre-wrap break-words"
+        className="max-h-52 min-h-32 overflow-y-auto border border-slate-200 bg-white p-3 text-sm leading-9 whitespace-pre-wrap break-words"
       >
         {segments.map(({ text: part, tokens }, index) =>
           tokens === null ? (
@@ -721,7 +757,7 @@ function HeatmapVariant({
               dir="auto"
               title={`${part} — نحو ${tokens} توكن (تقدير محلي)`}
               aria-label={`${part}: نحو ${tokens} توكن بتقدير محلي`}
-              className={`rounded-md px-1 py-0.5 ring-1 ring-inset ${heatLevel(tokens).className}`}
+              className={`px-1 py-0.5 ring-1 ring-inset ${heatLevel(tokens).className}`}
             >
               {part}
             </span>
@@ -741,7 +777,7 @@ function HeatmapVariant({
         </p>
       )}
       {heaviest.length > 0 && (
-        <div className="mt-3 border-t border-slate-200 pt-3">
+        <div className="mt-3 border-t border-slate-300 pt-3">
           <p className="mb-2 text-xs font-semibold text-slate-600">
             أثقل المقاطع في المعاينة
           </p>
@@ -749,12 +785,12 @@ function HeatmapVariant({
             {heaviest.map(({ text: part, tokens }, index) => (
               <span
                 key={index}
-                className="inline-flex max-w-full items-center gap-1 rounded-lg bg-white px-2 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200"
+                className="inline-flex max-w-full items-center gap-1 border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
               >
                 <span dir="auto" className="max-w-28 truncate">
                   {part}
                 </span>
-                <span dir="ltr" className="shrink-0 text-violet-800">
+                <span dir="ltr" className="shrink-0 font-mono text-violet-800">
                   ~{tokens}
                 </span>
               </span>
@@ -766,7 +802,7 @@ function HeatmapVariant({
   );
 }
 
-/* ---- cost bar ------------------------------------------------------------ */
+/* ---- analysis & cost ----------------------------------------------------- */
 
 export function OptimizationInsights({
   report,
@@ -783,8 +819,8 @@ export function OptimizationInsights({
   if (!originalMeasurement || !arabic.measurement) return null;
 
   return (
-    <div className="my-5 grid gap-4 md:grid-cols-2">
-      <section className="rounded-3xl border border-teal-200 bg-white p-5 shadow-sm">
+    <div className="grid gap-4 md:grid-cols-2">
+      <section className="border border-ink bg-white p-5">
         <h2 className="font-bold text-ink">تفصيل التوفير في توكنز الإدخال</h2>
         <p className="mt-1 text-xs text-slate-500">
           مقارنة النص الأصلي بالمنقّح محلياً، ثم بالنسخة العربية النهائية.
@@ -805,7 +841,7 @@ export function OptimizationInsights({
             after={arabic.measurement}
           />
         </div>
-        <details className="mt-4 rounded-xl border border-teal-100 bg-teal-50/50 p-3 text-xs">
+        <details className="mt-4 border border-teal-200 bg-teal-50/50 p-3 text-xs">
           <summary className="cursor-pointer font-semibold text-teal-900">
             عرض النص بعد التنقية المحلية
           </summary>
@@ -823,12 +859,12 @@ export function OptimizationInsights({
           </p>
         )}
       </section>
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="border border-ink bg-white p-5">
         <h2 className="font-bold text-ink">فحص الكيانات والجودة الظاهرة</h2>
         {report.rejectedByGuard && (
           <p
             role="status"
-            className="mt-3 rounded-xl bg-amber-50 p-3 text-xs font-semibold text-amber-800"
+            className="mt-3 border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-800"
           >
             رُفض مخرج Gemini لعدم اجتيازه فحوص السلامة المحلية. المعروض تنقية
             محلية، والترجمة محجوبة.
@@ -842,7 +878,7 @@ export function OptimizationInsights({
               check={entityChecks.english}
             />
           ) : (
-            <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">
+            <p className="border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
               النسخة الإنجليزية غير متاحة للفحص.
             </p>
           )}
@@ -885,10 +921,10 @@ function MeasurementStep({
         ? `زيادة ${-saved} توكن (${percent}%)`
         : "لا تغير في عدد التوكنز";
   return (
-    <div className="rounded-xl bg-slate-50 p-3 text-sm">
+    <div className="border border-slate-200 bg-slate-50 p-3 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="font-bold">{title}</span>
-        <span dir="ltr" className="font-semibold tabular-nums">
+        <span dir="ltr" className="font-mono font-semibold tabular-nums">
           {before.tokens} → {after.tokens}
         </span>
       </div>
@@ -897,7 +933,7 @@ function MeasurementStep({
       >
         {difference}
       </p>
-      <p className="mt-1 text-[11px] text-slate-400">
+      <p className="mt-1 font-mono text-[11px] text-slate-400">
         {comparable
           ? before.source === "provider"
             ? "Gemini countTokens"
@@ -919,7 +955,7 @@ function QualityStatus({
   const clean = check.warnings.length === 0;
   return (
     <div
-      className={`rounded-xl p-3 text-xs ${clean ? "bg-sky-50 text-sky-800" : "bg-amber-50 text-amber-800"}`}
+      className={`border p-3 text-xs ${clean ? "border-sky-200 bg-sky-50 text-sky-800" : "border-amber-300 bg-amber-50 text-amber-800"}`}
     >
       <span className="font-bold">{label} — فحص الجودة: </span>
       {clean
@@ -945,7 +981,7 @@ function EntityStatus({
       : `تعذّر حفظ ${check.missing.length} من ${check.checked} كيان`;
   return (
     <div
-      className={`rounded-xl p-3 text-xs ${check.checked && check.preserved ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}
+      className={`border p-3 text-xs ${check.checked && check.preserved ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-300 bg-amber-50 text-amber-800"}`}
     >
       <span className="font-bold">{label}: </span>
       {message}
@@ -979,7 +1015,7 @@ export function OptimizationUsagePanel({
 }) {
   const usage = report.optimizationUsage;
   return (
-    <section className="mb-5 rounded-3xl border border-blue-200 bg-white p-5 shadow-sm">
+    <section className="border border-ink bg-white p-5">
       <h2 className="font-bold text-ink">استهلاك استدعاء التحسين الفعلي</h2>
       {usage ? (
         <>
@@ -1027,10 +1063,10 @@ function CostBar({
   onReset: () => void;
 }) {
   return (
-    <section className="rounded-3xl border-2 border-amber-200 bg-amber-50/80 p-5">
-      <div className="mb-4 flex items-center justify-between">
+    <section className="border border-ink bg-amber-50/70 p-5">
+      <div className="mb-4 flex items-center justify-between border-b border-amber-200 pb-3">
         <div className="flex items-center gap-2 font-bold">
-          <Coins className="text-amber-500" size={18} /> Cost Analysis{" "}
+          <Coins className="text-amber-600" size={18} /> Cost Analysis{" "}
           <span className="hidden text-xs font-normal text-slate-500 sm:inline">
             تقدير تكلفة الإدخال · {modelLabel}
           </span>
@@ -1065,7 +1101,7 @@ function CostBar({
                 }
               />
             ) : (
-              <div className="grid place-items-center rounded-2xl bg-white/70 p-3 text-center text-xs text-slate-400">
+              <div className="grid place-items-center border border-slate-200 bg-white/70 p-3 text-center text-xs text-slate-400">
                 توفير النسخة الإنجليزية يظهر مع الترجمة
               </div>
             )}
@@ -1083,7 +1119,7 @@ function CostBar({
             )}
         </>
       ) : (
-        <div className="rounded-2xl bg-white/70 p-4 text-center text-sm text-slate-400">
+        <div className="border border-slate-200 bg-white/70 p-4 text-center text-sm text-slate-400">
           {active
             ? "يُحسب التقدير…"
             : "سيظهر تحليل التكلفة هنا بعد تشغيل التحسين"}
@@ -1103,7 +1139,7 @@ function CostGroup({
   comparable?: boolean;
 }) {
   return (
-    <div className="rounded-2xl bg-white p-3">
+    <div className="border border-slate-200 bg-white p-3">
       <div className="mb-2 text-xs font-bold text-slate-500">{label}</div>
       <div className="grid grid-cols-3 gap-2 text-center">
         <Metric label="قبل" value={formatCost(cost.original)} />
@@ -1121,8 +1157,10 @@ function CostGroup({
 
 function Metric({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-xl bg-slate-50 px-2 py-3">
-      <div className="text-lg font-black text-ink">{value}</div>
+    <div className="border border-slate-200 bg-slate-50 px-2 py-3">
+      <div className="font-mono text-lg font-black text-ink" dir="auto">
+        {value}
+      </div>
       <div className="mt-1 text-[11px] text-slate-500">{label}</div>
     </div>
   );
@@ -1144,11 +1182,9 @@ function SourceBadge({
       : "تقدير تجريبي";
   return (
     <div
-      className={`mt-3 flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold ${live ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}
+      className={`mt-3 flex items-center justify-center gap-1.5 border px-3 py-2 text-xs font-bold ${live ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-amber-300 bg-amber-50 text-amber-700"}`}
     >
-      <span
-        className={`h-2 w-2 rounded-full ${live ? "bg-emerald-500" : "bg-amber-500"}`}
-      />
+      <span className={`h-2 w-2 ${live ? "bg-emerald-500" : "bg-amber-500"}`} />
       {label}
     </div>
   );

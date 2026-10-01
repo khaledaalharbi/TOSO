@@ -57,7 +57,7 @@ const steps = [
       <>
         اضغط زر{" "}
         <bdi dir="ltr">
-          <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700">
+          <span className="inline-flex items-center gap-1 border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700">
             <GoogleKeyIcon size={12} />
             Create API key
           </span>
@@ -83,7 +83,7 @@ const steps = [
       <>
         اختر مشروعك الحالي، أو اضغط{" "}
         <bdi dir="ltr">
-          <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700">
+          <span className="inline-flex items-center gap-1 border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700">
             <Plus size={12} />
             Create project
           </span>
@@ -94,7 +94,7 @@ const steps = [
         </bdi>
         : أضف الاسم ثم اضغط{" "}
         <bdi dir="ltr">
-          <span className="inline-flex items-center rounded-full border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700">
+          <span className="inline-flex items-center border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700">
             Create project
           </span>
         </bdi>
@@ -103,7 +103,7 @@ const steps = [
       <>
         اضغط{" "}
         <bdi dir="ltr">
-          <span className="inline-flex items-center rounded-full border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700">
+          <span className="inline-flex items-center border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700">
             Create key
           </span>
         </bdi>
@@ -130,7 +130,7 @@ const steps = [
 export function GeminiKeyGuide() {
   return (
     <div className="space-y-3">
-      <details className="group rounded-xl border border-slate-200 p-3 text-xs">
+      <details className="group border border-slate-300 p-3 text-xs">
         <summary className="flex cursor-pointer list-none items-center justify-between font-semibold text-slate-600 [&::-webkit-details-marker]:hidden">
           <span className="flex items-center gap-2">
             <KeyRound size={14} className="text-brand-600" />
@@ -141,7 +141,7 @@ export function GeminiKeyGuide() {
             className="text-slate-400 transition-transform group-open:rotate-180"
           />
         </summary>
-        <ol className="mt-3 space-y-3 border-t border-slate-100 pt-3 text-slate-600">
+        <ol className="mt-3 space-y-3 border-t border-slate-200 pt-3 text-slate-600">
           {steps.map((step, index) => (
             <li key={index} className="flex gap-2 leading-5">
               <step.icon size={14} className="mt-0.5 shrink-0 text-brand-600" />
@@ -162,7 +162,7 @@ export function GeminiKeyGuide() {
           ))}
         </ol>
       </details>
-      <div className="flex gap-2 rounded-xl bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">
+      <div className="flex gap-2 border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">
         <ShieldCheck className="shrink-0" size={18} />
         <ul className="list-disc space-y-1 ps-4 marker:text-emerald-400">
           <li>

@@ -128,19 +128,19 @@ export function SettingsModal({
       aria-modal="true"
       aria-label="الإعدادات"
     >
-      <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
-        <div className="mb-6 flex items-center justify-between">
+      <div className="w-full max-w-md border border-ink bg-white p-6 shadow-hard">
+        <div className="mb-6 flex items-center justify-between border-b border-slate-200 pb-4">
           <button
             onClick={onClose}
-            className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"
+            className="border border-slate-300 p-2 text-slate-500 transition hover:border-ink hover:bg-slate-50"
             aria-label="إغلاق"
           >
             <X size={20} />
           </button>
           <div>
             <h2 className="text-lg font-bold">إعدادات النموذج</h2>
-            <p className="text-sm text-slate-500">
-              محرك المعالجة: Google Gemini
+            <p className="font-mono text-[11px] text-slate-500">
+              ENGINE — Google Gemini
             </p>
           </div>
         </div>
@@ -150,7 +150,7 @@ export function SettingsModal({
             <select
               id="model"
               name="model"
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 outline-none focus:border-brand-500"
+              className="mt-2 w-full border border-slate-300 bg-white p-3 font-mono text-sm outline-none focus:border-ink"
               value={config.model}
               onChange={(event) =>
                 onChange({ ...config, model: event.target.value })
@@ -183,13 +183,15 @@ export function SettingsModal({
                   onChange({ ...config, userKey: event.target.value.trim() })
                 }
                 placeholder="مفتاح AI Studio — يُحفظ في متصفحك فقط"
-                className="w-full rounded-xl border border-slate-200 py-3 pr-10 pl-3 outline-none focus:border-brand-500"
+                className="w-full border border-slate-300 bg-white py-3 pr-10 pl-3 font-mono text-sm outline-none focus:border-ink"
                 dir="ltr"
               />
             </div>
           </label>
           {userKey ? (
-            <div className={`rounded-xl px-3 py-2 text-xs ${chipTone[status]}`}>
+            <div
+              className={`border border-slate-300 px-3 py-2 text-xs ${chipTone[status]}`}
+            >
               <div className="flex items-center justify-between gap-2">
                 <span className="flex min-w-0 items-center gap-1.5">
                   <span
@@ -231,7 +233,7 @@ export function SettingsModal({
         </div>
         <button
           onClick={onClose}
-          className="mt-6 w-full rounded-xl bg-ink py-3 font-bold text-white hover:bg-slate-800"
+          className="mt-6 w-full border border-ink bg-ink py-3 font-bold text-white transition hover:bg-slate-800"
         >
           تم
         </button>

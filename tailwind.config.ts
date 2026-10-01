@@ -8,7 +8,14 @@ const config: Config = {
         ink: "#0d1729",
         brand: { 400: "#54d3b8", 500: "#20b89a", 600: "#129278" },
       },
-      boxShadow: { glow: "0 20px 60px rgba(16, 96, 106, .18)" },
+      fontFamily: {
+        sans: ['"IBM Plex Sans Arabic"', "Tahoma", "sans-serif"],
+        mono: ['"IBM Plex Mono"', "ui-monospace", "monospace"],
+      },
+      boxShadow: {
+        hard: "4px 4px 0 0 rgba(13, 23, 41, 0.9)",
+        "hard-sm": "2px 2px 0 0 rgba(13, 23, 41, 0.9)",
+      },
     },
   },
   plugins: [],
