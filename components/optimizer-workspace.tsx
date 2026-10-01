@@ -14,7 +14,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { memo, useEffect, useState } from "react";
-import { RadialPipeline } from "@/components/radial-pipeline";
+import { PipelineTrack } from "@/components/pipeline-track";
 import {
   SettingsModal,
   dotClass,
@@ -180,11 +180,11 @@ export function OptimizerWorkspace() {
           </div>
         </header>
 
-        {/* 01 — INPUT */}
+        {/* 01 — INPUT + LIVE PROCESS TRACK */}
         <SpecHead num="01" title="المدخلات" note="البرومبت العربي الأصلي" />
-        <section className="bg-ink p-5 text-white shadow-hard sm:p-7">
-          <div className="mb-4 flex items-center justify-between border-b border-white/15 pb-3">
-            <span className="border border-white/25 px-2.5 py-1 font-mono text-[11px]">
+        <section className="border border-ink bg-white p-5 sm:p-7">
+          <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3">
+            <span className="border border-slate-300 px-2.5 py-1 font-mono text-[11px] text-slate-600">
               {modelLabel}
             </span>
             <h1 className="text-xl font-bold">اكتب طلبك بالعربية</h1>
@@ -195,126 +195,120 @@ export function OptimizerWorkspace() {
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
             placeholder="مثال: حلّل لي أداء الشركة خلال آخر ستة أشهر..."
-            className="min-h-32 w-full resize-y border border-white/20 bg-white/[0.07] p-4 leading-8 text-white placeholder:text-slate-500 outline-none transition focus:border-brand-400"
+            className="min-h-32 w-full resize-y border border-slate-300 bg-slate-50/60 p-4 leading-8 outline-none transition placeholder:text-slate-400 focus:border-brand-500"
           />
-          <div className="mt-4 flex items-center justify-between gap-3">
-            <span className="text-xs text-slate-400">
-              يُرسَل النص إلى Gemini للفهم وإعادة الصياغة — المفتاح يبقى على
-              الخادم
-            </span>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <button
               disabled={!prompt.trim() || running}
               onClick={handleRun}
-              className="flex items-center gap-2 border border-ink bg-brand-400 px-5 py-3 font-bold text-ink transition shadow-hard-sm hover:bg-brand-500 active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+              className="flex shrink-0 items-center justify-center gap-2 border border-ink bg-brand-500 px-5 py-3 font-bold text-white transition hover:bg-brand-600 active:translate-x-[2px] active:translate-y-[2px] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {running
                 ? (runLabel[phase as keyof typeof runLabel] ?? "جارٍ المعالجة…")
                 : "تشغيل التحليل"}
               <Play size={17} fill="currentColor" />
             </button>
+            <div className="min-w-0 flex-1">
+              <PipelineTrack
+                phase={phase}
+                running={running}
+                hasOriginal={original !== null}
+                hasDual={dual !== null}
+                hasReport={report !== null}
+              />
+            </div>
           </div>
         </section>
 
-        {/* 02 — PROCESS MAP + STATION RESULTS */}
+        {/* 02 — STATION RESULTS */}
         <SpecHead
           num="02"
-          title="مخطط دورة المعالجة"
-          note="أربع محطات — تُضاء عند اكتمالها فعلياً"
+          title="نتائج المحطات"
+          note="تفاصيل كل محطة من مسار المعالجة"
         />
-        <section className="grid gap-4 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
-          <div className="self-start border border-ink bg-white p-4">
-            <RadialPipeline
-              phase={phase}
-              running={running}
-              hasOriginal={original !== null}
-              hasDual={dual !== null}
-              hasReport={report !== null}
-            />
-          </div>
-          <div className="space-y-4">
-            <SpecCard
-              tag="ST-01"
-              title="قياس الأصل"
-              subtitle="Token Analysis — قياس النص الأصلي"
-              status={s1}
-              action={
-                original ? (
-                  <SourceBadge
-                    compact
-                    source={original.source}
-                    providerLabel={modelLabel}
+        <div className="grid gap-4 md:grid-cols-2">
+          <SpecCard
+            tag="ST-01"
+            title="قياس الأصل"
+            subtitle="Token Analysis — قياس النص الأصلي"
+            status={s1}
+            action={
+              original ? (
+                <SourceBadge
+                  compact
+                  source={original.source}
+                  providerLabel={modelLabel}
+                />
+              ) : null
+            }
+          >
+            {original ? (
+              <div>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <Metric
+                    label={
+                      original.source === "provider"
+                        ? "Tokens حقيقية"
+                        : "Tokens تقديرية"
+                    }
+                    value={original.tokens}
                   />
-                ) : null
-              }
-            >
-              {original ? (
-                <div>
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <Metric
-                      label={
-                        original.source === "provider"
-                          ? "Tokens حقيقية"
-                          : "Tokens تقديرية"
-                      }
-                      value={original.tokens}
-                    />
-                    <Metric label="كلمة" value={original.words} />
-                    <Metric label="حرف" value={original.characters} />
-                  </div>
-                  {originalRatio !== null && (
-                    <div className="mt-3 flex items-center gap-2 border border-slate-300 bg-slate-50 px-3 py-2 text-xs">
-                      <span className="font-bold text-slate-500">
-                        نسبة العربية
-                      </span>
-                      <div className="h-2 flex-1 overflow-hidden bg-slate-200">
-                        <div
-                          className="h-full bg-brand-500 transition-all"
-                          style={{
-                            width: `${Math.round(originalRatio * 100)}%`,
-                          }}
-                        />
-                      </div>
-                      <span className="font-mono font-black text-ink">
-                        {Math.round(originalRatio * 100)}%
-                      </span>
+                  <Metric label="كلمة" value={original.words} />
+                  <Metric label="حرف" value={original.characters} />
+                </div>
+                {originalRatio !== null && (
+                  <div className="mt-3 flex items-center gap-2 border border-slate-300 bg-slate-50 px-3 py-2 text-xs">
+                    <span className="font-bold text-slate-500">
+                      نسبة العربية
+                    </span>
+                    <div className="h-2 flex-1 overflow-hidden bg-slate-200">
+                      <div
+                        className="h-full bg-brand-500 transition-all"
+                        style={{
+                          width: `${Math.round(originalRatio * 100)}%`,
+                        }}
+                      />
                     </div>
-                  )}
-                </div>
-              ) : (
-                <Placeholder
-                  active={s1 === "active"}
-                  text="ستظهر قياسات النص الأصلي هنا"
-                />
-              )}
-            </SpecCard>
+                    <span className="font-mono font-black text-ink">
+                      {Math.round(originalRatio * 100)}%
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Placeholder
+                active={s1 === "active"}
+                text="ستظهر قياسات النص الأصلي هنا"
+              />
+            )}
+          </SpecCard>
 
-            <SpecCard
-              tag="ST-02"
-              title="المعالجة"
-              subtitle="تنقية محلية ثم إعادة صياغة عبر Gemini عند توفره"
-              status={s2}
-            >
-              {dual ? (
-                <div className="flex items-center gap-3 border border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
-                  <Wand2 className="shrink-0 text-brand-500" />
-                  <span className="flex-1">{dual.note}</span>
-                  <span
-                    className={`px-2.5 py-1 text-[11px] font-bold ${dual.source === "gemini" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}
-                  >
-                    {dual.source === "gemini"
-                      ? `${dual.model ?? "Gemini"}${dual.viaUserKey ? " · مفتاحك" : ""}`
-                      : "محلي"}
-                  </span>
-                </div>
-              ) : (
-                <Placeholder
-                  active={s2 === "active"}
-                  text="تُنقّى العربية محلياً، ويُنشئ Gemini الترجمة عند توفره"
-                />
-              )}
-            </SpecCard>
-          </div>
-        </section>
+          <SpecCard
+            tag="ST-02"
+            title="المعالجة"
+            subtitle="تنقية محلية ثم إعادة صياغة عبر Gemini عند توفره"
+            status={s2}
+          >
+            {dual ? (
+              <div className="flex items-center gap-3 border border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
+                <Wand2 className="shrink-0 text-brand-500" />
+                <span className="flex-1">{dual.note}</span>
+                <span
+                  className={`px-2.5 py-1 text-[11px] font-bold ${dual.source === "gemini" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}
+                >
+                  {dual.source === "gemini"
+                    ? `${dual.model ?? "Gemini"}${dual.viaUserKey ? " · مفتاحك" : ""}`
+                    : "محلي"}
+                </span>
+              </div>
+            ) : (
+              <Placeholder
+                active={s2 === "active"}
+                text="تُنقّى العربية محلياً، ويُنشئ Gemini الترجمة عند توفره"
+              />
+            )}
+          </SpecCard>
+        </div>
 
         {/* 03 — OUTPUTS */}
         <SpecHead
@@ -381,7 +375,7 @@ export function OptimizerWorkspace() {
 
         <footer className="mt-10 flex items-center justify-center gap-2 border-t border-slate-300 pt-4 text-xs text-slate-500">
           <Gauge size={15} /> القياس عبر Gemini countTokens عند توفره، وإلا
-          بتقدير محلي · الترجمة تتطلب Gemini.
+          بتقدير محلي · الترجمة تتطلب Gemini · مفتاحك يبقى في متصفحك.
         </footer>
         <SettingsModal
           open={settingsOpen}
