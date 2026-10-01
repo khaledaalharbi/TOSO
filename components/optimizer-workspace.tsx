@@ -583,12 +583,25 @@ function OutputCard({
             ))}
         </div>
         <div className="mt-3 flex items-center justify-between text-xs">
-          <span className="font-mono font-bold text-slate-600">
-            {report ? `${report.analysis.tokens} Tokens` : "— Tokens"}
-            {lang === "ar" && report?.analysis.arabicRatio !== undefined && (
-              <span className="ms-2 font-sans font-normal text-slate-400">
-                {Math.round(report.analysis.arabicRatio * 100)}% عربي
+          <span className="flex items-center gap-3">
+            <span className="flex items-baseline gap-1.5">
+              <span className="font-mono text-sm font-black text-ink">
+                {report ? report.analysis.tokens : "—"}
               </span>
+              <span className="font-mono text-[10px] uppercase tracking-wider text-slate-400">
+                Tokens
+              </span>
+            </span>
+            {lang === "ar" && report?.analysis.arabicRatio !== undefined && (
+              <>
+                <span className="h-3.5 w-px bg-slate-300" aria-hidden />
+                <span className="flex items-baseline gap-1.5">
+                  <span className="font-mono text-sm font-black text-ink">
+                    {Math.round(report.analysis.arabicRatio * 100)}%
+                  </span>
+                  <span className="text-[10px] text-slate-400">عربي</span>
+                </span>
+              </>
             )}
           </span>
           {report?.measurement && (
