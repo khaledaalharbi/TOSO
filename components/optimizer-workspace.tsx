@@ -215,134 +215,135 @@ export function OptimizerWorkspace() {
           </div>
         </section>
 
-        {/* 02 — PROCESS MAP */}
+        {/* 02 — PROCESS MAP + STATION RESULTS */}
         <SpecHead
           num="02"
           title="مخطط دورة المعالجة"
           note="أربع محطات — تُضاء عند اكتمالها فعلياً"
         />
-        <section className="border border-ink bg-white p-4 shadow-hard sm:p-6">
-          <RadialPipeline
-            phase={phase}
-            running={running}
-            hasOriginal={original !== null}
-            hasDual={dual !== null}
-            hasReport={report !== null}
-          />
-        </section>
-
-        {/* 03 — STATION RESULTS */}
-        <SpecHead
-          num="03"
-          title="نتائج المحطات"
-          note="تفاصيل كل محطة من مخطط المعالجة"
-        />
-        <div className="space-y-4">
-          <SpecCard
-            tag="ST-01"
-            title="قياس الأصل"
-            subtitle="Token Analysis — قياس النص الأصلي"
-            status={s1}
-          >
-            {original ? (
-              <div>
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <Metric
-                    label={
-                      original.source === "provider"
-                        ? "Tokens حقيقية"
-                        : "Tokens تقديرية"
-                    }
-                    value={original.tokens}
-                  />
-                  <Metric label="كلمة" value={original.words} />
-                  <Metric label="حرف" value={original.characters} />
-                </div>
-                {originalRatio !== null && (
-                  <div className="mt-3 flex items-center gap-2 border border-slate-300 bg-slate-50 px-3 py-2 text-xs">
-                    <span className="font-bold text-slate-500">
-                      نسبة العربية
-                    </span>
-                    <div className="h-2 flex-1 overflow-hidden bg-slate-200">
-                      <div
-                        className="h-full bg-brand-500 transition-all"
-                        style={{
-                          width: `${Math.round(originalRatio * 100)}%`,
-                        }}
-                      />
-                    </div>
-                    <span className="font-mono font-black text-ink">
-                      {Math.round(originalRatio * 100)}%
-                    </span>
-                  </div>
-                )}
-                <SourceBadge
-                  source={original.source}
-                  providerLabel={modelLabel}
-                />
-              </div>
-            ) : (
-              <Placeholder
-                active={s1 === "active"}
-                text="ستظهر قياسات النص الأصلي هنا"
-              />
-            )}
-          </SpecCard>
-
-          <SpecCard
-            tag="ST-02"
-            title="المعالجة"
-            subtitle="تنقية محلية ثم إعادة صياغة عبر Gemini عند توفره"
-            status={s2}
-          >
-            {dual ? (
-              <div className="flex items-center gap-3 border border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
-                <Wand2 className="shrink-0 text-brand-500" />
-                <span className="flex-1">{dual.note}</span>
-                <span
-                  className={`px-2.5 py-1 text-[11px] font-bold ${dual.source === "gemini" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}
-                >
-                  {dual.source === "gemini"
-                    ? `${dual.model ?? "Gemini"}${dual.viaUserKey ? " · مفتاحك" : ""}`
-                    : "محلي"}
-                </span>
-              </div>
-            ) : (
-              <Placeholder
-                active={s2 === "active"}
-                text="تُنقّى العربية محلياً، ويُنشئ Gemini الترجمة عند توفره"
-              />
-            )}
-          </SpecCard>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <OutputCard
-              lang="ar"
-              title="Optimized Output"
-              chip={
-                report?.source === "mock" || dual?.source === "mock"
-                  ? "تنقية محلية"
-                  : "العربية"
-              }
-              status={s3}
-              text={report?.arabic.text ?? dual?.arabic ?? null}
-              report={report?.arabic ?? null}
-            />
-            <OutputCard
-              lang="en"
-              title="Optimized Output"
-              chip="English"
-              status={s3}
-              text={report?.english?.text ?? dual?.english ?? null}
-              unavailable={englishUnavailable}
-              unavailableReason={
-                report?.rejectedByGuard
-                  ? "حُجبت الترجمة لأن مخرج Gemini لم يحفظ بعض الكيانات؛ عُرضت النسخة المحلية بدلاً منه."
-                  : "الترجمة الإنجليزية غير متاحة في الوضع المحلي أو عند تعذّر Gemini."
-              }
-              report={report?.english ?? null}
+        <section className="grid gap-4 lg:grid-cols-[minmax(0,21rem)_minmax(0,1fr)]">
+          <div className="border border-ink bg-white p-4 shadow-hard">
+            <RadialPipeline
+              phase={phase}
+              running={running}
+              hasOriginal={original !== null}
+              hasDual={dual !== null}
+              hasReport={report !== null}
             />
           </div>
+          <div className="space-y-4">
+            <SpecCard
+              tag="ST-01"
+              title="قياس الأصل"
+              subtitle="Token Analysis — قياس النص الأصلي"
+              status={s1}
+            >
+              {original ? (
+                <div>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <Metric
+                      label={
+                        original.source === "provider"
+                          ? "Tokens حقيقية"
+                          : "Tokens تقديرية"
+                      }
+                      value={original.tokens}
+                    />
+                    <Metric label="كلمة" value={original.words} />
+                    <Metric label="حرف" value={original.characters} />
+                  </div>
+                  {originalRatio !== null && (
+                    <div className="mt-3 flex items-center gap-2 border border-slate-300 bg-slate-50 px-3 py-2 text-xs">
+                      <span className="font-bold text-slate-500">
+                        نسبة العربية
+                      </span>
+                      <div className="h-2 flex-1 overflow-hidden bg-slate-200">
+                        <div
+                          className="h-full bg-brand-500 transition-all"
+                          style={{
+                            width: `${Math.round(originalRatio * 100)}%`,
+                          }}
+                        />
+                      </div>
+                      <span className="font-mono font-black text-ink">
+                        {Math.round(originalRatio * 100)}%
+                      </span>
+                    </div>
+                  )}
+                  <SourceBadge
+                    source={original.source}
+                    providerLabel={modelLabel}
+                  />
+                </div>
+              ) : (
+                <Placeholder
+                  active={s1 === "active"}
+                  text="ستظهر قياسات النص الأصلي هنا"
+                />
+              )}
+            </SpecCard>
+
+            <SpecCard
+              tag="ST-02"
+              title="المعالجة"
+              subtitle="تنقية محلية ثم إعادة صياغة عبر Gemini عند توفره"
+              status={s2}
+            >
+              {dual ? (
+                <div className="flex items-center gap-3 border border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
+                  <Wand2 className="shrink-0 text-brand-500" />
+                  <span className="flex-1">{dual.note}</span>
+                  <span
+                    className={`px-2.5 py-1 text-[11px] font-bold ${dual.source === "gemini" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}
+                  >
+                    {dual.source === "gemini"
+                      ? `${dual.model ?? "Gemini"}${dual.viaUserKey ? " · مفتاحك" : ""}`
+                      : "محلي"}
+                  </span>
+                </div>
+              ) : (
+                <Placeholder
+                  active={s2 === "active"}
+                  text="تُنقّى العربية محلياً، ويُنشئ Gemini الترجمة عند توفره"
+                />
+              )}
+            </SpecCard>
+          </div>
+        </section>
+
+        {/* 03 — OUTPUTS */}
+        <SpecHead
+          num="03"
+          title="المخرجات"
+          note="النسختان العربية والإنجليزية"
+        />
+        <div className="grid gap-4 md:grid-cols-2">
+          <OutputCard
+            lang="ar"
+            title="Optimized Output"
+            chip={
+              report?.source === "mock" || dual?.source === "mock"
+                ? "تنقية محلية"
+                : "العربية"
+            }
+            status={s3}
+            text={report?.arabic.text ?? dual?.arabic ?? null}
+            report={report?.arabic ?? null}
+          />
+          <OutputCard
+            lang="en"
+            title="Optimized Output"
+            chip="English"
+            status={s3}
+            text={report?.english?.text ?? dual?.english ?? null}
+            unavailable={englishUnavailable}
+            unavailableReason={
+              report?.rejectedByGuard
+                ? "حُجبت الترجمة لأن مخرج Gemini لم يحفظ بعض الكيانات؛ عُرضت النسخة المحلية بدلاً منه."
+                : "الترجمة الإنجليزية غير متاحة في الوضع المحلي أو عند تعذّر Gemini."
+            }
+            report={report?.english ?? null}
+          />
         </div>
 
         {/* 04 — ANALYSIS */}
@@ -575,7 +576,7 @@ function OutputCard({
         <div className="mt-3 flex items-center justify-between text-xs">
           <span className="font-mono font-bold text-slate-600">
             {report ? `${report.analysis.tokens} Tokens` : "— Tokens"}
-            {report?.analysis.arabicRatio !== undefined && (
+            {lang === "ar" && report?.analysis.arabicRatio !== undefined && (
               <span className="ms-2 font-sans font-normal text-slate-400">
                 {Math.round(report.analysis.arabicRatio * 100)}% عربي
               </span>

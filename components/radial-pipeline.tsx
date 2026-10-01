@@ -9,41 +9,45 @@ type StationState = "idle" | "active" | "done";
  * progress. Station states derive from real pipeline evidence.
  */
 
-const CX = 200;
-const CY = 148;
+const CX = 210;
+const CY = 150;
 
 const STATIONS = [
   {
     id: 1,
     ar: "قياس الأصل",
     en: "MEASURE.IN",
-    desc: "عدّ توكنز البرومبت الأصلي ونسبة العربية",
-    x: 200,
-    y: 40,
+    x: 210,
+    y: 52,
+    labelY: { ar: 26, en: 16 },
+    boxY: 71,
   },
   {
     id: 2,
     ar: "المعالجة",
     en: "PROCESS",
-    desc: "تنقية محلية ثم صياغة Gemini وفحص الحارس",
-    x: 342,
-    y: 148,
+    x: 312,
+    y: 150,
+    labelY: { ar: 106, en: 96 },
+    boxY: 169,
   },
   {
     id: 3,
     ar: "قياس الناتج",
     en: "MEASURE.OUT",
-    desc: "عدّ توكنز النسختين العربية والإنجليزية",
-    x: 200,
-    y: 256,
+    x: 210,
+    y: 244,
+    labelY: { ar: 286, en: 295 },
+    boxY: 225,
   },
   {
     id: 4,
     ar: "التقرير",
     en: "REPORT",
-    desc: "التوفير والتكلفة ونتائج الفحص",
-    x: 58,
-    y: 148,
+    x: 108,
+    y: 150,
+    labelY: { ar: 106, en: 96 },
+    boxY: 169,
   },
 ] as const;
 
@@ -70,10 +74,10 @@ export function RadialPipeline({
   const current = activeIndex >= 0 ? STATIONS[activeIndex] : null;
 
   return (
-    <div className="flex flex-col items-center">
+    <div className="flex h-full flex-col">
       <svg
-        viewBox="0 0 400 296"
-        className="h-auto w-full max-w-md select-none"
+        viewBox="0 0 420 300"
+        className="h-auto w-full select-none"
         role="img"
         aria-label="خريطة محطات دورة التحسين"
       >
@@ -81,7 +85,7 @@ export function RadialPipeline({
         <circle
           cx={CX}
           cy={CY}
-          r="108"
+          r="98"
           fill="none"
           stroke="#94a3b8"
           strokeWidth="1"
@@ -91,7 +95,7 @@ export function RadialPipeline({
         <circle
           cx={CX}
           cy={CY}
-          r="46"
+          r="44"
           fill="none"
           stroke="#cbd5e1"
           strokeWidth="1"
@@ -126,7 +130,7 @@ export function RadialPipeline({
           <path d="M0 -4.5 L4.5 0 L0 4.5 L-4.5 0 Z" fill="#20b89a">
             <animateMotion
               path={`M ${CX} ${CY} L ${current.x} ${current.y}`}
-              dur="0.9s"
+              dur="0.45s"
               repeatCount="indefinite"
             />
           </path>
@@ -137,7 +141,7 @@ export function RadialPipeline({
           <circle
             cx={CX}
             cy={CY}
-            r="38"
+            r="36"
             fill="#f6f6f2"
             stroke={running ? "#20b89a" : "#0d1729"}
             strokeWidth="1.4"
@@ -157,23 +161,23 @@ export function RadialPipeline({
           <circle
             cx={CX}
             cy={CY}
-            r="27"
+            r="25"
             fill="#ffffff"
             stroke="#0d1729"
             strokeWidth="1.2"
           />
           {/* crosshair ticks */}
-          <line x1={CX} y1={CY - 22} x2={CX} y2={CY - 12} stroke="#94a3b8" />
-          <line x1={CX} y1={CY + 12} x2={CX} y2={CY + 22} stroke="#94a3b8" />
-          <line x1={CX - 22} y1={CY} x2={CX - 12} y2={CY} stroke="#94a3b8" />
-          <line x1={CX + 12} y1={CY} x2={CX + 22} y2={CY} stroke="#94a3b8" />
+          <line x1={CX} y1={CY - 20} x2={CX} y2={CY - 11} stroke="#94a3b8" />
+          <line x1={CX} y1={CY + 11} x2={CX} y2={CY + 20} stroke="#94a3b8" />
+          <line x1={CX - 20} y1={CY} x2={CX - 11} y2={CY} stroke="#94a3b8" />
+          <line x1={CX + 20} y1={CY} x2={CX + 11} y2={CY} stroke="#94a3b8" />
           <path
-            d="M200 141 L203.5 148 L200 155 L196.5 148 Z"
+            d={`M${CX} ${CY - 6.5} L${CX + 3.5} ${CY} L${CX} ${CY + 6.5} L${CX - 3.5} ${CY} Z`}
             fill={running ? "#20b89a" : "#0d1729"}
           />
           <text
             x={CX}
-            y={CY + 60}
+            y={CY + 53}
             textAnchor="middle"
             className="fill-ink text-[11px] font-bold"
           >
@@ -181,7 +185,7 @@ export function RadialPipeline({
           </text>
           <text
             x={CX}
-            y={CY + 71}
+            y={CY + 64}
             textAnchor="middle"
             className="fill-slate-400 font-mono text-[7.5px]"
           >
@@ -189,16 +193,15 @@ export function RadialPipeline({
           </text>
         </g>
 
-        {/* stations — boxed spec number + ring + bilingual callout label */}
+        {/* stations — ring + boxed spec number + bilingual callout label */}
         {STATIONS.map((s, i) => {
           const state = states[i];
-          const labelAbove = s.y > CY;
           return (
             <g key={s.id}>
               <circle
                 cx={s.x}
                 cy={s.y}
-                r="16"
+                r="15"
                 fill={state === "done" ? "#20b89a" : "#ffffff"}
                 stroke={
                   state === "active"
@@ -211,7 +214,7 @@ export function RadialPipeline({
               />
               {state === "done" ? (
                 <path
-                  d={`M${s.x - 5} ${s.y} l3.5 3.5 l7 -7`}
+                  d={`M${s.x - 4.5} ${s.y} l3 3 l6 -6`}
                   fill="none"
                   stroke="#ffffff"
                   strokeWidth="2"
@@ -234,10 +237,10 @@ export function RadialPipeline({
                   )}
                 </circle>
               )}
-              {/* boxed station number on the spoke side */}
+              {/* boxed station number beside the spoke */}
               <rect
                 x={s.x - 9}
-                y={s.y + (s.y <= CY ? 19 : -29)}
+                y={s.boxY}
                 width="18"
                 height="11"
                 fill="#ffffff"
@@ -246,7 +249,7 @@ export function RadialPipeline({
               />
               <text
                 x={s.x}
-                y={s.y + (s.y <= CY ? 27.5 : -20.5)}
+                y={s.boxY + 8.5}
                 textAnchor="middle"
                 className={`font-mono text-[7.5px] font-medium ${
                   state === "idle" ? "fill-slate-400" : "fill-ink"
@@ -254,10 +257,10 @@ export function RadialPipeline({
               >
                 {String(s.id).padStart(2, "0")}
               </text>
-              {/* bilingual callout label */}
+              {/* bilingual callout label — positioned inside the viewBox */}
               <text
                 x={s.x}
-                y={s.y + (labelAbove ? 44 : -38)}
+                y={s.labelY.ar}
                 textAnchor="middle"
                 className={`text-[11px] font-bold ${
                   state === "active"
@@ -271,7 +274,7 @@ export function RadialPipeline({
               </text>
               <text
                 x={s.x}
-                y={s.y + (labelAbove ? 55 : -49)}
+                y={s.labelY.en}
                 textAnchor="middle"
                 className="fill-slate-400 font-mono text-[7px]"
               >
@@ -283,7 +286,7 @@ export function RadialPipeline({
       </svg>
 
       {/* status strip — reads like a spec line, not a spinner */}
-      <div className="mt-2 flex w-full items-center justify-between border border-slate-900 bg-white px-3 py-2 text-xs">
+      <div className="mt-auto flex w-full items-center justify-between border border-slate-900 bg-white px-3 py-2 text-xs">
         <span className="flex items-center gap-2">
           <span
             className={`h-2 w-2 ${

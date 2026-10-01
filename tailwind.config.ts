@@ -9,7 +9,7 @@ const config: Config = {
         brand: { 400: "#54d3b8", 500: "#20b89a", 600: "#129278" },
       },
       fontFamily: {
-        sans: ['"IBM Plex Sans Arabic"', "Tahoma", "sans-serif"],
+        sans: ["Tajawal", "Tahoma", "sans-serif"],
         mono: ['"IBM Plex Mono"', "ui-monospace", "monospace"],
       },
       boxShadow: {
