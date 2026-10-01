@@ -239,19 +239,19 @@ export function RadialPipeline({
               )}
               {/* boxed station number beside the spoke */}
               <rect
-                x={s.x - 9}
+                x={s.x - 10}
                 y={s.boxY}
-                width="18"
-                height="11"
+                width="20"
+                height="12.5"
                 fill="#ffffff"
                 stroke={state === "idle" ? "#cbd5e1" : "#0d1729"}
                 strokeWidth="1"
               />
               <text
                 x={s.x}
-                y={s.boxY + 8.5}
+                y={s.boxY + 9.5}
                 textAnchor="middle"
-                className={`font-mono text-[7.5px] font-medium ${
+                className={`font-mono text-[8.5px] font-medium ${
                   state === "idle" ? "fill-slate-400" : "fill-ink"
                 }`}
               >
@@ -262,7 +262,7 @@ export function RadialPipeline({
                 x={s.x}
                 y={s.labelY.ar}
                 textAnchor="middle"
-                className={`text-[11px] font-bold ${
+                className={`text-[12.5px] font-bold ${
                   state === "active"
                     ? "fill-brand-600"
                     : state === "done"
@@ -276,7 +276,7 @@ export function RadialPipeline({
                 x={s.x}
                 y={s.labelY.en}
                 textAnchor="middle"
-                className="fill-slate-400 font-mono text-[7px]"
+                className="fill-slate-400 font-mono text-[8px]"
               >
                 {s.en}
               </text>

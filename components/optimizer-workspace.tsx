@@ -347,19 +347,22 @@ export function OptimizerWorkspace() {
         </div>
 
         {/* 04 — ANALYSIS */}
-        {report && (
-          <>
-            <SpecHead
-              num="04"
-              title="التحليل"
-              note="خريطة الثقل وتفصيل التوفير واستهلاك الاستدعاء"
-            />
-            <div className="space-y-4">
-              <TokenHeatmap report={report} />
-              <OptimizationInsights report={report} />
-              <OptimizationUsagePanel report={report} />
-            </div>
-          </>
+        <SpecHead
+          num="04"
+          title="التحليل"
+          note="خريطة الثقل وتفصيل التوفير واستهلاك الاستدعاء"
+        />
+        {report ? (
+          <div className="space-y-4">
+            <TokenHeatmap report={report} />
+            <OptimizationInsights report={report} />
+            <OptimizationUsagePanel report={report} />
+          </div>
+        ) : (
+          <Placeholder
+            active={phase === "measuring"}
+            text="تظهر التحليلات هنا بعد اكتمال الدورة"
+          />
         )}
 
         {/* 05 — COST */}
