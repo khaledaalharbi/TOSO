@@ -221,8 +221,8 @@ export function OptimizerWorkspace() {
           title="مخطط دورة المعالجة"
           note="أربع محطات — تُضاء عند اكتمالها فعلياً"
         />
-        <section className="grid gap-4 lg:grid-cols-[minmax(0,21rem)_minmax(0,1fr)]">
-          <div className="self-start border border-ink bg-white p-4 shadow-hard">
+        <section className="grid gap-4 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
+          <div className="self-start border border-ink bg-white p-4">
             <RadialPipeline
               phase={phase}
               running={running}
@@ -237,6 +237,15 @@ export function OptimizerWorkspace() {
               title="قياس الأصل"
               subtitle="Token Analysis — قياس النص الأصلي"
               status={s1}
+              action={
+                original ? (
+                  <SourceBadge
+                    compact
+                    source={original.source}
+                    providerLabel={modelLabel}
+                  />
+                ) : null
+              }
             >
               {original ? (
                 <div>
@@ -270,10 +279,6 @@ export function OptimizerWorkspace() {
                       </span>
                     </div>
                   )}
-                  <SourceBadge
-                    source={original.source}
-                    providerLabel={modelLabel}
-                  />
                 </div>
               ) : (
                 <Placeholder
@@ -421,12 +426,14 @@ function SpecCard({
   title,
   subtitle,
   status,
+  action,
   children,
 }: {
   tag: string;
   title: string;
   subtitle: string;
   status: NodeStatus;
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const active = status === "active";
@@ -457,8 +464,13 @@ function SpecCard({
           <h3 className="font-bold leading-5">{title}</h3>
           <p className="text-xs text-slate-500">{subtitle}</p>
         </div>
-        {active && (
-          <span className="ms-auto h-2.5 w-2.5 animate-ping bg-brand-400" />
+        {(active || action) && (
+          <div className="ms-auto flex items-center gap-2">
+            {active && (
+              <span className="h-2.5 w-2.5 animate-ping bg-brand-400" />
+            )}
+            {action}
+          </div>
         )}
       </div>
       {children}
@@ -1173,9 +1185,11 @@ function Metric({ label, value }: { label: string; value: string | number }) {
 function SourceBadge({
   source,
   providerLabel,
+  compact,
 }: {
   source?: TokenMeasurement["source"];
   providerLabel?: string;
+  compact?: boolean;
 }) {
   if (!source) return null;
   const live = source === "provider";
@@ -1184,9 +1198,16 @@ function SourceBadge({
     : source === "bpe"
       ? "تقدير BPE محلي"
       : "تقدير تجريبي";
+  const colors = live
+    ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+    : "border-amber-300 bg-amber-50 text-amber-700";
   return (
     <div
-      className={`mt-3 flex items-center justify-center gap-1.5 border px-3 py-2 text-xs font-bold ${live ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-amber-300 bg-amber-50 text-amber-700"}`}
+      className={
+        compact
+          ? `inline-flex items-center gap-1.5 border px-2 py-1 text-[11px] font-bold ${colors}`
+          : `mt-3 flex items-center justify-center gap-1.5 border px-3 py-2 text-xs font-bold ${colors}`
+      }
     >
       <span className={`h-2 w-2 ${live ? "bg-emerald-500" : "bg-amber-500"}`} />
       {label}
