@@ -104,15 +104,15 @@ export function RadialPipeline({
           </path>
         )}
 
-        {/* central core — crosshair + rotating dash ring while running */}
+        {/* central core — rotating dash ring + label INSIDE the disc */}
         <g>
           <circle
             cx={CX}
             cy={CY}
-            r="36"
-            fill="#f6f6f2"
+            r="44"
+            fill="none"
             stroke={running ? "#20b89a" : "#0d1729"}
-            strokeWidth="1.4"
+            strokeWidth="1.3"
             strokeDasharray="5 5"
           >
             {running && (
@@ -129,35 +129,35 @@ export function RadialPipeline({
           <circle
             cx={CX}
             cy={CY}
-            r="25"
+            r="33"
             fill="#ffffff"
             stroke="#0d1729"
-            strokeWidth="1.2"
+            strokeWidth="1.4"
           />
-          {/* crosshair ticks */}
-          <line x1={CX} y1={CY - 20} x2={CX} y2={CY - 11} stroke="#94a3b8" />
-          <line x1={CX} y1={CY + 11} x2={CX} y2={CY + 20} stroke="#94a3b8" />
-          <line x1={CX - 20} y1={CY} x2={CX - 11} y2={CY} stroke="#94a3b8" />
-          <line x1={CX + 20} y1={CY} x2={CX + 11} y2={CY} stroke="#94a3b8" />
+          {/* crosshair ticks on the disc rim */}
+          <line x1={CX} y1={CY - 33} x2={CX} y2={CY - 26} stroke="#94a3b8" />
+          <line x1={CX} y1={CY + 26} x2={CX} y2={CY + 33} stroke="#94a3b8" />
+          <line x1={CX - 33} y1={CY} x2={CX - 26} y2={CY} stroke="#94a3b8" />
+          <line x1={CX + 26} y1={CY} x2={CX + 33} y2={CY} stroke="#94a3b8" />
           <path
-            d={`M${CX} ${CY - 6.5} L${CX + 3.5} ${CY} L${CX} ${CY + 6.5} L${CX - 3.5} ${CY} Z`}
+            d={`M${CX} ${CY - 20} L${CX + 3.5} ${CY - 13.5} L${CX} ${CY - 7} L${CX - 3.5} ${CY - 13.5} Z`}
             fill={running ? "#20b89a" : "#0d1729"}
           />
           <text
             x={CX}
-            y={CY + 53}
+            y={CY + 4}
             textAnchor="middle"
-            className="fill-ink text-[11px] font-bold"
+            className="fill-ink text-[10.5px] font-bold"
           >
             نواة التحسين
           </text>
           <text
             x={CX}
-            y={CY + 64}
+            y={CY + 15}
             textAnchor="middle"
-            className="fill-slate-400 font-mono text-[7.5px]"
+            className="fill-slate-400 font-mono text-[6.5px]"
           >
-            OPTIMIZER.CORE
+            OPT.CORE
           </text>
         </g>
 
@@ -236,18 +236,16 @@ export function RadialPipeline({
                 }`}
               >
                 <tspan
-                  className={`font-mono text-[10px] ${
+                  className={`font-mono text-[10px] font-medium ${
                     state === "idle" ? "fill-slate-400" : "fill-brand-600"
                   }`}
                 >
                   {String(s.id).padStart(2, "0")}
+                  {"\u00A0\u00A0"}
                 </tspan>
-                <tspan dx="5">{s.ar}</tspan>
-                <tspan
-                  className="fill-slate-400 font-mono text-[8px] font-medium"
-                  dx="5"
-                >
-                  · {s.en}
+                <tspan>{s.ar}</tspan>
+                <tspan className="fill-slate-400 font-mono text-[8.5px] font-medium">
+                  {"\u00A0"}· {s.en}
                 </tspan>
               </text>
             </g>

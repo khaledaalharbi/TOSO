@@ -1161,11 +1161,11 @@ function CostGroup({
 
 function Metric({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="border border-slate-200 bg-slate-50 px-2 py-3">
-      <div className="font-mono text-lg font-black text-ink" dir="auto">
+    <div className="flex items-baseline justify-between gap-2 border border-slate-200 bg-slate-50 px-3 py-2.5">
+      <span className="font-mono text-lg font-black text-ink" dir="auto">
         {value}
-      </div>
-      <div className="mt-1 text-[11px] text-slate-500">{label}</div>
+      </span>
+      <span className="text-[11px] text-slate-500">{label}</span>
     </div>
   );
 }
