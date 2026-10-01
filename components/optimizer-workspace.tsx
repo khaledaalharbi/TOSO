@@ -52,7 +52,7 @@ const USER_KEY_STORAGE = "toso.userGeminiKey";
 const formatCost = (value: number) =>
   value === 0
     ? "مجاني"
-    : `$${value < 0.001 ? value.toFixed(5) : value.toFixed(3)}`;
+    : `$ ${value < 0.001 ? value.toFixed(5) : value.toFixed(3)}`;
 
 export type Phase = "idle" | "analyzing" | "optimizing" | "measuring" | "done";
 type NodeStatus = "idle" | "active" | "done";
