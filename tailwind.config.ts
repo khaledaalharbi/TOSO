@@ -10,7 +10,7 @@ const config: Config = {
       },
       fontFamily: {
         sans: ["Tajawal", "Tahoma", "sans-serif"],
-        mono: ['"Geist Mono"', "ui-monospace", "monospace"],
+        mono: ['"Geist Mono"', "Tajawal", "ui-monospace", "monospace"],
       },
       boxShadow: {
         hard: "4px 4px 0 0 rgba(13, 23, 41, 0.9)",
