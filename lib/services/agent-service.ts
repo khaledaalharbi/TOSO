@@ -112,12 +112,15 @@ export async function checkBridge(config: BridgeConfig): Promise<BridgeStatus> {
 /**
  * Fires the job, then polls until it leaves "running" (or the caller aborts).
  * Agent runs can take minutes — polling, not a held request, is the contract.
+ * `onJob` reports each polled job state so the UI can show "running" instead
+ * of lingering on "connecting" for the whole run.
  */
 export async function sendPromptToAgent(
   config: BridgeConfig,
   agent: string,
   prompt: string,
   signal?: AbortSignal,
+  onJob?: (job: AgentJob) => void,
 ): Promise<AgentSendResult> {
   const resolved = await resolveBridgeConfig(config);
   const health = await checkBridge(resolved);
@@ -147,6 +150,7 @@ export async function sendPromptToAgent(
   if (started.job && started.job.status !== "running") {
     return { ok: true, job: started.job };
   }
+  if (started.job) onJob?.(started.job);
 
   while (true) {
     if (signal?.aborted) {
@@ -170,6 +174,7 @@ export async function sendPromptToAgent(
       job?: AgentJob;
     } | null;
     if (!payload?.job) return { ok: false, status: { state: "offline" } };
+    onJob?.(payload.job);
     if (payload.job.status !== "running") {
       return { ok: true, job: payload.job };
     }

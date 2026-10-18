@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { agentCommand } from "@/lib/bridge/agents";
+import { agentCommand, agentSendMode } from "@/lib/bridge/agents";
 import {
   checkBridge,
   sendPromptToAgent,
@@ -181,5 +181,32 @@ describe("agentCommand", () => {
   it("escapes quotes and shell metacharacters inside the prompt", () => {
     const command = agentCommand("gemini", 'say "hi" & `rm -rf` $HOME');
     expect(command).toBe('gemini -p "say \\"hi\\" & \\`rm -rf\\` \\$HOME"');
+  });
+});
+
+describe("agentSendMode", () => {
+  const defaultAgent = "devin";
+
+  it("auto only when autoSend is on AND the pick is the default", () => {
+    expect(
+      agentSendMode({ autoSend: true, picked: null, defaultAgent }),
+    ).toEqual({ active: "devin", auto: true });
+    // The spec: re-picking the default after wandering returns to auto.
+    expect(
+      agentSendMode({ autoSend: true, picked: "devin", defaultAgent }),
+    ).toEqual({ active: "devin", auto: true });
+  });
+
+  it("switching to another agent drops to manual (button re-enables)", () => {
+    expect(
+      agentSendMode({ autoSend: true, picked: "gemini", defaultAgent }),
+    ).toEqual({ active: "gemini", auto: false });
+  });
+
+  it("without autoSend everything is manual regardless of pick", () => {
+    expect(
+      agentSendMode({ autoSend: false, picked: null, defaultAgent }),
+    ).toEqual({ active: "devin", auto: false });
+    expect(agentSendMode({ picked: null, defaultAgent }).auto).toBe(false);
   });
 });

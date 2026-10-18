@@ -302,7 +302,7 @@ export function SettingsModal({
             </label>
             <div className="mt-3 flex items-center gap-3">
               <label className="block flex-1 text-sm font-semibold">
-                الوكيل
+                الوكيل الافتراضي
                 <select
                   id="agent"
                   name="agent"
@@ -328,6 +328,25 @@ export function SettingsModal({
                 {bridgeStatus === "checking" ? "يفحص…" : "فحص الاتصال"}
               </button>
             </div>
+            <label className="mt-3 flex cursor-pointer items-start gap-2.5 border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold">
+              <input
+                id="auto-send"
+                name="auto-send"
+                type="checkbox"
+                checked={config.autoSend ?? false}
+                onChange={(event) =>
+                  onChange({ ...config, autoSend: event.target.checked })
+                }
+                className="mt-0.5 h-4 w-4 shrink-0 accent-violet-700"
+              />
+              <span>
+                إرسال تلقائي إلى الوكيل الافتراضي
+                <span className="block text-xs font-normal leading-5 text-slate-500">
+                  بعد كل تحليل يُرسل الناتج الأساسي تلقائياً. اختيار وكيل آخر من
+                  القائمة يحوّل الإرسال إلى يدوي حتى تعيد اختيار الافتراضي.
+                </span>
+              </span>
+            </label>
             {bridgeStatus !== "idle" && bridgeStatus !== "checking" && (
               <p
                 role="status"

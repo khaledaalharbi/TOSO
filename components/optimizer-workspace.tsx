@@ -31,6 +31,8 @@ import {
   AGENT_OPTIONS,
   DEFAULT_BRIDGE_URL,
   agentCommand,
+  agentLabel,
+  agentSendMode,
 } from "@/lib/bridge/agents";
 import type { DualOptimization } from "@/lib/optimizer/llm-optimizer";
 import type { EntityCheck } from "@/lib/optimizer/entity-guard";
@@ -69,6 +71,7 @@ const USER_KEY_STORAGE = "toso.userGeminiKey";
 const BRIDGE_URL_STORAGE = "toso.bridgeUrl";
 const BRIDGE_TOKEN_STORAGE = "toso.bridgeToken";
 const AGENT_STORAGE = "toso.agent";
+const AUTO_SEND_STORAGE = "toso.autoSend";
 
 const formatCost = (value: number) =>
   value === 0
@@ -110,6 +113,16 @@ export function OptimizerWorkspace() {
     useState<AgentTranslation | null>(null);
   const [translating, setTranslating] = useState(false);
   const agentAbort = useRef<AbortController | null>(null);
+  // The card-level agent pick — null means "the configured default". With
+  // autoSend on, the send button is disabled exactly while the pick equals
+  // the default (switching to another agent → manual mode).
+  const [pickedAgent, setPickedAgent] = useState<string | null>(null);
+  const defaultAgent = config.agent ?? AGENT_OPTIONS[0].id;
+  const { active: activeAgent, auto: autoSendActive } = agentSendMode({
+    autoSend: config.autoSend,
+    picked: pickedAgent,
+    defaultAgent,
+  });
 
   // Hydrate the BYOK key and bridge settings once on mount, then mirror
   // every change to storage.
@@ -119,12 +132,14 @@ export function OptimizerWorkspace() {
       const bridgeUrl = window.localStorage.getItem(BRIDGE_URL_STORAGE);
       const bridgeToken = window.localStorage.getItem(BRIDGE_TOKEN_STORAGE);
       const agent = window.localStorage.getItem(AGENT_STORAGE);
+      const autoSend = window.localStorage.getItem(AUTO_SEND_STORAGE);
       setConfig((c) => ({
         ...c,
         ...(stored ? { userKey: stored } : {}),
         ...(bridgeUrl ? { bridgeUrl } : {}),
         ...(bridgeToken ? { bridgeToken } : {}),
         ...(agent ? { agent } : {}),
+        ...(autoSend ? { autoSend: autoSend === "1" } : {}),
       }));
     } catch {
       setStorageWarning(true);
@@ -162,10 +177,24 @@ export function OptimizerWorkspace() {
       } else {
         window.localStorage.removeItem(AGENT_STORAGE);
       }
+      if (config.autoSend) {
+        window.localStorage.setItem(AUTO_SEND_STORAGE, "1");
+      } else {
+        window.localStorage.removeItem(AUTO_SEND_STORAGE);
+      }
     } catch {
       setStorageWarning(true);
     }
-  }, [config.bridgeUrl, config.bridgeToken, config.agent, keyHydrated]);
+  }, [
+    config.bridgeUrl,
+    config.bridgeToken,
+    config.agent,
+    config.autoSend,
+    keyHydrated,
+  ]);
+  // A new default in settings clears any per-card override — the pick
+  // returns to "the default" so auto-dispatch resumes its meaning.
+  useEffect(() => setPickedAgent(null), [config.agent]);
 
   async function handleRun() {
     if (!keyHydrated || !prompt.trim() || running) return;
@@ -200,6 +229,15 @@ export function OptimizerWorkspace() {
       setReport(nextReport);
       setOriginal(nextReport.originalMeasurement ?? null);
       setPhase("done");
+      // Auto-dispatch: only when the picked agent IS the default — a
+      // different pick means the user asked for manual control this run.
+      if (config.autoSend && activeAgent === defaultAgent) {
+        const primaryText =
+          nextReport.direction === "en"
+            ? nextReport.english?.text
+            : nextReport.arabic?.text;
+        if (primaryText) void sendToAgent(primaryText, defaultAgent);
+      }
     } catch {
       setReport(null);
       setDual(null);
@@ -224,6 +262,7 @@ export function OptimizerWorkspace() {
     agentAbort.current?.abort();
     setAgentRun(null);
     setAgentTranslation(null);
+    setPickedAgent(null);
   }
 
   /**
@@ -248,6 +287,16 @@ export function OptimizerWorkspace() {
         agent,
         text,
         controller.signal,
+        (job) =>
+          setAgentRun((current) =>
+            current && current.phase !== "done" && current.phase !== "error"
+              ? {
+                  ...current,
+                  phase: job.status === "running" ? "running" : current.phase,
+                  job,
+                }
+              : current,
+          ),
       );
       if (!result.ok) {
         const state = result.status.state;
@@ -550,7 +599,10 @@ export function OptimizerWorkspace() {
                     : "الترجمة العربية غير متاحة في الوضع المحلي أو عند تعذّر Gemini."
                 }
                 report={report?.arabic ?? null}
-                onSend={sendToAgent}
+                agent={activeAgent}
+                agentDisabled={autoSendActive}
+                onSelectAgent={setPickedAgent}
+                onSend={(value) => void sendToAgent(value, activeAgent)}
               />
             );
             const englishCard = (
@@ -572,7 +624,10 @@ export function OptimizerWorkspace() {
                     : "الترجمة الإنجليزية غير متاحة في الوضع المحلي أو عند تعذّر Gemini."
                 }
                 report={report?.english ?? null}
-                onSend={sendToAgent}
+                agent={activeAgent}
+                agentDisabled={autoSendActive}
+                onSelectAgent={setPickedAgent}
+                onSend={(value) => void sendToAgent(value, activeAgent)}
               />
             );
             return direction === "en"
@@ -598,7 +653,7 @@ export function OptimizerWorkspace() {
         ) : (
           <Placeholder
             active={false}
-            text="من بطاقة مخرجات اضغط «إلى الوكيل» لإرسال النص عبر الجسر المحلي — شغّله بأمر npm run bridge"
+            text="من بطاقة مخرجات: اختر الوكيل من قائمة «الوكيل» ثم اضغط زرّه للإرسال اليدوي — أو فعّل الإرسال التلقائي من الإعدادات"
           />
         )}
 
@@ -794,6 +849,9 @@ function OutputCard({
   unavailableReason,
   report,
   status,
+  agent,
+  agentDisabled,
+  onSelectAgent,
   onSend,
 }: {
   lang: "ar" | "en";
@@ -804,8 +862,14 @@ function OutputCard({
   unavailableReason?: string;
   report: VariantReport | null;
   status: NodeStatus;
-  /** Sends this variant's text to a chosen CLI agent via the local bridge. */
-  onSend?: (text: string, agentId: string) => void;
+  /** Agent id currently picked for this workspace's sends. */
+  agent?: string;
+  /** True while auto-dispatch owns the send (picked agent == default). */
+  agentDisabled?: boolean;
+  /** The selector only picks WHICH agent — it never sends. */
+  onSelectAgent?: (agentId: string) => void;
+  /** The named button sends this variant's text to the picked agent. */
+  onSend?: (text: string) => void;
 }) {
   const emerald = lang === "ar";
   const bar = emerald ? "bg-emerald-500" : "bg-blue-500";
@@ -828,34 +892,59 @@ function OutputCard({
           </span>
           <h3 className="font-bold">{title}</h3>
           <div className="ms-auto flex items-center gap-1.5">
-            {text && onSend && (
+            {text && onSelectAgent && (
               <details className="group relative">
                 <summary
-                  title="إرسال هذا النص إلى وكيل CLI عبر الجسر المحلي"
-                  className="flex cursor-pointer list-none items-center gap-1.5 border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-violet-700 transition hover:border-violet-600 [&::-webkit-details-marker]:hidden"
+                  title="اختيار وكيل CLI لاستقبال هذا النص"
+                  className="flex cursor-pointer list-none items-center gap-1.5 border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-600 transition hover:border-ink [&::-webkit-details-marker]:hidden"
                 >
-                  <Send size={14} />
-                  إلى الوكيل ▾
+                  <Settings2 size={14} />
+                  الوكيل ▾
                 </summary>
                 <div className="absolute left-0 top-8 z-40 w-44 border border-ink bg-white py-1 shadow-hard-sm">
-                  {AGENT_OPTIONS.map((agent) => (
+                  {AGENT_OPTIONS.map((opt) => (
                     <button
-                      key={agent.id}
+                      key={opt.id}
                       type="button"
                       onClick={(event) => {
                         event.currentTarget
                           .closest("details")
                           ?.removeAttribute("open");
-                        onSend(text, agent.id);
+                        onSelectAgent(opt.id);
                       }}
                       className="flex w-full items-center gap-2 px-3 py-2 text-start text-xs font-bold text-slate-700 transition hover:bg-violet-50 hover:text-violet-800"
                     >
-                      <Send size={12} className="shrink-0 text-violet-500" />
-                      {agent.label}
+                      {opt.id === agent ? (
+                        <Check size={12} className="shrink-0 text-violet-600" />
+                      ) : (
+                        <span className="w-3 shrink-0" />
+                      )}
+                      {opt.label}
                     </button>
                   ))}
                 </div>
               </details>
+            )}
+            {text && onSend && agent && (
+              <button
+                type="button"
+                disabled={agentDisabled}
+                onClick={() => onSend(text)}
+                title={
+                  agentDisabled
+                    ? "الإرسال التلقائي مفعّل — يُرسل تلقائياً؛ اختر وكيلاً آخر للإرسال اليدوي"
+                    : `إرسال هذا النص إلى ${agentLabel(agent)} عبر الجسر المحلي`
+                }
+                className="flex items-center gap-1.5 border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-violet-700 transition hover:border-violet-600 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Send size={14} />
+                {agentLabel(agent)}
+                {agentDisabled ? (
+                  <span className="text-[10px] font-semibold text-slate-400">
+                    تلقائي
+                  </span>
+                ) : null}
+              </button>
             )}
             {text && <CopyButton text={text} />}
           </div>

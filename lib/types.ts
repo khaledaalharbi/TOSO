@@ -25,6 +25,12 @@ export interface ProviderConfig {
   bridgeToken?: string;
   /** Chosen CLI agent id from the bridge allowlist (claude | codex | gemini | …). */
   agent?: string;
+  /**
+   * Auto-dispatch: when on, every completed run hands the primary polished
+   * output to `agent` automatically — the per-card send button stays
+   * disabled while the picked agent equals this default.
+   */
+  autoSend?: boolean;
 }
 
 export interface TokenAnalysis {

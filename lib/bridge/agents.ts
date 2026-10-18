@@ -21,6 +21,24 @@ export const AGENT_OPTIONS: AgentOption[] = [
 
 export const DEFAULT_BRIDGE_URL = "http://127.0.0.1:8676";
 
+/**
+ * Send-mode rule (the spec): the named send button is disabled while
+ * auto-dispatch is on AND the picked agent is the configured default —
+ * picking another agent returns manual control; picking the default back
+ * re-engages auto. `picked === null` means "the default".
+ */
+export function agentSendMode(opts: {
+  autoSend?: boolean;
+  picked?: string | null;
+  defaultAgent: string;
+}): { active: string; auto: boolean } {
+  const active = opts.picked ?? opts.defaultAgent;
+  return {
+    active,
+    auto: Boolean(opts.autoSend) && active === opts.defaultAgent,
+  };
+}
+
 export function agentLabel(id: string): string {
   return AGENT_OPTIONS.find((agent) => agent.id === id)?.label ?? id;
 }
