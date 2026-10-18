@@ -42,6 +42,34 @@ describe("checkBridge", () => {
 });
 
 describe("sendPromptToAgent", () => {
+  it("auto-pairs via /api/bridge/session when no token is stored", async () => {
+    const job = { id: "j0", status: "done", output: "auto" };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          ok: true,
+          url: "http://127.0.0.1:8676",
+          token: "auto-token",
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true, agents: [] }))
+      .mockResolvedValueOnce(jsonResponse(202, { jobId: "j0", job }));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await sendPromptToAgent(
+      { url: "", token: "" },
+      "claude",
+      "hi",
+    );
+    expect(result).toEqual({ ok: true, job });
+    // The discovered token authenticated the health check.
+    expect(
+      (fetchMock.mock.calls[1][1]?.headers as Record<string, string>)[
+        "x-toso-token"
+      ],
+    ).toBe("auto-token");
+  });
+
   it("fails fast when the bridge is offline — never fabricates a run", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("down")));
     const result = await sendPromptToAgent(BRIDGE, "claude", "hi");
@@ -54,9 +82,7 @@ describe("sendPromptToAgent", () => {
       "fetch",
       vi
         .fn()
-        .mockResolvedValueOnce(
-          jsonResponse(200, { ok: true, agents: [] }),
-        )
+        .mockResolvedValueOnce(jsonResponse(200, { ok: true, agents: [] }))
         .mockResolvedValueOnce(jsonResponse(202, { jobId: "j1", job })),
     );
     const result = await sendPromptToAgent(BRIDGE, "claude", "hi");
@@ -71,9 +97,7 @@ describe("sendPromptToAgent", () => {
       vi
         .fn()
         .mockResolvedValueOnce(jsonResponse(200, { ok: true, agents: [] }))
-        .mockResolvedValueOnce(
-          jsonResponse(202, { jobId: "j2", job: running }),
-        )
+        .mockResolvedValueOnce(jsonResponse(202, { jobId: "j2", job: running }))
         .mockResolvedValue(jsonResponse(200, { job: done })),
     );
     const result = await sendPromptToAgent(BRIDGE, "codex", "hi");
@@ -115,9 +139,7 @@ describe("translateToArabic", () => {
   it("forwards the BYOK header when a user key exists", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(
-        jsonResponse(200, { fallback: false, arabic: "ت" }),
-      );
+      .mockResolvedValue(jsonResponse(200, { fallback: false, arabic: "ت" }));
     vi.stubGlobal("fetch", fetchMock);
     await translateToArabic("x", "m", "user-key");
     expect(

@@ -41,6 +41,40 @@ function normalizeUrl(url: string): string {
   return (url.trim() || DEFAULT_BRIDGE_URL).replace(/\/+$/, "");
 }
 
+/**
+ * Auto-pairing: when the user never pasted a token, ask the app whether a
+ * bridge it spawned (or one running manually) published a session. Returns
+ * a usable config or null — the caller then falls back to the stored values.
+ */
+export async function discoverBridge(): Promise<BridgeConfig | null> {
+  try {
+    const response = await fetch("/api/bridge/session", {
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!response.ok) return null;
+    const payload = (await response.json().catch(() => null)) as {
+      ok?: boolean;
+      url?: string;
+      token?: string;
+    } | null;
+    return payload?.ok && payload.url && payload.token
+      ? { url: payload.url, token: payload.token }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Effective bridge config: stored settings win; auto-pairing fills a gap. */
+export async function resolveBridgeConfig(
+  config: BridgeConfig,
+): Promise<BridgeConfig> {
+  if (config.token)
+    return { url: normalizeUrl(config.url), token: config.token };
+  const discovered = await discoverBridge();
+  return discovered ?? { url: normalizeUrl(config.url), token: "" };
+}
+
 async function bridgeFetch(
   config: BridgeConfig,
   path: string,
@@ -58,7 +92,8 @@ async function bridgeFetch(
 
 export async function checkBridge(config: BridgeConfig): Promise<BridgeStatus> {
   try {
-    const response = await bridgeFetch(config, "/health", {
+    const resolved = await resolveBridgeConfig(config);
+    const response = await bridgeFetch(resolved, "/health", {
       signal: AbortSignal.timeout(4000),
     });
     if (response.status === 401) return { state: "bad_token" };
@@ -84,8 +119,10 @@ export async function sendPromptToAgent(
   prompt: string,
   signal?: AbortSignal,
 ): Promise<AgentSendResult> {
-  const health = await checkBridge(config);
+  const resolved = await resolveBridgeConfig(config);
+  const health = await checkBridge(resolved);
   if (health.state !== "ok") return { ok: false, status: health };
+  config = resolved;
 
   let response: Response;
   try {
@@ -125,7 +162,8 @@ export async function sendPromptToAgent(
         signal: signal ?? null,
       });
     } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") throw error;
+      if (error instanceof DOMException && error.name === "AbortError")
+        throw error;
       return { ok: false, status: { state: "offline" } };
     }
     const payload = (await poll.json().catch(() => null)) as {
@@ -174,7 +212,10 @@ export async function translateToArabic(
     ) {
       return { arabic: payload.arabic.trim(), model: payload.model };
     }
-    return { arabic: null, fallbackReason: payload?.reason ?? `http_${response.status}` };
+    return {
+      arabic: null,
+      fallbackReason: payload?.reason ?? `http_${response.status}`,
+    };
   } catch {
     return { arabic: null, fallbackReason: "network" };
   }

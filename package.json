@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run",
-    "bridge": "node bin/toso-bridge.mjs"
+    "bridge": "node bin/toso-bridge.mjs",
+    "dev:all": "node bin/dev-all.mjs"
   },
   "bin": {
     "toso-bridge": "./bin/toso-bridge.mjs"

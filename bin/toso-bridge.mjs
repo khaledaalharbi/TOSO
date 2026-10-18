@@ -27,6 +27,7 @@ import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
+import path from "node:path";
 
 const VERSION = "0.1.0";
 const DEFAULT_PORT = 8676;
@@ -85,7 +86,8 @@ function loadAgents() {
 }
 
 const AGENTS = loadAgents();
-const PORT = Number.parseInt(process.env.TOSO_BRIDGE_PORT ?? "", 10) || DEFAULT_PORT;
+const PORT =
+  Number.parseInt(process.env.TOSO_BRIDGE_PORT ?? "", 10) || DEFAULT_PORT;
 const TOKEN =
   process.env.TOSO_BRIDGE_TOKEN?.trim() ||
   crypto.randomBytes(16).toString("hex");
@@ -111,10 +113,7 @@ function setCors(req, res) {
     res.setHeader("Vary", "Origin");
   }
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "content-type, x-toso-token",
-  );
+  res.setHeader("Access-Control-Allow-Headers", "content-type, x-toso-token");
   // Chrome Private Network Access (public https page → loopback fetch).
   if (req.headers["access-control-request-private-network"] === "true") {
     res.setHeader("Access-Control-Allow-Private-Network", "true");
@@ -226,7 +225,9 @@ function runAgent(agentId, prompt, timeoutMs) {
     finish(
       job,
       code === 0 ? "done" : "error",
-      code === 0 ? null : `exit_${code}${stderr.trim() ? `: ${stderr.trim().slice(0, 500)}` : ""}`,
+      code === 0
+        ? null
+        : `exit_${code}${stderr.trim() ? `: ${stderr.trim().slice(0, 500)}` : ""}`,
       code,
     );
   });
@@ -354,6 +355,28 @@ setInterval(() => {
 }, JOB_SWEEP_MS).unref();
 
 server.listen(PORT, "127.0.0.1", () => {
+  // Session file — the app's /api/bridge/session reads this to auto-pair
+  // the UI with the bridge (validated live before being trusted). Local
+  // processes can read tmp files, but a local process can also read this
+  // console output — same risk class.
+  try {
+    fs.writeFileSync(
+      path.join(os.tmpdir(), "toso-bridge-session.json"),
+      JSON.stringify(
+        {
+          port: PORT,
+          token: TOKEN,
+          pid: process.pid,
+          startedAt: Date.now(),
+        },
+        null,
+        2,
+      ),
+      { mode: 0o600 },
+    );
+  } catch {
+    /* session file is a convenience — never fatal */
+  }
   const pad = "─".repeat(52);
   console.log(`┌${pad}┐`);
   console.log(`  TOSO Bridge v${VERSION} — جسر الوكلاء المحلي`);
