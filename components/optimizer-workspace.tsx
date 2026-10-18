@@ -231,8 +231,8 @@ export function OptimizerWorkspace() {
    * Every failure is its own honest state — bridge offline, bad token,
    * agent crash — and a fresh send aborts the previous run's polling.
    */
-  async function sendToAgent(text: string) {
-    const agent = config.agent ?? AGENT_OPTIONS[0].id;
+  async function sendToAgent(text: string, agentId: string) {
+    const agent = agentId || config.agent || AGENT_OPTIONS[0].id;
     agentAbort.current?.abort();
     const controller = new AbortController();
     agentAbort.current = controller;
@@ -804,8 +804,8 @@ function OutputCard({
   unavailableReason?: string;
   report: VariantReport | null;
   status: NodeStatus;
-  /** Sends this variant's text to the chosen CLI agent via the local bridge. */
-  onSend?: (text: string) => void;
+  /** Sends this variant's text to a chosen CLI agent via the local bridge. */
+  onSend?: (text: string, agentId: string) => void;
 }) {
   const emerald = lang === "ar";
   const bar = emerald ? "bg-emerald-500" : "bg-blue-500";
@@ -829,15 +829,33 @@ function OutputCard({
           <h3 className="font-bold">{title}</h3>
           <div className="ms-auto flex items-center gap-1.5">
             {text && onSend && (
-              <button
-                type="button"
-                onClick={() => onSend(text)}
-                title="إرسال هذا النص إلى وكيل CLI عبر الجسر المحلي"
-                className="flex items-center gap-1.5 border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-violet-700 transition hover:border-violet-600"
-              >
-                <Send size={14} />
-                إلى الوكيل
-              </button>
+              <details className="group relative">
+                <summary
+                  title="إرسال هذا النص إلى وكيل CLI عبر الجسر المحلي"
+                  className="flex cursor-pointer list-none items-center gap-1.5 border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-violet-700 transition hover:border-violet-600 [&::-webkit-details-marker]:hidden"
+                >
+                  <Send size={14} />
+                  إلى الوكيل ▾
+                </summary>
+                <div className="absolute left-0 top-8 z-40 w-44 border border-ink bg-white py-1 shadow-hard-sm">
+                  {AGENT_OPTIONS.map((agent) => (
+                    <button
+                      key={agent.id}
+                      type="button"
+                      onClick={(event) => {
+                        event.currentTarget
+                          .closest("details")
+                          ?.removeAttribute("open");
+                        onSend(text, agent.id);
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-start text-xs font-bold text-slate-700 transition hover:bg-violet-50 hover:text-violet-800"
+                    >
+                      <Send size={12} className="shrink-0 text-violet-500" />
+                      {agent.label}
+                    </button>
+                  ))}
+                </div>
+              </details>
             )}
             {text && <CopyButton text={text} />}
           </div>

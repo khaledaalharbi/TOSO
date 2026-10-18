@@ -173,6 +173,9 @@ describe("agentCommand", () => {
   it("builds a quoted command per agent", () => {
     expect(agentCommand("claude", "do it")).toBe('claude -p "do it"');
     expect(agentCommand("codex", "do it")).toBe('codex exec "do it"');
+    expect(agentCommand("gemini", "do it")).toBe('gemini -p "do it"');
+    expect(agentCommand("devin", "do it")).toBe('devin -p "do it"');
+    expect(agentCommand("hermes", "do it")).toBe('hermes --oneshot "do it"');
   });
 
   it("escapes quotes and shell metacharacters inside the prompt", () => {

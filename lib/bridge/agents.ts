@@ -12,9 +12,11 @@ export interface AgentOption {
 }
 
 export const AGENT_OPTIONS: AgentOption[] = [
+  { id: "gemini", label: "Gemini CLI", cmd: "gemini -p" },
+  { id: "devin", label: "Devin", cmd: "devin -p" },
+  { id: "hermes", label: "Hermes", cmd: "hermes --oneshot" },
   { id: "claude", label: "Claude Code", cmd: "claude -p" },
   { id: "codex", label: "OpenAI Codex", cmd: "codex exec" },
-  { id: "gemini", label: "Gemini CLI", cmd: "gemini -p" },
 ];
 
 export const DEFAULT_BRIDGE_URL = "http://127.0.0.1:8676";

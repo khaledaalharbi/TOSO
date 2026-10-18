@@ -16,6 +16,18 @@ const BACKUP_FILE = path.join(BACKUP_DIR, "session.json");
 const hadSession = existsSync(SESSION_FILE);
 if (hadSession) copyFileSync(SESSION_FILE, BACKUP_FILE);
 
+// Restore the real session file after EVERY test — a live bridge must never
+// be poisoned by test fixtures (process.on("exit") is unreliable under
+// vitest workers).
+function restoreSession() {
+  try {
+    if (hadSession) copyFileSync(BACKUP_FILE, SESSION_FILE);
+    else rmSync(SESSION_FILE, { force: true });
+  } catch {
+    /* best effort */
+  }
+}
+
 function writeSession(data: unknown) {
   writeFileSync(SESSION_FILE, JSON.stringify(data));
 }
@@ -25,6 +37,7 @@ const healthy = () =>
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  restoreSession();
 });
 
 describe("GET /api/bridge/session", () => {
@@ -83,11 +96,10 @@ describe("GET /api/bridge/session", () => {
   });
 });
 
-// Restore whatever session file existed before the suite ran.
+// Final cleanup of the backup dir.
 process.on("exit", () => {
   try {
-    if (hadSession) copyFileSync(BACKUP_FILE, SESSION_FILE);
-    else rmSync(SESSION_FILE, { force: true });
+    restoreSession();
     rmSync(BACKUP_DIR, { recursive: true, force: true });
   } catch {
     /* best effort */

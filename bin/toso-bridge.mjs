@@ -41,15 +41,88 @@ const JOB_TTL_MS = 30 * 60 * 1000;
 const JOB_SWEEP_MS = 60 * 1000;
 
 /**
- * Built-in adapters — each spawns the CLI headless and feeds the prompt on
- * stdin, so no shell ever sees the text. `TOSO_AGENT_CMD_<ID>` overrides the
- * binary for non-standard installs.
+ * Built-in adapters — each spawns the CLI headless. `promptVia` decides how
+ * the prompt is delivered, matching each CLI's documented contract:
+ *   "stdin" — written to child stdin, never touches argv or a shell.
+ *   "argv"  — a single argv element ({prompt} placeholder), guarded by
+ *             the OS command-line length limit (~32K on Windows).
+ *   "file"  — a temp file path substituted into {file} (e.g. devin
+ *             --prompt-file) for CLIs that take long prompts best that way.
+ * `TOSO_AGENT_CMD_<ID>` overrides the binary for non-standard installs.
  */
 const BUILTIN_AGENTS = {
   claude: { label: "Claude Code", cmd: "claude", args: ["-p"] },
   codex: { label: "OpenAI Codex", cmd: "codex", args: ["exec"] },
-  gemini: { label: "Gemini CLI", cmd: "gemini", args: ["-p"] },
+  gemini: {
+    label: "Gemini CLI",
+    cmd: "gemini",
+    args: ["-p", "{prompt}"],
+    promptVia: "argv",
+  },
+  devin: {
+    label: "Devin",
+    cmd: "devin",
+    args: ["-p", "--prompt-file", "{file}"],
+    promptVia: "file",
+  },
+  hermes: {
+    label: "Hermes",
+    cmd: "hermes",
+    args: ["--oneshot", "{prompt}"],
+    promptVia: "argv",
+  },
 };
+
+/** Windows CreateProcess tops out near 32K chars — guard argv delivery. */
+const MAX_ARGV_PROMPT = 30_000;
+
+const isWin = process.platform === "win32";
+
+/** PowerShell single-quoted literal — the only escaping that matters. */
+const psQuote = (s) => `'${String(s).replace(/'/g, "''")}'`;
+
+/**
+ * Windows reality: npm-installed CLIs are `.cmd` shims (no real .exe), and
+ * CreateProcess cannot run them — a shell is unavoidable. We wrap once in
+ * PowerShell -Command, and the prompt NEVER enters that command line:
+ * stdin stays piped through PowerShell to the native child, and argv/file
+ * adapters read the prompt from a temp file inside the command. No %env%
+ * expansion, no quoting pitfalls, no argv length cap — the user text is
+ * out-of-band end to end.
+ */
+function buildSpawn(adapter, via, prompt, promptFile) {
+  if (!isWin) {
+    const args =
+      via === "argv"
+        ? adapter.args.map((a) => (a === "{prompt}" ? prompt : a))
+        : adapter.args.map((a) => (a === "{file}" ? promptFile : a));
+    return {
+      cmd: adapter.cmd,
+      args,
+      stdin: via === "stdin",
+    };
+  }
+  const psArgs = adapter.args.map((arg) => {
+    // {file} wants the PATH in argv (the agent reads it); {prompt} wants
+    // the CONTENT in argv (read here via Get-Content).
+    if (arg === "{file}") return psQuote(promptFile);
+    if (arg === "{prompt}") return `(Get-Content -Raw ${psQuote(promptFile)})`;
+    return psQuote(arg);
+  });
+  return {
+    cmd: "powershell",
+    args: [
+      "-NoProfile",
+      "-Command",
+      [
+        `if (-not (Get-Command ${psQuote(adapter.cmd)} -ErrorAction SilentlyContinue)) { exit 127 }`,
+        `& ${psQuote(adapter.cmd)} ${psArgs.join(" ")}`.trim(),
+        "exit $LASTEXITCODE",
+      ].join("; "),
+    ],
+    stdin: via === "stdin",
+  };
+}
 
 function loadAgents() {
   const agents = { ...BUILTIN_AGENTS };
@@ -65,12 +138,15 @@ function loadAgents() {
           (entry.args === undefined ||
             (Array.isArray(entry.args) &&
               entry.args.every((a) => typeof a === "string"))) &&
-          (entry.label === undefined || typeof entry.label === "string")
+          (entry.label === undefined || typeof entry.label === "string") &&
+          (entry.promptVia === undefined ||
+            ["stdin", "argv", "file"].includes(entry.promptVia))
         ) {
           agents[id] = {
             label: entry.label || id,
             cmd: entry.cmd,
             args: entry.args ?? [],
+            ...(entry.promptVia ? { promptVia: entry.promptVia } : {}),
           };
         }
       }
@@ -168,10 +244,46 @@ function finish(job, status, error, exitCode) {
   job.exitCode = exitCode;
   job.endedAt = Date.now();
   clearTimeout(job.timer);
+  if (job.promptFile) {
+    fs.unlink(job.promptFile, () => {}); // best effort
+    job.promptFile = null;
+  }
+}
+
+/** Kill a job's process tree — on Windows the PowerShell wrapper's children
+ *  would orphan without taskkill /T. */
+function killJob(job) {
+  const child = job.child;
+  if (!child) return;
+  if (isWin) {
+    spawn("taskkill", ["/T", "/F", "/PID", String(child.pid)], {
+      stdio: "ignore",
+      windowsHide: true,
+    }).on("error", () => {});
+  } else {
+    child.kill();
+  }
 }
 
 function runAgent(agentId, prompt, timeoutMs) {
   const adapter = AGENTS[agentId];
+  const via = adapter.promptVia ?? "stdin";
+  if (via === "argv" && !isWin && prompt.length > MAX_ARGV_PROMPT) {
+    const job = {
+      id: crypto.randomUUID(),
+      agent: agentId,
+      status: "error",
+      output: "",
+      error: `prompt_too_long_for_agent: ${agentId} يستقبل البرومبت عبر argv (~${MAX_ARGV_PROMPT} حرف كحد أقصى)؛ اختصر النص أو استخدم وكيلاً يقرأه من ملف/stdin`,
+      exitCode: null,
+      startedAt: Date.now(),
+      endedAt: Date.now(),
+      child: null,
+      timer: null,
+    };
+    jobs.set(job.id, job);
+    return job;
+  }
   const job = {
     id: crypto.randomUUID(),
     agent: agentId,
@@ -183,15 +295,29 @@ function runAgent(agentId, prompt, timeoutMs) {
     endedAt: null,
     child: null,
     timer: null,
+    promptFile: null,
   };
   jobs.set(job.id, job);
 
+  // Prompt file is needed by "file" adapters everywhere, and by "argv"
+  // adapters on Windows (where the prompt reaches argv via Get-Content).
+  if (via === "file" || (via === "argv" && isWin)) {
+    try {
+      job.promptFile = path.join(os.tmpdir(), `toso-prompt-${job.id}.txt`);
+      fs.writeFileSync(job.promptFile, prompt, { mode: 0o600 });
+    } catch (error) {
+      finish(job, "error", `prompt_file_failed: ${error.message}`, null);
+      return job;
+    }
+  }
+
+  const spec = buildSpawn(adapter, via, prompt, job.promptFile);
   let child;
   try {
-    // No shell — argv is passed verbatim; the prompt goes over stdin so
-    // quoting/length limits never apply and nothing is interpreted.
-    child = spawn(adapter.cmd, adapter.args, {
-      stdio: ["pipe", "pipe", "pipe"],
+    // POSIX: no shell, argv verbatim. Windows: PowerShell wrapper (see
+    // buildSpawn) — either way the prompt never meets a command parser.
+    child = spawn(spec.cmd, spec.args, {
+      stdio: [spec.stdin ? "pipe" : "ignore", "pipe", "pipe"],
       windowsHide: true,
     });
   } catch (error) {
@@ -227,24 +353,28 @@ function runAgent(agentId, prompt, timeoutMs) {
       code === 0 ? "done" : "error",
       code === 0
         ? null
-        : `exit_${code}${stderr.trim() ? `: ${stderr.trim().slice(0, 500)}` : ""}`,
+        : code === 127
+          ? `agent_not_installed: ${adapter.cmd} غير موجود في PATH`
+          : `exit_${code}${stderr.trim() ? `: ${stderr.trim().slice(0, 500)}` : ""}`,
       code,
     );
   });
   job.timer = setTimeout(() => {
     if (job.status === "running") {
       job.error = `timeout: تجاوز ${Math.round(timeoutMs / 1000)} ثانية`;
-      child.kill();
+      killJob(job);
       finish(job, "error", job.error, null);
     }
   }, timeoutMs);
   job.timer.unref?.();
 
-  try {
-    child.stdin.write(prompt);
-    child.stdin.end();
-  } catch (error) {
-    finish(job, "error", `stdin_failed: ${error.message}`, null);
+  if (via === "stdin") {
+    try {
+      child.stdin.write(prompt);
+      child.stdin.end();
+    } catch (error) {
+      finish(job, "error", `stdin_failed: ${error.message}`, null);
+    }
   }
   return job;
 }
@@ -329,7 +459,7 @@ async function handle(req, res) {
     }
     if (req.method === "DELETE") {
       if (job.status === "running") {
-        job.child?.kill();
+        killJob(job);
         finish(job, "killed", "أُلغي من الواجهة", null);
       }
       sendJson(req, res, 200, { job: jobView(job) });

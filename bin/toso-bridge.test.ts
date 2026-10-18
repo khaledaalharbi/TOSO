@@ -85,6 +85,26 @@ beforeAll(async () => {
         cmd: process.execPath,
         args: ["-e", "setTimeout(()=>console.log('late'),30000)"],
       },
+      echoargv: {
+        label: "EchoArgv",
+        cmd: process.execPath,
+        args: [
+          "-e",
+          "process.stdout.write('ARGV:'+process.argv[1])",
+          "{prompt}",
+        ],
+        promptVia: "argv",
+      },
+      echofile: {
+        label: "EchoFile",
+        cmd: process.execPath,
+        args: [
+          "-e",
+          "process.stdout.write('FILE:'+require('fs').readFileSync(process.argv[1],'utf8'))",
+          "{file}",
+        ],
+        promptVia: "file",
+      },
     }),
   );
 
@@ -165,6 +185,48 @@ describe("toso-bridge", () => {
     expect(job.status).toBe("done");
     expect(job.exitCode).toBe(0);
     expect(job.output).toContain("ECHO:مرحبا hello 42");
+  });
+
+  it("delivers the prompt as argv when the adapter says so", async () => {
+    const res = await api("/run", {
+      method: "POST",
+      body: JSON.stringify({ agent: "echoargv", prompt: "نص عبر argv" }),
+    });
+    const { jobId } = await res.json();
+    const job = await waitForJob(jobId);
+    expect(job.status).toBe("done");
+    expect(job.output).toBe("ARGV:نص عبر argv");
+  });
+
+  it("delivers the prompt as a temp file when the adapter says so", async () => {
+    const res = await api("/run", {
+      method: "POST",
+      body: JSON.stringify({ agent: "echofile", prompt: "نص عبر ملف" }),
+    });
+    const { jobId } = await res.json();
+    const job = await waitForJob(jobId);
+    expect(job.status).toBe("done");
+    expect(job.output).toBe("FILE:نص عبر ملف");
+  });
+
+  it("guards argv delivery at the OS limit — POSIX only", async () => {
+    const res = await api("/run", {
+      method: "POST",
+      body: JSON.stringify({
+        agent: "echoargv",
+        prompt: "x".repeat(30_001),
+      }),
+    });
+    const { jobId } = await res.json();
+    const job = await waitForJob(jobId);
+    if (process.platform === "win32") {
+      // Windows argv delivery goes through a temp file — no argv cap.
+      expect(job.status).toBe("done");
+      expect(job.output.startsWith("ARGV:xxx")).toBe(true);
+    } else {
+      expect(job.status).toBe("error");
+      expect(job.error).toContain("prompt_too_long_for_agent");
+    }
   });
 
   it("rejects unknown agents instead of executing anything", async () => {
