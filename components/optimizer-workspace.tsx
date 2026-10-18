@@ -9,11 +9,17 @@ import {
   Languages,
   Play,
   RotateCcw,
+  Send,
   Settings2,
   Sparkles,
   Wand2,
 } from "lucide-react";
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
+import {
+  AgentCard,
+  type AgentRunState,
+  type AgentTranslation,
+} from "@/components/agent-card";
 import { PipelineTrack } from "@/components/pipeline-track";
 import {
   SettingsModal,
@@ -21,14 +27,24 @@ import {
   statusFromKeySignal,
   type KeyStatus,
 } from "@/components/settings-modal";
+import {
+  AGENT_OPTIONS,
+  DEFAULT_BRIDGE_URL,
+  agentCommand,
+} from "@/lib/bridge/agents";
 import type { DualOptimization } from "@/lib/optimizer/llm-optimizer";
 import type { EntityCheck } from "@/lib/optimizer/entity-guard";
 import type { QualityCheck } from "@/lib/optimizer/quality-guard";
 import {
   DEFAULT_MODEL,
   DEFAULT_PROVIDER,
+  getModel,
   providers,
 } from "@/lib/providers/registry";
+import {
+  sendPromptToAgent,
+  translateToArabic,
+} from "@/lib/services/agent-service";
 import { runOptimization } from "@/lib/services/optimization-service";
 import { estimateHeatmapSegments } from "@/lib/token-engine/bpe-estimator";
 import { arabicRatio } from "@/lib/token-engine/token-engine";
@@ -50,6 +66,9 @@ const initialConfig: ProviderConfig = {
 
 /** BYOK key lives in browser storage only — sent per request as a header. */
 const USER_KEY_STORAGE = "toso.userGeminiKey";
+const BRIDGE_URL_STORAGE = "toso.bridgeUrl";
+const BRIDGE_TOKEN_STORAGE = "toso.bridgeToken";
+const AGENT_STORAGE = "toso.agent";
 
 const formatCost = (value: number) =>
   value === 0
@@ -76,31 +95,82 @@ export function OptimizerWorkspace() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [config, setConfig] = useState<ProviderConfig>(initialConfig);
   const [keyHydrated, setKeyHydrated] = useState(false);
+  const [storageWarning, setStorageWarning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
   // Latest user-key signal: ok (served), user_key_* reason, or null (no
   // user-key evidence this run). Bound to the key value it describes.
   const [keySignal, setKeySignal] = useState<{
     key: string;
     signal: string;
   } | null>(null);
+  // The CLI-agent leg: which text was sent, the job state, and the
+  // on-demand Arabic translation of the agent's output.
+  const [agentRun, setAgentRun] = useState<AgentRunState | null>(null);
+  const [agentTranslation, setAgentTranslation] =
+    useState<AgentTranslation | null>(null);
+  const [translating, setTranslating] = useState(false);
+  const agentAbort = useRef<AbortController | null>(null);
 
-  // Hydrate the BYOK key once on mount, then mirror every change to storage.
+  // Hydrate the BYOK key and bridge settings once on mount, then mirror
+  // every change to storage.
   useEffect(() => {
-    const stored = window.localStorage.getItem(USER_KEY_STORAGE);
-    if (stored) setConfig((c) => ({ ...c, userKey: stored }));
-    setKeyHydrated(true);
+    try {
+      const stored = window.localStorage.getItem(USER_KEY_STORAGE);
+      const bridgeUrl = window.localStorage.getItem(BRIDGE_URL_STORAGE);
+      const bridgeToken = window.localStorage.getItem(BRIDGE_TOKEN_STORAGE);
+      const agent = window.localStorage.getItem(AGENT_STORAGE);
+      setConfig((c) => ({
+        ...c,
+        ...(stored ? { userKey: stored } : {}),
+        ...(bridgeUrl ? { bridgeUrl } : {}),
+        ...(bridgeToken ? { bridgeToken } : {}),
+        ...(agent ? { agent } : {}),
+      }));
+    } catch {
+      setStorageWarning(true);
+    } finally {
+      setKeyHydrated(true);
+    }
   }, []);
   useEffect(() => {
     if (!keyHydrated) return;
-    if (config.userKey) {
-      window.localStorage.setItem(USER_KEY_STORAGE, config.userKey);
-    } else {
-      window.localStorage.removeItem(USER_KEY_STORAGE);
+    try {
+      if (config.userKey) {
+        window.localStorage.setItem(USER_KEY_STORAGE, config.userKey);
+      } else {
+        window.localStorage.removeItem(USER_KEY_STORAGE);
+      }
+    } catch {
+      setStorageWarning(true);
     }
   }, [config.userKey, keyHydrated]);
+  useEffect(() => {
+    if (!keyHydrated) return;
+    try {
+      if (config.bridgeUrl) {
+        window.localStorage.setItem(BRIDGE_URL_STORAGE, config.bridgeUrl);
+      } else {
+        window.localStorage.removeItem(BRIDGE_URL_STORAGE);
+      }
+      if (config.bridgeToken) {
+        window.localStorage.setItem(BRIDGE_TOKEN_STORAGE, config.bridgeToken);
+      } else {
+        window.localStorage.removeItem(BRIDGE_TOKEN_STORAGE);
+      }
+      if (config.agent) {
+        window.localStorage.setItem(AGENT_STORAGE, config.agent);
+      } else {
+        window.localStorage.removeItem(AGENT_STORAGE);
+      }
+    } catch {
+      setStorageWarning(true);
+    }
+  }, [config.bridgeUrl, config.bridgeToken, config.agent, keyHydrated]);
 
   async function handleRun() {
-    if (!prompt.trim() || running) return;
+    if (!keyHydrated || !prompt.trim() || running) return;
     setRunning(true);
+    setRunError(null);
     setReport(null);
     setDual(null);
     setOriginal(null);
@@ -128,18 +198,124 @@ export function OptimizerWorkspace() {
         },
       });
       setReport(nextReport);
+      setOriginal(nextReport.originalMeasurement ?? null);
       setPhase("done");
+    } catch {
+      setReport(null);
+      setDual(null);
+      setOriginal(null);
+      setOriginalRatio(null);
+      setPhase("idle");
+      setRunError(
+        "تعذّر إكمال التحليل. النص محفوظ في حقل الإدخال؛ أعد المحاولة.",
+      );
     } finally {
       setRunning(false);
     }
   }
   function reset() {
+    setRunError(null);
     setReport(null);
     setDual(null);
     setOriginal(null);
     setOriginalRatio(null);
     setPhase("idle");
     setPrompt("");
+    agentAbort.current?.abort();
+    setAgentRun(null);
+    setAgentTranslation(null);
+  }
+
+  /**
+   * Sends the polished text to the chosen CLI agent via the local bridge.
+   * Every failure is its own honest state — bridge offline, bad token,
+   * agent crash — and a fresh send aborts the previous run's polling.
+   */
+  async function sendToAgent(text: string) {
+    const agent = config.agent ?? AGENT_OPTIONS[0].id;
+    agentAbort.current?.abort();
+    const controller = new AbortController();
+    agentAbort.current = controller;
+    setAgentTranslation(null);
+    setAgentRun({ agent, prompt: text, phase: "connecting" });
+    const bridge = {
+      url: config.bridgeUrl ?? DEFAULT_BRIDGE_URL,
+      token: config.bridgeToken ?? "",
+    };
+    try {
+      const result = await sendPromptToAgent(
+        bridge,
+        agent,
+        text,
+        controller.signal,
+      );
+      if (!result.ok) {
+        const state = result.status.state;
+        setAgentRun({
+          agent,
+          prompt: text,
+          phase: "offline",
+          message:
+            state === "bad_token"
+              ? "التوكن غير صحيح — انسخ التوكن الذي طبعه الجسر عند تشغيله إلى الإعدادات."
+              : state === "bad_url"
+                ? "عنوان الجسر غير صالح في الإعدادات."
+                : "الجسر غير متصل على هذا العنوان.",
+        });
+        return;
+      }
+      const job = result.job;
+      setAgentRun({
+        agent,
+        prompt: text,
+        phase:
+          job.status === "done"
+            ? "done"
+            : job.status === "running"
+              ? "running"
+              : "error",
+        job,
+        message: job.error ?? undefined,
+      });
+    } catch {
+      if (!controller.signal.aborted) {
+        setAgentRun({
+          agent,
+          prompt: text,
+          phase: "error",
+          message: "انقطع الاتصال بالجسر أثناء التشغيل.",
+        });
+      }
+    }
+  }
+
+  /** Translates the agent's English output via /api/translate (honest fallback). */
+  async function translateAgentOutput() {
+    const output = agentRun?.job?.output;
+    if (!output || translating) return;
+    setTranslating(true);
+    try {
+      const result = await translateToArabic(
+        output,
+        config.model,
+        config.userKey,
+      );
+      setAgentTranslation(result);
+    } finally {
+      setTranslating(false);
+    }
+  }
+
+  /** Bridge unreachable → hand the user a ready shell command instead. */
+  async function copyAgentCommand() {
+    if (!agentRun) return;
+    try {
+      await navigator.clipboard.writeText(
+        agentCommand(agentRun.agent, agentRun.prompt),
+      );
+    } catch {
+      /* clipboard unavailable — the command is also visible in the card */
+    }
   }
 
   const modelLabel = providers[config.provider].models.find(
@@ -185,19 +361,41 @@ export function OptimizerWorkspace() {
             </p>
           </div>
         </header>
+        {storageWarning && (
+          <p
+            role="status"
+            className="mt-4 border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800"
+          >
+            تعذّر الوصول إلى تخزين المتصفح؛ لا يمكن ضمان حفظ المفتاح أو مسحه بعد
+            إغلاق الصفحة. يمكنك المتابعة في هذه الجلسة.
+          </p>
+        )}
+        {runError && (
+          <p
+            role="alert"
+            className="mt-4 border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800"
+          >
+            {runError}
+          </p>
+        )}
 
         {/* 01 — INPUT + LIVE PROCESS TRACK */}
-        <SpecHead num="01" title="المدخلات" note="البرومبت العربي الأصلي" />
+        <SpecHead num="01" title="المدخلات" note="البرومبت الأصلي" />
         <section className="border border-ink bg-white p-5 sm:p-7">
           <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3">
             <span className="border border-slate-300 px-2.5 py-1 font-mono text-[11px] text-slate-600">
               {modelLabel}
             </span>
-            <h1 className="text-xl font-bold">اكتب طلبك بالعربية</h1>
+            <h1 className="text-xl font-bold">
+              اكتب طلبك بالعربية أو الإنجليزية
+            </h1>
           </div>
           <textarea
             id="prompt"
             name="prompt"
+            aria-label="البرومبت"
+            dir="auto"
+            disabled={!keyHydrated}
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
             placeholder="مثال: حلّل لي أداء الشركة خلال آخر ستة أشهر..."
@@ -205,7 +403,7 @@ export function OptimizerWorkspace() {
           />
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <button
-              disabled={!prompt.trim() || running}
+              disabled={!keyHydrated || !prompt.trim() || running}
               onClick={handleRun}
               className="flex shrink-0 items-center justify-center gap-2 border border-ink bg-brand-500 px-5 py-3 font-bold text-white transition hover:bg-brand-600 active:translate-x-[2px] active:translate-y-[2px] disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -243,7 +441,11 @@ export function OptimizerWorkspace() {
                 <SourceBadge
                   compact
                   source={original.source}
-                  providerLabel={modelLabel}
+                  providerLabel={
+                    original.model
+                      ? getModel("google", original.model).label
+                      : undefined
+                  }
                 />
               ) : null
             }
@@ -348,6 +550,7 @@ export function OptimizerWorkspace() {
                     : "الترجمة العربية غير متاحة في الوضع المحلي أو عند تعذّر Gemini."
                 }
                 report={report?.arabic ?? null}
+                onSend={sendToAgent}
               />
             );
             const englishCard = (
@@ -369,6 +572,7 @@ export function OptimizerWorkspace() {
                     : "الترجمة الإنجليزية غير متاحة في الوضع المحلي أو عند تعذّر Gemini."
                 }
                 report={report?.english ?? null}
+                onSend={sendToAgent}
               />
             );
             return direction === "en"
@@ -377,9 +581,30 @@ export function OptimizerWorkspace() {
           })()}
         </div>
 
-        {/* 04 — ANALYSIS */}
+        {/* 04 — CLI AGENT */}
         <SpecHead
           num="04"
+          title="وكيل CLI"
+          note="إرسال النص المنقّح إلى الوكيل واستقبال نتيجته"
+        />
+        {agentRun ? (
+          <AgentCard
+            run={agentRun}
+            translation={agentTranslation}
+            translating={translating}
+            onTranslate={translateAgentOutput}
+            onCopyFallback={copyAgentCommand}
+          />
+        ) : (
+          <Placeholder
+            active={false}
+            text="من بطاقة مخرجات اضغط «إلى الوكيل» لإرسال النص عبر الجسر المحلي — شغّله بأمر npm run bridge"
+          />
+        )}
+
+        {/* 05 — ANALYSIS */}
+        <SpecHead
+          num="05"
           title="التحليل"
           note="خريطة الثقل وتفصيل التوفير واستهلاك الاستدعاء"
         />
@@ -396,12 +621,14 @@ export function OptimizerWorkspace() {
           />
         )}
 
-        {/* 05 — COST */}
-        <SpecHead num="05" title="التكلفة" note="تقدير تكلفة الإدخال" />
+        {/* 06 — COST */}
+        <SpecHead num="06" title="التكلفة" note="تقدير تكلفة الإدخال" />
         <CostBar
           report={report}
           active={phase === "measuring"}
-          modelLabel={modelLabel}
+          modelLabel={
+            report?.model ? getModel("google", report.model).label : modelLabel
+          }
           onReset={reset}
         />
 
@@ -567,6 +794,7 @@ function OutputCard({
   unavailableReason,
   report,
   status,
+  onSend,
 }: {
   lang: "ar" | "en";
   title: string;
@@ -576,6 +804,8 @@ function OutputCard({
   unavailableReason?: string;
   report: VariantReport | null;
   status: NodeStatus;
+  /** Sends this variant's text to the chosen CLI agent via the local bridge. */
+  onSend?: (text: string) => void;
 }) {
   const emerald = lang === "ar";
   const bar = emerald ? "bg-emerald-500" : "bg-blue-500";
@@ -597,7 +827,20 @@ function OutputCard({
             {chip}
           </span>
           <h3 className="font-bold">{title}</h3>
-          <div className="ms-auto">{text && <CopyButton text={text} />}</div>
+          <div className="ms-auto flex items-center gap-1.5">
+            {text && onSend && (
+              <button
+                type="button"
+                onClick={() => onSend(text)}
+                title="إرسال هذا النص إلى وكيل CLI عبر الجسر المحلي"
+                className="flex items-center gap-1.5 border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-violet-700 transition hover:border-violet-600"
+              >
+                <Send size={14} />
+                إلى الوكيل
+              </button>
+            )}
+            {text && <CopyButton text={text} />}
+          </div>
         </div>
         <div
           dir={lang === "en" ? "ltr" : "rtl"}
@@ -658,14 +901,18 @@ function OutputCard({
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
   async function copy() {
+    setCopyFailed(false);
     try {
       await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
     } catch {
       /* clipboard unavailable */
+      setCopied(false);
+      setCopyFailed(true);
     }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
   }
   return (
     <button
@@ -677,7 +924,7 @@ function CopyButton({ text }: { text: string }) {
       ) : (
         <Copy size={14} />
       )}
-      {copied ? "نُسخ!" : "نسخ"}
+      {copied ? "نُسخ!" : copyFailed ? "تعذّر النسخ" : "نسخ"}
     </button>
   );
 }

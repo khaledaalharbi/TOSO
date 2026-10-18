@@ -28,7 +28,8 @@ describe("statusFromKeySignal", () => {
     expect(statusFromKeySignal("ok")).toBe("ok");
     expect(statusFromKeySignal("user_key_quota")).toBe("quota");
     expect(statusFromKeySignal("user_key_invalid")).toBe("invalid");
-    expect(statusFromKeySignal("user_key_http_500")).toBe("invalid");
+    expect(statusFromKeySignal("user_key_http_500")).toBe("unreachable");
+    expect(statusFromKeySignal("user_key_http_503")).toBe("unreachable");
     expect(statusFromKeySignal("http_500")).toBe("unreachable");
     expect(statusFromKeySignal("unreachable")).toBe("unreachable");
     expect(statusFromKeySignal(null)).toBe("idle");

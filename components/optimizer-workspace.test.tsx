@@ -4,6 +4,7 @@ import type { OptimizationReport, TokenMeasurement } from "@/lib/types";
 import {
   OptimizationInsights,
   OptimizationUsagePanel,
+  OptimizerWorkspace,
   TokenHeatmap,
 } from "./optimizer-workspace";
 
@@ -52,6 +53,14 @@ const report: OptimizationReport = {
 
 const render = (value: OptimizationReport) =>
   renderToStaticMarkup(<OptimizationInsights report={value} />);
+
+describe("OptimizerWorkspace hydration", () => {
+  it("prevents input and runs until the browser key has been hydrated", () => {
+    const markup = renderToStaticMarkup(<OptimizerWorkspace />);
+    expect(markup).toMatch(/<textarea[^>]*disabled=""/);
+    expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>تشغيل التحليل/);
+  });
+});
 
 describe("OptimizationInsights", () => {
   it("separates local savings from Gemini rewriting without double-counting", () => {

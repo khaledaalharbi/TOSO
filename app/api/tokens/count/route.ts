@@ -34,6 +34,16 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
+  if (
+    !body ||
+    typeof body !== "object" ||
+    Array.isArray(body) ||
+    (body.text !== undefined && typeof body.text !== "string") ||
+    (body.model !== undefined && typeof body.model !== "string")
+  ) {
+    return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+  }
+
   const text = (body.text ?? "").trim();
   if (!text) return NextResponse.json({ tokens: 0, fallback: false });
   if (text.length > 100_000) {
@@ -101,14 +111,18 @@ export async function POST(request: Request): Promise<NextResponse> {
     const payload = (await response.json()) as { totalTokens?: unknown };
     const tokens = payload.totalTokens;
     // A 200 without a valid count is not an official zero — estimate honestly.
-    if (typeof tokens !== "number" || !Number.isFinite(tokens) || tokens < 0) {
+    if (
+      typeof tokens !== "number" ||
+      !Number.isSafeInteger(tokens) ||
+      tokens < 0
+    ) {
       return NextResponse.json({
         tokens: heuristicCount(text),
         fallback: true,
       });
     }
     return NextResponse.json({
-      tokens: Math.round(tokens),
+      tokens,
       fallback: false,
       model,
     });

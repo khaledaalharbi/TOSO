@@ -2,6 +2,29 @@ import { describe, expect, it } from "vitest";
 import { checkQuality } from "./quality-guard";
 
 describe("checkQuality", () => {
+  it("recognizes English negation regardless of case or apostrophe style", () => {
+    expect(
+      checkQuality("Do NOT predict sales", "Predict sales", "en").negationKept,
+    ).toBe(false);
+    expect(
+      checkQuality("Don't predict sales", "DON’T predict sales", "en")
+        .negationKept,
+    ).toBe(true);
+    expect(
+      checkQuality("DON’T predict sales", "Predict sales", "en").negationKept,
+    ).toBe(false);
+  });
+
+  it("compares vocalized Arabic negation and content without false warnings", () => {
+    const check = checkQuality(
+      "لَا تُلَخِّصْ أَدَاءَ الشَّرِكَةِ",
+      "لا تلخص أداء الشركة",
+      "ar",
+    );
+    expect(check.negationKept).toBe(true);
+    expect(check.keywordCoverage).toBe(1);
+  });
+
   it("passes a normal Arabic rewrite with preserved negation and content", () => {
     const check = checkQuality(
       "أريد تحليل أداء الشركة دون ذكر الأسعار",
@@ -49,7 +72,11 @@ describe("checkQuality", () => {
   });
 
   it("returns null negation when the source has none to keep", () => {
-    const check = checkQuality("اكتب رسالة شكر للعميل", "اكتب شكراً للعميل", "ar");
+    const check = checkQuality(
+      "اكتب رسالة شكر للعميل",
+      "اكتب شكراً للعميل",
+      "ar",
+    );
     expect(check.negationKept).toBeNull();
   });
 
@@ -82,9 +109,7 @@ describe("checkQuality", () => {
     const mixed = "حلل SELECT customer_name, invoice_total FROM sales_data";
     const check = checkQuality(mixed, mixed, "ar");
     expect(check.languageOk).toBe(true);
-    expect(check.warnings).not.toContain(
-      "المخرج العربي ليس مكتوباً بالعربية",
-    );
+    expect(check.warnings).not.toContain("المخرج العربي ليس مكتوباً بالعربية");
   });
 
   it("accepts a purely code-bearing prompt with no Arabic", () => {

@@ -1,9 +1,65 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { optimizeDual } from "./llm-optimizer";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+let optimizeDual: typeof import("./llm-optimizer").optimizeDual;
+beforeEach(async () => {
+  vi.resetModules();
+  ({ optimizeDual } = await import("./llm-optimizer"));
+});
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("optimizeDual usage", () => {
+  it("keeps separate numeric entities intact on local fallback", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ fallback: true, reason: "no_api_key" }),
+      }),
+    );
+    const result = await optimizeDual("اكتب 3 .14");
+    expect(result.arabic).toBe("اكتب 3 .14");
+  });
+
+  it("skips repeated no-key requests but allows a newly supplied user key", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ fallback: true, reason: "no_api_key" }),
+      })
+      .mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          arabic: "حلل",
+          english: "Analyze",
+          fallback: false,
+          viaUserKey: true,
+        }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+    await optimizeDual("حلل");
+    expect((await optimizeDual("حلل مرة أخرى")).source).toBe("mock");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect((await optimizeDual("حلل", undefined, "user-key")).source).toBe(
+      "gemini",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([{}, null, { arabic: 12 }, { arabic: "حلل", english: 12 }])(
+    "reports invalid successful responses honestly: %j",
+    async (payload) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({ ok: true, json: async () => payload }),
+      );
+      const result = await optimizeDual("حلل التقرير");
+      expect(result.fallbackReason).toBe("bad_model_output");
+      expect(result.note).not.toContain("بدون مفتاح");
+    },
+  );
+
   it("passes usage from the successful route response without estimating missing fields", async () => {
     vi.stubGlobal(
       "fetch",

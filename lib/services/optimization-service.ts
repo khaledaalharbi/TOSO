@@ -41,26 +41,39 @@ export async function runOptimization(
   const normalizedPrompt = checkEntities(prompt, candidate).preserved
     ? candidate
     : prompt;
-  const originalPromise = analyzeTokens(prompt, config.userKey);
-  const normalizedPromise =
-    normalizedPrompt === prompt
-      ? originalPromise
-      : analyzeTokens(normalizedPrompt, config.userKey);
+  const measurements = new Map<string, Promise<TokenMeasurement>>();
+  function measure(
+    text: string,
+    modelId = model.id,
+  ): Promise<TokenMeasurement> {
+    const key = JSON.stringify([modelId, text]);
+    const cached = measurements.get(key);
+    if (cached) return cached;
+    const pending = analyzeTokens(text, config.userKey, modelId);
+    measurements.set(key, pending);
+    return pending;
+  }
+  const originalPromise = measure(prompt);
+  const normalizedPromise = measure(normalizedPrompt);
   const optimizedPromise = optimizeDual(
     normalizedPrompt,
     model.id,
     config.userKey,
   );
 
-  const original = await originalPromise;
-  events.onOriginalMeasured?.(original);
-
-  const result = await optimizedPromise;
+  const [, , result] = await Promise.all([
+    originalPromise.then((original) => {
+      events.onOriginalMeasured?.(original);
+      return original;
+    }),
+    normalizedPromise,
+    optimizedPromise,
+  ]);
   const arabicCheck = result.arabic
-    ? checkEntities(prompt, result.arabic)
+    ? checkEntities(prompt, result.arabic, direction === "ar")
     : null;
   const englishCheck = result.english
-    ? checkEntities(prompt, result.english, false)
+    ? checkEntities(prompt, result.english, direction === "en")
     : null;
   const arabicQuality = result.arabic
     ? checkQuality(prompt, result.arabic, "ar")
@@ -100,7 +113,7 @@ export async function runOptimization(
     ? direction === "en"
       ? {
           arabic: null,
-          english: checkEntities(prompt, normalizedPrompt, false),
+          english: checkEntities(prompt, normalizedPrompt),
         }
       : { arabic: checkEntities(prompt, normalizedPrompt), english: null }
     : { arabic: arabicCheck, english: englishCheck };
@@ -117,29 +130,22 @@ export async function runOptimization(
       : englishQuality,
   };
 
-  const arabicPromise = !optimized.arabic
-    ? Promise.resolve(null)
-    : optimized.arabic === normalizedPrompt
-      ? normalizedPromise
-      : optimized.arabic === prompt
-        ? originalPromise
-        : analyzeTokens(optimized.arabic, config.userKey);
-  const [normalizedMeasurement, arabicM, englishM] = await Promise.all([
-    normalizedPromise,
-    arabicPromise,
-    optimized.english
-      ? analyzeTokens(optimized.english, config.userKey)
-      : Promise.resolve(null),
-  ]);
-
   // Price against the model that actually served the call, not just the one
   // selected in settings — model fallback may produce a different engine.
   const pricedModel =
     optimized.source === "gemini" && result.model
       ? getModel("google", result.model)
       : model;
+  const [original, normalizedMeasurement, arabicM, englishM] =
+    await Promise.all([
+      measure(prompt, pricedModel.id),
+      measure(normalizedPrompt, pricedModel.id),
+      optimized.arabic ? measure(optimized.arabic, pricedModel.id) : null,
+      optimized.english ? measure(optimized.english, pricedModel.id) : null,
+    ]);
 
   return {
+    model: pricedModel.id,
     originalPrompt: prompt,
     direction,
     original: {

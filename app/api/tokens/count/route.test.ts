@@ -7,6 +7,49 @@ afterEach(() => {
 });
 
 describe("POST /api/tokens/count", () => {
+  it.each([
+    null,
+    [],
+    "text",
+    42,
+    { text: 42 },
+    { text: null },
+    { text: "حلل", model: [] },
+  ])("rejects invalid request shapes with 400: %j", async (body) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(
+      new Request("http://localhost/api/tokens/count", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_request" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([1.5, Number.MAX_SAFE_INTEGER + 1, -1])(
+    "rejects an invalid provider token count: %s",
+    async (totalTokens) => {
+      vi.stubEnv("AGENT_PLATFORM_API_KEY", "test-key");
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({ totalTokens }),
+        }),
+      );
+      const response = await POST(
+        new Request("http://localhost/api/tokens/count", {
+          method: "POST",
+          body: JSON.stringify({ text: "حلل التقرير" }),
+        }),
+      );
+      expect(await response.json()).toMatchObject({ fallback: true });
+    },
+  );
+
   it("returns 0 tokens with fallback false for empty text", async () => {
     const request = new Request("http://localhost/api/tokens/count", {
       method: "POST",

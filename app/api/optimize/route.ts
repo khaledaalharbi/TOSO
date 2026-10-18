@@ -13,7 +13,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { providers, resolveProviderModel } from "@/lib/providers/registry";
+import { generateGemini } from "@/lib/server/gemini";
 import type { GeminiUsage } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -28,12 +28,6 @@ interface DualOutput {
   english?: string;
   note?: string;
 }
-
-const VERTEX_MODELS_URL =
-  "https://aiplatform.googleapis.com/v1/publishers/google/models";
-/** AI Studio host — the only endpoint that accepts user-provided (BYOK) keys. */
-const AI_STUDIO_MODELS_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models";
 
 /** Structured-output schema — JSON Schema for both host contracts. */
 const DUAL_SCHEMA = {
@@ -69,6 +63,16 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
+  if (
+    !body ||
+    typeof body !== "object" ||
+    Array.isArray(body) ||
+    (body.text !== undefined && typeof body.text !== "string") ||
+    (body.model !== undefined && typeof body.model !== "string")
+  ) {
+    return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+  }
+
   const text = (body.text ?? "").trim();
   if (!text) return NextResponse.json({ error: "empty_text" }, { status: 400 });
   if (text.length > 100_000) {
@@ -89,144 +93,51 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ fallback: true, reason: "no_api_key" });
   }
 
-  const baseUrl = userKey ? AI_STUDIO_MODELS_URL : VERTEX_MODELS_URL;
-  const model = resolveProviderModel("google", body.model).id;
-  const requestBody = () =>
-    JSON.stringify({
-      systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
-      contents: [{ role: "user", parts: [{ text }] }],
-      generationConfig: userKey
-        ? {
-            // AI Studio (generativelanguage) contract — verified live:
-            // responseMimeType/responseSchema accepted; the responseFormat
-            // union is rejected with 400 on this host.
-            responseMimeType: "application/json",
-            responseSchema: DUAL_SCHEMA,
-            // Rewriting is not deep reasoning — keep thought tokens down.
-            thinkingConfig: { thinkingLevel: "LOW" },
-          }
-        : {
-            // Agent Platform contract: responseFormat union is the
-            // structured-output field; responseMimeType/responseSchema are
-            // deprecated in v1.
-            responseFormat: [
-              {
-                text: { mimeType: "APPLICATION_JSON", schema: DUAL_SCHEMA },
-              },
-            ],
-            thinkingConfig: { thinkingLevel: "LOW" },
-          },
-    });
+  const result = await generateGemini({
+    apiKey,
+    viaUserKey: userKey !== null,
+    model: body.model,
+    systemInstruction: SYSTEM_INSTRUCTION,
+    userText: text,
+    studioConfig: {
+      // AI Studio (generativelanguage) contract — verified live:
+      // responseMimeType/responseSchema accepted; the responseFormat
+      // union is rejected with 400 on this host.
+      responseMimeType: "application/json",
+      responseSchema: DUAL_SCHEMA,
+      // Rewriting is not deep reasoning — keep thought tokens down.
+      thinkingConfig: { thinkingLevel: "LOW" },
+    },
+    vertexConfig: {
+      // Agent Platform contract: responseFormat union is the
+      // structured-output field; responseMimeType/responseSchema are
+      // deprecated in v1.
+      responseFormat: [
+        {
+          text: { mimeType: "APPLICATION_JSON", schema: DUAL_SCHEMA },
+        },
+      ],
+      thinkingConfig: { thinkingLevel: "LOW" },
+    },
+    accept: (raw) => safeParseDual(raw) !== null,
+  });
 
-  /**
-   * Candidate chain: the resolved model first, then the other Gemini models.
-   * Quota availability can differ by model; the response reports which model ran.
-   */
-  const candidateModels = [
-    model,
-    ...providers.google.models
-      .map((entry) => entry.id)
-      .filter((id) => id !== model),
-  ];
-
-  let lastReason = "exhausted";
-  for (const candidate of candidateModels) {
-    let retries5xx = 0;
-    while (true) {
-      let response: Response;
-      try {
-        response = await fetch(
-          `${baseUrl}/${encodeURIComponent(candidate)}:generateContent?key=${encodeURIComponent(apiKey)}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: requestBody(),
-            cache: "no-store",
-            // Bound every attempt — a stalled Gemini connection must not
-            // freeze the whole optimization (and the user's UI) forever.
-            signal: AbortSignal.timeout(15_000),
-          },
-        );
-      } catch {
-        lastReason = "network";
-        break;
-      }
-
-      if (!response.ok) {
-        // A failing user key reports user-scoped reasons so the UI can say
-        // "YOUR key" instead of blaming the server — and we never silently
-        // retry on the server key (that would bill the operator while the
-        // user believes their own quota paid).
-        lastReason = userKey
-          ? response.status === 429
-            ? "user_key_quota"
-            : response.status === 400 ||
-                response.status === 401 ||
-                response.status === 403
-              ? "user_key_invalid"
-              : `user_key_http_${response.status}`
-          : `http_${response.status}`;
-        // 429 may be model-specific → try the next model. 5xx is transient →
-        // a couple of quick retries, then move on.
-        if (response.status >= 500 && retries5xx < 2) {
-          retries5xx += 1;
-          await new Promise((resolve) => setTimeout(resolve, 700));
-          continue;
-        }
-        break;
-      }
-
-      // A 200 with an unparseable body degrades to fallback, not a 500.
-      const payload = (await response.json().catch(() => null)) as {
-        candidates?: {
-          content?: { parts?: { text?: string }[] };
-        }[];
-        usageMetadata?: unknown;
-      } | null;
-      const raw = (payload?.candidates?.[0]?.content?.parts ?? [])
-        .filter((part) => typeof part.text === "string")
-        .map((part) => part.text ?? "")
-        .join("");
-      const parsed = safeParseDual(raw);
-      if (!parsed) {
-        lastReason = "bad_model_output";
-        break;
-      }
-      return NextResponse.json({
-        ...parsed,
-        model: candidate,
-        fallback: false,
-        viaUserKey: userKey !== null,
-        usage: parseVertexUsage(payload?.usageMetadata),
-      });
-    }
+  if (!result.ok) {
+    return NextResponse.json({ fallback: true, reason: result.reason });
   }
-  return NextResponse.json({ fallback: true, reason: lastReason });
-}
-
-function parseVertexUsage(raw: unknown): GeminiUsage | null {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  const payload = raw as Record<string, unknown>;
-  const fields = [
-    ["total_input_tokens", "promptTokenCount"],
-    ["total_output_tokens", "candidatesTokenCount"],
-    ["total_thought_tokens", "thoughtsTokenCount"],
-    ["total_cached_tokens", "cachedContentTokenCount"],
-    ["total_tool_use_tokens", "toolUsePromptTokenCount"],
-    ["total_tokens", "totalTokenCount"],
-  ] as const;
-  const usage: GeminiUsage = {};
-  for (const [field, sourceField] of fields) {
-    const value = payload[sourceField];
-    if (
-      typeof value === "number" &&
-      Number.isSafeInteger(value) &&
-      value >= 0
-    ) {
-      usage[field] = value;
-    }
+  const parsed = safeParseDual(result.text);
+  if (!parsed) {
+    // accept() already proved this parses — belt-and-suspenders for a
+    // future accept change.
+    return NextResponse.json({ fallback: true, reason: "bad_model_output" });
   }
-  return Object.keys(usage).length ? usage : null;
+  return NextResponse.json({
+    ...parsed,
+    model: result.model,
+    fallback: false,
+    viaUserKey: userKey !== null,
+    usage: result.usage satisfies GeminiUsage | null,
+  });
 }
 
 /** Tolerant extraction — models sometimes wrap JSON in stray text or fences. */

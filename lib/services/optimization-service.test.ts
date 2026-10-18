@@ -25,6 +25,86 @@ beforeEach(() => {
 });
 
 describe("runOptimization", () => {
+  it("counts every text with the selected model", async () => {
+    mockedOptimize.mockResolvedValue({
+      arabic: "حلل التقرير",
+      english: "Analyze the report",
+      source: "gemini",
+      note: "تم",
+    });
+    const selected = { ...config, model: "gemini-3.5-flash-lite" };
+    const report = await runOptimization("من فضلك حلل التقرير", selected);
+    expect(
+      vi
+        .mocked(analyzeTokens)
+        .mock.calls.every((call) => call[2] === selected.model),
+    ).toBe(true);
+    expect(report).toHaveProperty("model", selected.model);
+  });
+
+  it("remeasures against the served model after fallback and reuses identical texts", async () => {
+    const servedModel = "gemini-3.5-flash-lite";
+    mockedOptimize.mockResolvedValue({
+      arabic: "حلل التقرير",
+      english: "Analyze the report",
+      source: "gemini",
+      model: servedModel,
+      note: "تم",
+    });
+    const report = await runOptimization("من فضلك حلل التقرير", config);
+    expect(
+      vi.mocked(analyzeTokens).mock.calls.map((call) => [call[0], call[2]]),
+    ).toEqual([
+      ["من فضلك حلل التقرير", config.model],
+      ["حلل التقرير", config.model],
+      ["من فضلك حلل التقرير", servedModel],
+      ["حلل التقرير", servedModel],
+      ["Analyze the report", servedModel],
+    ]);
+    expect(report.arabic?.measurement).toBe(report.normalizedMeasurement);
+    expect(report).toHaveProperty("model", servedModel);
+  });
+
+  it("preserves literal quotes in the English primary", async () => {
+    vi.mocked(arabicRatio).mockReturnValue(0);
+    mockedOptimize.mockResolvedValue({
+      arabic: 'اكتب "Access denied"',
+      english: 'Write "Access granted"',
+      note: "تم",
+      source: "gemini",
+    });
+    const report = await runOptimization('Write "Access denied"', config);
+    expect(report.rejectedByGuard).toBe(true);
+    expect(report.english?.text).toBe('Write "Access denied"');
+    expect(report.arabic).toBeNull();
+  });
+
+  it("allows quoted prose to be translated in the Arabic companion", async () => {
+    vi.mocked(arabicRatio).mockReturnValue(0);
+    mockedOptimize.mockResolvedValue({
+      arabic: 'اكتب "مرحبا"',
+      english: 'Write "Hello"',
+      note: "تم",
+      source: "gemini",
+    });
+    const report = await runOptimization('Write "Hello"', config);
+    expect(report.rejectedByGuard).toBe(false);
+    expect(report.source).toBe("gemini");
+  });
+
+  it("reuses the original measurement for an unchanged English fallback", async () => {
+    vi.mocked(arabicRatio).mockReturnValue(0);
+    mockedOptimize.mockResolvedValue({
+      arabic: null,
+      english: "Summarize the report",
+      source: "mock",
+      note: "محلي",
+    });
+    const report = await runOptimization("Summarize the report", config);
+    expect(report.english?.measurement).toBe(report.originalMeasurement);
+    expect(analyzeTokens).toHaveBeenCalledTimes(1);
+  });
+
   it("measures the original while optimizing normalized text and reports safety checks", async () => {
     mockedOptimize.mockResolvedValue({
       arabic: "عايز حلل ٥٠٪",

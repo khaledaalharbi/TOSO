@@ -29,11 +29,15 @@ export interface DualOptimization {
   fallbackReason?: string;
 }
 
+let optimizerUnavailable = false;
+
 export async function optimizeDual(
   prompt: string,
   model?: string,
   userKey?: string,
 ): Promise<DualOptimization> {
+  if (optimizerUnavailable && !userKey)
+    return localOptimization(prompt, "no_api_key");
   let fallbackReason: string | null = null;
   try {
     const response = await fetch("/api/optimize", {
@@ -45,7 +49,7 @@ export async function optimizeDual(
       body: JSON.stringify({ text: prompt, model }),
     });
     if (response.ok) {
-      const payload = (await response.json()) as {
+      const payload = (await response.json().catch(() => null)) as {
         arabic?: string;
         english?: string;
         note?: string;
@@ -54,11 +58,15 @@ export async function optimizeDual(
         reason?: string;
         viaUserKey?: boolean;
         usage?: GeminiUsage | null;
-      };
+      } | null;
       if (
+        payload &&
         !payload.fallback &&
         typeof payload.arabic === "string" &&
-        payload.arabic.trim()
+        payload.arabic.trim() &&
+        (payload.english === undefined ||
+          typeof payload.english === "string") &&
+        (payload.note === undefined || typeof payload.note === "string")
       ) {
         return {
           arabic: payload.arabic.trim(),
@@ -72,7 +80,12 @@ export async function optimizeDual(
           usage: payload.usage ?? null,
         };
       }
-      fallbackReason = payload.reason ?? null;
+      fallbackReason =
+        payload?.fallback && typeof payload.reason === "string"
+          ? payload.reason
+          : "bad_model_output";
+      if (!userKey && fallbackReason === "no_api_key")
+        optimizerUnavailable = true;
     } else {
       fallbackReason = `http_${response.status}`;
     }
@@ -81,6 +94,13 @@ export async function optimizeDual(
     // Network/route failure → degrade to the local mock below.
   }
 
+  return localOptimization(prompt, fallbackReason);
+}
+
+function localOptimization(
+  prompt: string,
+  fallbackReason: string | null,
+): DualOptimization {
   const mock = optimizePrompt(prompt);
   // A no-Arabic input reverses the local contract too: the cleaned English
   // belongs to the english slot; nothing Arabic is fabricated.

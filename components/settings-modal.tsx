@@ -1,8 +1,10 @@
 "use client";
 
-import { KeyRound, Trash2, X } from "lucide-react";
+import { KeyRound, TerminalSquare, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { GeminiKeyGuide } from "@/components/gemini-key-guide";
+import { AGENT_OPTIONS, DEFAULT_BRIDGE_URL } from "@/lib/bridge/agents";
+import { checkBridge } from "@/lib/services/agent-service";
 import { providers } from "@/lib/providers/registry";
 import type { ProviderConfig } from "@/lib/types";
 
@@ -25,7 +27,7 @@ export function statusFromKeySignal(
   if (signal === "ok") return "ok";
   if (signal === "user_key_quota") return "quota";
   if (signal === "unreachable") return "unreachable";
-  if (signal?.startsWith("user_key_")) return "invalid";
+  if (signal === "user_key_invalid") return "invalid";
   return signal ? "unreachable" : "idle";
 }
 
@@ -82,6 +84,29 @@ export function SettingsModal({
   onSignal,
 }: Props) {
   const [checking, setChecking] = useState(false);
+  const [bridgeStatus, setBridgeStatus] = useState<
+    "idle" | "checking" | "ok" | "bad_token" | "offline"
+  >("idle");
+
+  async function verifyBridge() {
+    if (bridgeStatus === "checking") return;
+    setBridgeStatus("checking");
+    try {
+      const result = await checkBridge({
+        url: config.bridgeUrl ?? DEFAULT_BRIDGE_URL,
+        token: config.bridgeToken ?? "",
+      });
+      setBridgeStatus(
+        result.state === "ok"
+          ? "ok"
+          : result.state === "bad_token"
+            ? "bad_token"
+            : "offline",
+      );
+    } catch {
+      setBridgeStatus("offline");
+    }
+  }
 
   const userKey = config.userKey ?? "";
   const signal =
@@ -230,6 +255,96 @@ export function SettingsModal({
             </div>
           ) : null}
           <GeminiKeyGuide />
+          <div className="border-t border-slate-200 pt-4">
+            <p className="flex items-center gap-2 text-sm font-bold">
+              <TerminalSquare size={16} className="text-violet-600" />
+              جسر وكيل CLI{" "}
+              <span className="font-normal text-slate-400">
+                اختياري — إرسال النص المنقّح إلى وكيل محلي
+              </span>
+            </p>
+            <label className="mt-3 block text-sm font-semibold">
+              عنوان الجسر
+              <input
+                id="bridge-url"
+                name="bridge-url"
+                type="text"
+                dir="ltr"
+                autoComplete="off"
+                value={config.bridgeUrl ?? ""}
+                onChange={(event) => {
+                  onChange({ ...config, bridgeUrl: event.target.value });
+                  setBridgeStatus("idle");
+                }}
+                placeholder={DEFAULT_BRIDGE_URL}
+                className="mt-2 w-full border border-slate-300 bg-white p-3 font-mono text-sm outline-none focus:border-ink"
+              />
+            </label>
+            <label className="mt-3 block text-sm font-semibold">
+              توكن الجسر
+              <input
+                id="bridge-token"
+                name="bridge-token"
+                type="password"
+                dir="ltr"
+                autoComplete="off"
+                value={config.bridgeToken ?? ""}
+                onChange={(event) => {
+                  onChange({
+                    ...config,
+                    bridgeToken: event.target.value.trim(),
+                  });
+                  setBridgeStatus("idle");
+                }}
+                placeholder="يُطبع في الطرفية عند تشغيل npm run bridge"
+                className="mt-2 w-full border border-slate-300 bg-white p-3 font-mono text-sm outline-none focus:border-ink"
+              />
+            </label>
+            <div className="mt-3 flex items-center gap-3">
+              <label className="block flex-1 text-sm font-semibold">
+                الوكيل
+                <select
+                  id="agent"
+                  name="agent"
+                  className="mt-2 w-full border border-slate-300 bg-white p-3 font-mono text-sm outline-none focus:border-ink"
+                  value={config.agent ?? AGENT_OPTIONS[0].id}
+                  onChange={(event) =>
+                    onChange({ ...config, agent: event.target.value })
+                  }
+                >
+                  {AGENT_OPTIONS.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={verifyBridge}
+                disabled={bridgeStatus === "checking"}
+                className="mt-7 shrink-0 border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-600 transition hover:border-ink hover:text-ink disabled:opacity-50"
+              >
+                {bridgeStatus === "checking" ? "يفحص…" : "فحص الاتصال"}
+              </button>
+            </div>
+            {bridgeStatus !== "idle" && bridgeStatus !== "checking" && (
+              <p
+                role="status"
+                className={`mt-2 border px-3 py-2 text-xs ${
+                  bridgeStatus === "ok"
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                    : "border-amber-300 bg-amber-50 text-amber-800"
+                }`}
+              >
+                {bridgeStatus === "ok"
+                  ? "الجسر متصل وجاهز لاستقبال البرومبتات."
+                  : bridgeStatus === "bad_token"
+                    ? "التوكن مرفوض — انسخ التوكن الظاهر في طرفية الجسر كاملاً."
+                    : "لا يوجد جسر على هذا العنوان — شغّله بأمر npm run bridge."}
+              </p>
+            )}
+          </div>
         </div>
         <button
           onClick={onClose}

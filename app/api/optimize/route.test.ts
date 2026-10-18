@@ -50,6 +50,85 @@ afterEach(() => {
 });
 
 describe("POST", () => {
+  it.each([
+    null,
+    [],
+    "text",
+    42,
+    { text: 42 },
+    { text: null },
+    { text: "حلل", model: [] },
+  ])("rejects invalid request shapes with 400: %j", async (body) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(
+      new Request("http://localhost/api/optimize", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_request" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([{}, [null]])(
+    "falls back on malformed response parts: %j",
+    async (parts) => {
+      vi.stubEnv("AGENT_PLATFORM_API_KEY", "test-key");
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({ candidates: [{ content: { parts } }] }),
+        }),
+      );
+      const response = await POST(
+        new Request("http://localhost/api/optimize", {
+          method: "POST",
+          body: JSON.stringify({ text: "حلل التقرير" }),
+        }),
+      );
+      expect(await response.json()).toEqual({
+        fallback: true,
+        reason: "bad_model_output",
+      });
+    },
+  );
+
+  it("ignores thought parts when extracting the structured answer", async () => {
+    vi.stubEnv("AGENT_PLATFORM_API_KEY", "test-key");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  { thought: true, text: '{"draft":"not the answer"}' },
+                  { text: '{"arabic":"حلل","english":"Analyze","note":"تم"}' },
+                ],
+              },
+            },
+          ],
+        }),
+      }),
+    );
+    const response = await POST(
+      new Request("http://localhost/api/optimize", {
+        method: "POST",
+        body: JSON.stringify({ text: "حلل التقرير" }),
+      }),
+    );
+    expect(await response.json()).toMatchObject({
+      fallback: false,
+      arabic: "حلل",
+      english: "Analyze",
+    });
+  });
+
   it("sends separate system and user content through Agent Platform and maps usage", async () => {
     vi.stubEnv("AGENT_PLATFORM_API_KEY", "test-key");
     const fetchMock = vi.fn().mockResolvedValue({

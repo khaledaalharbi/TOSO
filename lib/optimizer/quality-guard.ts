@@ -67,7 +67,11 @@ function containsWord(text: string, word: string): boolean {
 }
 
 function countMarkers(text: string, markers: readonly string[]): number {
-  return markers.filter((marker) => containsWord(text, marker)).length;
+  const normalized = text
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/[ً-ٰٟـ]/g, "");
+  return markers.filter((marker) => containsWord(normalized, marker)).length;
 }
 
 /** Arabic stop-words — function words carry no content signal for coverage. */
@@ -163,7 +167,7 @@ function normalizeArabicWord(word: string): string {
 
 function arabicContentWords(text: string): Set<string> {
   const words = new Set<string>();
-  for (const raw of text.split(/[^ء-ي]+/u)) {
+  for (const raw of text.replace(/[ً-ٰٟـ]/g, "").split(/[^ء-ي]+/u)) {
     const word = normalizeArabicWord(raw);
     if (word.length >= 3 && !AR_STOPWORDS.has(word)) words.add(word);
   }

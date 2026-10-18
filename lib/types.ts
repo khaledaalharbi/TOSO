@@ -19,6 +19,12 @@ export interface ProviderConfig {
    * never persisted or logged server-side.
    */
   userKey?: string;
+  /** Local bridge address (bin/toso-bridge.mjs) for the CLI-agent round trip. */
+  bridgeUrl?: string;
+  /** Session token the bridge printed on start — required on every call. */
+  bridgeToken?: string;
+  /** Chosen CLI agent id from the bridge allowlist (claude | codex | gemini | …). */
+  agent?: string;
 }
 
 export interface TokenAnalysis {
@@ -59,6 +65,7 @@ export interface VariantReport {
 }
 
 export interface OptimizationReport {
+  model?: string;
   originalPrompt: string;
   original: TokenAnalysis;
   originalMeasurement?: TokenMeasurement;
@@ -91,4 +98,5 @@ export interface TokenMeasurement {
   characters: number;
   words: number;
   source: "provider" | "bpe" | "heuristic";
+  model?: string;
 }

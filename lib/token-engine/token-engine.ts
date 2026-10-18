@@ -10,6 +10,8 @@
  * process.env and never calls the provider directly.
  */
 
+import { resolveProviderModel } from "@/lib/providers/registry";
+
 export type TokenSource = "provider" | "bpe" | "heuristic";
 
 export interface TokenMeasurement {
@@ -17,21 +19,34 @@ export interface TokenMeasurement {
   characters: number;
   words: number;
   source: TokenSource;
+  model?: string;
 }
 
 /** Public contract used across the app. */
 export async function analyzeTokens(
   text: string,
   userKey?: string,
+  model?: string,
 ): Promise<TokenMeasurement> {
   const normalized = text.trim();
   const characters = normalized.length;
   const words = normalized ? normalized.split(/\s+/).length : 0;
   if (!characters) return { tokens: 0, characters, words, source: "heuristic" };
 
-  const providerTokens = await countViaProvider(normalized, userKey);
+  const countingModel = resolveProviderModel("google", model).id;
+  const providerTokens = await countViaProvider(
+    normalized,
+    userKey,
+    countingModel,
+  );
   if (providerTokens !== null) {
-    return { tokens: providerTokens, characters, words, source: "provider" };
+    return {
+      tokens: providerTokens,
+      characters,
+      words,
+      source: "provider",
+      model: countingModel,
+    };
   }
 
   const bpeTokens = await countViaBpeAsync(normalized);
@@ -55,9 +70,10 @@ let providerUnavailable = false;
 
 async function countViaProvider(
   text: string,
-  userKey?: string,
+  userKey: string | undefined,
+  model: string,
 ): Promise<number | null> {
-  if (providerUnavailable) return null;
+  if (providerUnavailable && !userKey) return null;
   try {
     const response = await fetch("/api/tokens/count", {
       method: "POST",
@@ -65,7 +81,7 @@ async function countViaProvider(
         "Content-Type": "application/json",
         ...(userKey ? { "x-user-gemini-key": userKey } : {}),
       },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, model }),
     });
     if (!response.ok) return null;
     const payload = (await response.json()) as {
@@ -73,11 +89,17 @@ async function countViaProvider(
       fallback?: boolean;
       reason?: string;
     };
-    if (payload.fallback && payload.reason === "no_api_key") {
+    if (!userKey && payload.fallback && payload.reason === "no_api_key") {
       providerUnavailable = true;
     }
-    if (typeof payload.tokens !== "number" || payload.fallback) return null;
-    return Math.max(0, Math.round(payload.tokens));
+    if (
+      payload.fallback ||
+      typeof payload.tokens !== "number" ||
+      !Number.isSafeInteger(payload.tokens) ||
+      payload.tokens < 0
+    )
+      return null;
+    return payload.tokens;
   } catch {
     return null;
   }
@@ -88,22 +110,21 @@ async function countViaProvider(
 /* -------------------------------------------------------------------------- */
 
 let bpeEstimator: ((text: string) => number | null) | null = null;
-let bpeLoaded = false;
+let bpeLoading: Promise<void> | null = null;
 
 /**
  * Loads the local BPE estimator lazily. Dynamic import keeps the initial
  * bundle small and degrades gracefully if the tokenizer asset is missing.
  */
 async function countViaBpeAsync(text: string): Promise<number | null> {
-  if (!bpeLoaded) {
-    bpeLoaded = true;
-    try {
-      const estimator = await import("@/lib/token-engine/bpe-estimator");
+  bpeLoading ??= import("@/lib/token-engine/bpe-estimator")
+    .then((estimator) => {
       bpeEstimator = estimator.countViaBpe;
-    } catch {
+    })
+    .catch(() => {
       bpeEstimator = null;
-    }
-  }
+    });
+  await bpeLoading;
   return bpeEstimator ? bpeEstimator(text) : null;
 }
 
