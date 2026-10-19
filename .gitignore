@@ -71,3 +71,7 @@ venv/
 
 # Understand-Anything knowledge graph (generated, large)
 .ua/
+
+# Windows reserved-device name — shell redirections like `> nul` in Git Bash
+# create a real file that breaks every git command touching the worktree.
+nul
