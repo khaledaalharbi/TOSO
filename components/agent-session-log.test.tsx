@@ -113,6 +113,15 @@ describe("AgentTranscript", () => {
     expect(html).not.toContain("مسح Gemini CLI");
   });
 
+  it("offers an expand toggle on each language box (expand arrows in split view)", () => {
+    const html = render();
+    expect(html).toContain('aria-label="وسّع النص الإنجليزي"');
+    expect(html).toContain('aria-label="وسّع النص العربي"');
+    expect(html).toContain("lucide-chevrons-left-right");
+    expect(html).not.toContain("lucide-chevrons-right-left");
+    expect(html).not.toContain("اطوِ إلى عرض العمودين");
+  });
+
   it("offers per-agent clear, and clear-all only when asked", () => {
     expect(render()).toContain("مسح Gemini CLI");
     expect(render()).not.toContain("مسح الكل");

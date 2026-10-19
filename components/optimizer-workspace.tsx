@@ -784,10 +784,10 @@ export function OptimizerWorkspace() {
           </div>
           <div className="text-right">
             <div className="flex items-center gap-2 text-xl font-black">
-              <Sparkles className="text-brand-500" /> مُحسّن البرومبت العربي
+              <Sparkles className="text-brand-500" /> مُحسّن التلقينة العربية
             </div>
             <p className="mt-1 font-mono text-[11px] text-slate-500">
-              TOSO — قياس وتقليص تكلفة البرومبت / Prompt Workbench
+              TOSO — قياس وتقليص تكلفة التلقينة / Prompt Workbench
             </p>
           </div>
         </header>
@@ -810,25 +810,25 @@ export function OptimizerWorkspace() {
         )}
 
         {/* 01 — INPUT + LIVE PROCESS TRACK */}
-        <SpecHead num="01" title="المدخلات" note="البرومبت الأصلي" />
+        <SpecHead num="01" title="المدخلات" note="التلقينة الأصلية" />
         <section className="border border-ink bg-white p-5 sm:p-7">
-          <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3">
+          <div className="mb-4 flex items-center gap-2 border-b border-slate-200 pb-3">
+            <span className="text-[11px] font-medium text-slate-500">
+              نموذج المعالجة والترجمة:
+            </span>
             <span className="border border-slate-300 px-2.5 py-1 font-mono text-[11px] text-slate-600">
               {modelLabel}
             </span>
-            <h1 className="text-xl font-bold">
-              اكتب طلبك بالعربية أو الإنجليزية
-            </h1>
           </div>
           <textarea
             id="prompt"
             name="prompt"
-            aria-label="البرومبت"
+            aria-label="التلقينة"
             dir="auto"
             disabled={!keyHydrated}
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
-            placeholder="مثال: حلّل لي أداء الشركة خلال آخر ستة أشهر..."
+            placeholder="التلقينة الأصلية تُكتب هنا"
             className="min-h-32 w-full resize-y border border-slate-300 bg-slate-50/60 p-4 leading-8 outline-none transition placeholder:text-slate-400 focus:border-brand-500"
           />
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1994,7 +1994,7 @@ export function OptimizationUsagePanel({
           )}
           <p className="mt-3 text-xs text-slate-500">
             أرقام Gemini لهذا الاستدعاء الناجح فقط؛ مدخلاته تشمل تعليمات النظام،
-            وليست عدّ البرومبت وحده. الحقول التفصيلية لا تُجمع يدويًا؛ الإجمالي
+            وليست عدّ التلقينة وحدها. الحقول التفصيلية لا تُجمع يدويًا؛ الإجمالي
             معروض كما أعاده Gemini.
           </p>
         </>

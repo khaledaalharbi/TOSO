@@ -8,8 +8,8 @@ import "@fontsource/geist-mono/700.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "مُحسّن البرومبت العربي",
-  description: "نموذج أولي لتحليل وتحسين تكلفة البرومبتات العربية",
+  title: "مُحسّن التلقينة العربية",
+  description: "نموذج أولي لتحليل وتحسين تكلفة التلقينات العربية",
 };
 
 export default function RootLayout({

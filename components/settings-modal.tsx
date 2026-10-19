@@ -1,17 +1,25 @@
 "use client";
 
 import {
+  Check,
+  ChevronDown,
+  CircleHelp,
   FolderOpen,
   KeyRound,
   Languages,
+  Sparkles,
   TerminalSquare,
   Trash2,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { GeminiKeyGuide } from "@/components/gemini-key-guide";
 import { AGENT_OPTIONS, DEFAULT_BRIDGE_URL } from "@/lib/bridge/agents";
-import { checkBridge } from "@/lib/services/agent-service";
+import {
+  checkBridge,
+  discoverBridge,
+  type BridgeConfig,
+} from "@/lib/services/agent-service";
 import {
   checkAvailableModels,
   type ModelCheckResponse,
@@ -62,6 +70,7 @@ const chipTone: Record<KeyStatus, string> = {
 
 /** One-word status shown inline next to the masked key. */
 const statusLabel: Partial<Record<KeyStatus, string>> = {
+  idle: "محفوظ",
   ok: "يعمل",
   invalid: "مرفوض",
   quota: "الحصة منتهية",
@@ -74,6 +83,45 @@ const statusHint: Partial<Record<KeyStatus, string>> = {
   quota: "راجع حصتك في AI Studio.",
   unreachable: "أعد المحاولة بعد قليل أو راجع الاتصال.",
 };
+
+/** Collapsible settings group — closed by default, expands on click. */
+function Section({
+  icon,
+  title,
+  hint,
+  badge,
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  hint?: string;
+  badge?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <details className="group border border-slate-200">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-sm font-bold [&::-webkit-details-marker]:hidden">
+        <span className="flex flex-wrap items-center gap-2">
+          {icon}
+          {title}
+          {hint ? (
+            <span className="text-xs font-normal text-slate-400">{hint}</span>
+          ) : null}
+        </span>
+        <span className="flex shrink-0 items-center gap-1.5">
+          {badge}
+          <ChevronDown
+            size={14}
+            className="text-slate-400 transition-transform group-open:rotate-180"
+          />
+        </span>
+      </summary>
+      <div className="space-y-4 border-t border-slate-200 px-4 py-4">
+        {children}
+      </div>
+    </details>
+  );
+}
 
 interface Props {
   open: boolean;
@@ -105,6 +153,11 @@ export function SettingsModal({
     | "no_key"
     | "offline"
   >("idle");
+  const [serverKey, setServerKey] = useState<
+    "idle" | "checking" | "active" | "none" | "offline"
+  >("idle");
+  const [bridgeSession, setBridgeSession] = useState<BridgeConfig | null>(null);
+  const [showBridgeHelp, setShowBridgeHelp] = useState(false);
 
   async function verifyModels() {
     if (modelCheck === "checking") return;
@@ -149,6 +202,50 @@ export function SettingsModal({
     keySignal && keySignal.key === userKey ? keySignal.signal : null;
   const status: KeyStatus = checking ? "checking" : statusFromKeySignal(signal);
 
+  // Server-key probe — the server key never reaches the browser, so the only
+  // honest signal is one free countTokens call without a user-key header.
+  useEffect(() => {
+    if (!open || userKey) {
+      setServerKey("idle");
+      return;
+    }
+    let cancelled = false;
+    setServerKey("checking");
+    fetch("/api/tokens/count", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "تم", model: config.model }),
+    })
+      .then(async (response) => {
+        if (cancelled) return;
+        const payload = (await response.json().catch(() => ({}))) as {
+          fallback?: boolean;
+        };
+        setServerKey(
+          response.ok && payload.fallback === false ? "active" : "none",
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setServerKey("offline");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, userKey, config.model]);
+
+  // Ask the app for the live bridge's published session so the manual fields
+  // can show it as a placeholder instead of a bare default.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    discoverBridge().then((session) => {
+      if (!cancelled) setBridgeSession(session);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
   async function verifyKey() {
     const key = config.userKey?.trim();
     if (!key || checking) return;
@@ -182,6 +279,38 @@ export function SettingsModal({
 
   if (!open) return null;
   const options = providers.google.models;
+  const currentModelLabel =
+    options.find((model) => model.id === config.model)?.label ?? config.model;
+  const keyBadge = userKey ? (
+    <span
+      className={`flex items-center gap-1 text-xs font-bold ${
+        status === "ok"
+          ? "text-emerald-700"
+          : status === "invalid"
+            ? "text-rose-700"
+            : status === "quota"
+              ? "text-amber-700"
+              : "text-slate-600"
+      }`}
+    >
+      <Check size={14} />
+      {status === "ok" ? "يعمل" : (statusLabel[status] ?? "محفوظ")}
+    </span>
+  ) : serverKey === "active" ? (
+    <span className="flex items-center gap-1 text-xs font-bold text-emerald-700">
+      <Check size={14} /> مفتاح الخادم
+    </span>
+  ) : serverKey === "checking" ? (
+    <span className="text-xs text-slate-400">يفحص…</span>
+  ) : serverKey === "none" ? (
+    <span className="text-xs font-bold text-amber-700">لا مفتاح</span>
+  ) : serverKey === "offline" ? (
+    <span className="text-xs text-slate-500">تعذّر الفحص</span>
+  ) : null;
+  const bridgeReady = Boolean(
+    (config.bridgeToken?.trim() || bridgeSession?.token) &&
+    (config.bridgeUrl?.trim() || bridgeSession?.url),
+  );
   return (
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4"
@@ -199,163 +328,236 @@ export function SettingsModal({
             <X size={20} />
           </button>
           <div>
-            <h2 className="text-lg font-bold">إعدادات النموذج</h2>
+            <h2 className="text-lg font-bold">الإعدادات</h2>
             <p className="font-mono text-[11px] text-slate-500">
               ENGINE — Google Gemini
             </p>
           </div>
         </div>
-        <div className="space-y-4">
-          <label className="block text-sm font-semibold">
-            النموذج
-            <select
-              id="model"
-              name="model"
-              className="mt-2 w-full border border-slate-300 bg-white p-3 font-mono text-sm outline-none focus:border-ink"
-              value={config.model}
-              onChange={(event) =>
-                onChange({ ...config, model: event.target.value })
-              }
-            >
-              {options.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.label}
-                  {unavailableModels.has(model.id) ? " — غير متاح" : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="mt-2">
-            <button
-              type="button"
-              onClick={verifyModels}
-              disabled={modelCheck === "checking"}
-              className="border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:border-ink hover:text-ink disabled:opacity-50"
-            >
-              {modelCheck === "checking" ? "يفحص النماذج…" : "تحقق من النماذج"}
-            </button>
-            {modelCheck === "no_key" ? (
-              <p className="mt-2 border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                لا يوجد مفتاح للفحص — أضف مفتاحك أعلاه أو اضبط مفتاح الخادم.
-              </p>
-            ) : null}
-            {modelCheck === "offline" ? (
-              <p className="mt-2 border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                تعذّر الوصول — راجع الاتصال وأعد المحاولة.
-              </p>
-            ) : null}
-            {typeof modelCheck === "object" && modelCheck.state === "ok" ? (
-              <div className="mt-2 space-y-1.5 border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
-                {modelCheck.data.results.map((result) => (
-                  <div key={result.id} className="flex items-center gap-2">
+        <div className="space-y-3">
+          <Section
+            icon={<KeyRound size={16} className="text-brand-600" />}
+            title="المفتاح والوصول"
+            hint="BYOK أو مفتاح الخادم"
+            badge={keyBadge}
+          >
+            <label className="block text-sm font-semibold">
+              مفتاح Gemini الخاص بك{" "}
+              <span className="font-normal text-slate-400">
+                اختياري — استخدم حصتك أنت (BYOK)
+              </span>
+              <div className="relative mt-2">
+                <KeyRound
+                  className="absolute right-3 top-3 text-slate-400"
+                  size={18}
+                />
+                <input
+                  id="user-gemini-key"
+                  name="user-gemini-key"
+                  type="password"
+                  autoComplete="off"
+                  value={userKey}
+                  onChange={(event) =>
+                    onChange({ ...config, userKey: event.target.value.trim() })
+                  }
+                  placeholder="مفتاح AI Studio — يُحفظ في متصفحك فقط"
+                  className="w-full border border-slate-300 bg-white py-3 pr-10 pl-3 font-mono text-sm outline-none focus:border-ink"
+                  dir="ltr"
+                />
+              </div>
+            </label>
+            {userKey ? (
+              <div
+                className={`border border-slate-300 px-3 py-2 text-xs ${chipTone[status]}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex min-w-0 items-center gap-1.5">
                     <span
-                      className={`h-2 w-2 shrink-0 rounded-full ${result.available ? "bg-emerald-500" : "bg-rose-500"}`}
+                      className={`h-2 w-2 shrink-0 rounded-full ${dotClass[status]}`}
                       aria-hidden="true"
                     />
-                    <span className="font-mono font-semibold" dir="ltr">
-                      {result.id}
+                    <span dir="ltr" className="font-semibold">
+                      ••••{userKey.slice(-4)}
                     </span>
-                    {!result.available ? (
-                      <span className="text-slate-500">
-                        {result.status === 429
-                          ? "الحصة منتهية"
-                          : result.status === "network"
-                            ? "تعذّر الوصول"
-                            : `http_${result.status}`}
-                      </span>
+                    {statusLabel[status] ? (
+                      <span className="font-bold">{statusLabel[status]}</span>
                     ) : null}
+                  </span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={verifyKey}
+                      disabled={checking}
+                      className="font-bold underline underline-offset-2 hover:opacity-80 disabled:opacity-50"
+                    >
+                      {checking ? "يفحص…" : "تحقق"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onChange({ ...config, userKey: undefined })
+                      }
+                      className="flex items-center gap-1 font-bold text-rose-600 hover:text-rose-700"
+                    >
+                      <Trash2 size={14} />
+                      مسح
+                    </button>
                   </div>
-                ))}
-                {modelCheck.data.extras?.length ? (
-                  <p className="pt-1 leading-5 text-slate-600">
-                    نماذج أخرى متاحة لحسابك غير مسجلة بعد:{" "}
-                    <span dir="ltr" className="font-mono">
-                      {modelCheck.data.extras.join("، ")}
-                    </span>
-                  </p>
+                </div>
+                {statusHint[status] ? (
+                  <p className="mt-1 leading-5">{statusHint[status]}</p>
                 ) : null}
-                <p className="text-slate-400">
-                  عبر {modelCheck.data.viaUserKey ? "مفتاحك" : "مفتاح الخادم"} —
-                  فحص حرّ بلا تكلفة
+              </div>
+            ) : serverKey === "checking" ? (
+              <p className="border border-slate-300 px-3 py-2 text-xs text-slate-500">
+                يُفحص مفتاح الخادم…
+              </p>
+            ) : serverKey === "active" ? (
+              <p className="flex items-center gap-1.5 border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
+                <Check size={14} /> يُستخدم مفتاح الخادم — لا حاجة لمفتاحك.
+              </p>
+            ) : serverKey === "none" ? (
+              <p className="border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                لا مفتاح على الإطلاق — أضف مفتاحك هنا أو اضبط مفتاح الخادم، وإلا
+                تعمل التنقية المحلية فقط.
+              </p>
+            ) : serverKey === "offline" ? (
+              <p className="border border-slate-300 px-3 py-2 text-xs text-slate-500">
+                تعذّر فحص مفتاح الخادم — الخادم غير متاح.
+              </p>
+            ) : null}
+            <GeminiKeyGuide />
+          </Section>
+          <Section
+            icon={<Sparkles size={16} className="text-brand-600" />}
+            title="النموذج"
+            hint="المعالجة والترجمة"
+            badge={
+              <span className="font-mono text-xs text-slate-500" dir="ltr">
+                {currentModelLabel}
+              </span>
+            }
+          >
+            <label className="block text-sm font-semibold">
+              نموذج المعالجة والترجمة
+              <select
+                id="model"
+                name="model"
+                className="mt-2 w-full border border-slate-300 bg-white p-3 font-mono text-sm outline-none focus:border-ink"
+                value={config.model}
+                onChange={(event) =>
+                  onChange({ ...config, model: event.target.value })
+                }
+              >
+                {options.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.label}
+                    {unavailableModels.has(model.id) ? " — غير متاح" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={verifyModels}
+                disabled={modelCheck === "checking"}
+                className="border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:border-ink hover:text-ink disabled:opacity-50"
+              >
+                {modelCheck === "checking"
+                  ? "يفحص النماذج…"
+                  : "تحقق من النماذج"}
+              </button>
+              {modelCheck === "no_key" ? (
+                <p className="mt-2 border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  لا يوجد مفتاح للفحص — أضف مفتاحك أعلاه أو اضبط مفتاح الخادم.
+                </p>
+              ) : null}
+              {modelCheck === "offline" ? (
+                <p className="mt-2 border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  تعذّر الوصول — راجع الاتصال وأعد المحاولة.
+                </p>
+              ) : null}
+              {typeof modelCheck === "object" && modelCheck.state === "ok" ? (
+                <div className="mt-2 space-y-1.5 border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                  {modelCheck.data.results.map((result) => (
+                    <div key={result.id} className="flex items-center gap-2">
+                      <span
+                        className={`h-2 w-2 shrink-0 rounded-full ${result.available ? "bg-emerald-500" : "bg-rose-500"}`}
+                        aria-hidden="true"
+                      />
+                      <span className="font-mono font-semibold" dir="ltr">
+                        {result.id}
+                      </span>
+                      {!result.available ? (
+                        <span className="text-slate-500">
+                          {result.status === 429
+                            ? "الحصة منتهية"
+                            : result.status === "network"
+                              ? "تعذّر الوصول"
+                              : `http_${result.status}`}
+                        </span>
+                      ) : null}
+                    </div>
+                  ))}
+                  {modelCheck.data.extras?.length ? (
+                    <p className="pt-1 leading-5 text-slate-600">
+                      نماذج أخرى متاحة لحسابك غير مسجلة بعد:{" "}
+                      <span dir="ltr" className="font-mono">
+                        {modelCheck.data.extras.join("، ")}
+                      </span>
+                    </p>
+                  ) : null}
+                  <p className="text-slate-400">
+                    عبر {modelCheck.data.viaUserKey ? "مفتاحك" : "مفتاح الخادم"}{" "}
+                    — فحص حرّ بلا تكلفة
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          </Section>
+          <Section
+            icon={<TerminalSquare size={16} className="text-violet-600" />}
+            title="جسر وكيل CLI"
+            hint="إرسال الناتج إلى وكيل محلي — اختياري"
+            badge={
+              bridgeReady ? (
+                <span className="flex items-center gap-1 text-xs font-bold text-emerald-700">
+                  <Check size={14} /> مُهيأ
+                </span>
+              ) : null
+            }
+          >
+            <button
+              type="button"
+              onClick={() => setShowBridgeHelp((v) => !v)}
+              aria-expanded={showBridgeHelp}
+              className="flex items-center gap-1.5 text-xs font-bold text-slate-500 transition hover:text-ink"
+            >
+              <CircleHelp size={15} />
+              ما الجسر؟
+            </button>
+            {showBridgeHelp ? (
+              <div className="border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-6 text-slate-600">
+                <p>
+                  الجسر خادم صغير على جهازك (
+                  <code dir="ltr">bin/toso-bridge.mjs</code>) — المتصفح لا
+                  يستطيع تشغيل الوكيل، فيستقبل الجسر طلبات الواجهة ويشغّل الوكيل
+                  في مجلد مشروعك.
+                </p>
+                <p className="mt-1">
+                  <b>عنوان الجسر:</b> أين يستمع (الافتراضي{" "}
+                  <code dir="ltr">http://127.0.0.1:8676</code>).{" "}
+                  <b>توكن الجسر:</b> كلمة سر مؤقتة يولّدها الجسر كل تشغيل ويرفض
+                  الطلبات بدونها — لا تخرج من جهازك.
+                </p>
+                <p className="mt-1 font-semibold text-slate-700">
+                  القاعدة البسيطة: كلما كان الجسر على جهازك بالإعدادات
+                  الافتراضية لا تلمس الحقلين؛ كلما خرج عن الافتراضي تكتبهما
+                  بنفسك.
                 </p>
               </div>
             ) : null}
-          </div>
-          <label className="block text-sm font-semibold">
-            مفتاح Gemini الخاص بك{" "}
-            <span className="font-normal text-slate-400">
-              اختياري — استخدم حصتك أنت (BYOK)
-            </span>
-            <div className="relative mt-2">
-              <KeyRound
-                className="absolute right-3 top-3 text-slate-400"
-                size={18}
-              />
-              <input
-                id="user-gemini-key"
-                name="user-gemini-key"
-                type="password"
-                autoComplete="off"
-                value={userKey}
-                onChange={(event) =>
-                  onChange({ ...config, userKey: event.target.value.trim() })
-                }
-                placeholder="مفتاح AI Studio — يُحفظ في متصفحك فقط"
-                className="w-full border border-slate-300 bg-white py-3 pr-10 pl-3 font-mono text-sm outline-none focus:border-ink"
-                dir="ltr"
-              />
-            </div>
-          </label>
-          {userKey ? (
-            <div
-              className={`border border-slate-300 px-3 py-2 text-xs ${chipTone[status]}`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <span
-                    className={`h-2 w-2 shrink-0 rounded-full ${dotClass[status]}`}
-                    aria-hidden="true"
-                  />
-                  <span dir="ltr" className="font-semibold">
-                    ••••{userKey.slice(-4)}
-                  </span>
-                  {statusLabel[status] ? (
-                    <span className="font-bold">{statusLabel[status]}</span>
-                  ) : null}
-                </span>
-                <div className="flex shrink-0 items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={verifyKey}
-                    disabled={checking}
-                    className="font-bold underline underline-offset-2 hover:opacity-80 disabled:opacity-50"
-                  >
-                    {checking ? "يفحص…" : "تحقق"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onChange({ ...config, userKey: undefined })}
-                    className="flex items-center gap-1 font-bold text-rose-600 hover:text-rose-700"
-                  >
-                    <Trash2 size={14} />
-                    مسح
-                  </button>
-                </div>
-              </div>
-              {statusHint[status] ? (
-                <p className="mt-1 leading-5">{statusHint[status]}</p>
-              ) : null}
-            </div>
-          ) : null}
-          <GeminiKeyGuide />
-          <div className="border-t border-slate-200 pt-4">
-            <p className="flex items-center gap-2 text-sm font-bold">
-              <TerminalSquare size={16} className="text-violet-600" />
-              جسر وكيل CLI{" "}
-              <span className="font-normal text-slate-400">
-                اختياري — إرسال النص المنقّح إلى وكيل محلي
-              </span>
-            </p>
             <label className="mt-3 block text-sm font-semibold">
               عنوان الجسر
               <input
@@ -369,7 +571,7 @@ export function SettingsModal({
                   onChange({ ...config, bridgeUrl: event.target.value });
                   setBridgeStatus("idle");
                 }}
-                placeholder={DEFAULT_BRIDGE_URL}
+                placeholder={bridgeSession?.url ?? DEFAULT_BRIDGE_URL}
                 className="mt-2 w-full border border-slate-300 bg-white p-3 font-mono text-sm outline-none focus:border-ink"
               />
             </label>
@@ -389,10 +591,22 @@ export function SettingsModal({
                   });
                   setBridgeStatus("idle");
                 }}
-                placeholder="يُطبع في الطرفية عند تشغيل npm run bridge"
+                placeholder={
+                  bridgeSession
+                    ? `••••${bridgeSession.token.slice(-6)}`
+                    : "يُطبع في الطرفية عند تشغيل npm run bridge"
+                }
                 className="mt-2 w-full border border-slate-300 bg-white p-3 font-mono text-sm outline-none focus:border-ink"
               />
             </label>
+            {bridgeSession &&
+            !config.bridgeUrl?.trim() &&
+            !config.bridgeToken?.trim() ? (
+              <p className="text-xs leading-5 text-slate-500">
+                الرمادية أعلاه هي قيم الجسر العامل — اكتُشفت تلقائياً وتُستخدم
+                كما هي ما دام الحقل فارغاً.
+              </p>
+            ) : null}
             <div className="mt-3 flex items-center gap-3">
               <label className="block flex-1 text-sm font-semibold">
                 الوكيل الافتراضي
@@ -450,21 +664,18 @@ export function SettingsModal({
                 }`}
               >
                 {bridgeStatus === "ok"
-                  ? "الجسر متصل وجاهز لاستقبال البرومبتات."
+                  ? "الجسر متصل وجاهز لاستقبال التلقينات."
                   : bridgeStatus === "bad_token"
                     ? "التوكن مرفوض — انسخ التوكن الظاهر في طرفية الجسر كاملاً."
                     : "لا يوجد جسر على هذا العنوان — شغّله بأمر npm run bridge."}
               </p>
             )}
-          </div>
-          <div className="border-t border-slate-200 pt-4">
-            <p className="flex items-center gap-2 text-sm font-bold">
-              <FolderOpen size={16} className="text-amber-600" />
-              مشاريع الوكلاء والثقة{" "}
-              <span className="font-normal text-slate-400">
-                مسار كل وكيل يُحدَّد من تبويبه في القسم 04
-              </span>
-            </p>
+          </Section>
+          <Section
+            icon={<FolderOpen size={16} className="text-amber-600" />}
+            title="مشاريع الوكلاء والثقة"
+            hint="مسار كل وكيل يُحدَّد من تبويبه في القسم 04"
+          >
             <label className="mt-3 flex cursor-pointer items-start gap-2.5 border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold">
               <input
                 id="auto-trust"
@@ -506,12 +717,12 @@ export function SettingsModal({
                 </span>
               </span>
             </label>
-          </div>
-          <div className="border-t border-slate-200 pt-4">
-            <p className="flex items-center gap-2 text-sm font-bold">
-              <Languages size={16} className="text-emerald-600" />
-              ردود الوكيل (تبويب OUT)
-            </p>
+          </Section>
+          <Section
+            icon={<Languages size={16} className="text-emerald-600" />}
+            title="ردود الوكيل (تبويب OUT)"
+            hint="الترجمة والتنظيف"
+          >
             <label className="mt-3 flex cursor-pointer items-start gap-2.5 border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold">
               <input
                 id="auto-translate"
@@ -551,7 +762,7 @@ export function SettingsModal({
                 </span>
               </span>
             </label>
-          </div>
+          </Section>
         </div>
         <button
           onClick={onClose}

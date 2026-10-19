@@ -175,7 +175,7 @@ describe("OptimizationUsagePanel", () => {
     expect(markup).toContain("التفكير");
     expect(markup).toContain("0");
     expect(markup).not.toContain("المخرجات</div>");
-    expect(markup).toContain("ليست عدّ البرومبت وحده");
+    expect(markup).toContain("ليست عدّ التلقينة وحدها");
     expect(markup).toContain("ليس فاتورة هذا الاستدعاء");
   });
 

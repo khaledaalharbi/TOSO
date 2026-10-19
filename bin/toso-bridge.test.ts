@@ -25,6 +25,7 @@ let child: ChildProcess;
 let workDir: string;
 let targetDir: string;
 let trustFile: string;
+let devinTrustFile: string;
 
 function api(
   p: string,
@@ -74,6 +75,7 @@ beforeAll(async () => {
   targetDir = path.join(workDir, "Target App");
   mkdirSync(targetDir);
   trustFile = path.join(workDir, "trust", "trustedFolders.json");
+  devinTrustFile = path.join(workDir, "trust", "trusted_workspaces.json");
   const agentsFile = path.join(workDir, "agents.json");
   writeFileSync(
     agentsFile,
@@ -134,6 +136,12 @@ beforeAll(async () => {
         label: "Trusty",
         cmd: process.execPath,
         trustFile,
+      },
+      devinlike: {
+        label: "DevinLike",
+        cmd: process.execPath,
+        trustFile: devinTrustFile,
+        trustFormat: "trusted_paths",
       },
       ghost: {
         label: "Ghost",
@@ -506,6 +514,23 @@ describe("toso-bridge", () => {
     expect(Object.keys(data)[0]).toBe(first.key);
   });
 
+  it("/trust/workspace writes Devin's trusted_paths array format", async () => {
+    const call = () =>
+      api("/trust/workspace", {
+        method: "POST",
+        body: JSON.stringify({ agent: "devinlike", cwd: targetDir }),
+      });
+    const first = await (await call()).json();
+    expect(first).toMatchObject({ ok: true, already: false });
+    const data = JSON.parse(readFileSync(devinTrustFile, "utf8"));
+    expect(data.trusted_paths).toEqual([first.key]);
+    expect(first.key).toContain("Target App");
+    if (process.platform === "win32") {
+      expect(first.key.startsWith("\\\\?\\")).toBe(true);
+    }
+    expect((await (await call()).json()).already).toBe(true);
+  });
+
   it("/trust/workspace refuses agents without a trust file and empty folders", async () => {
     const unsupported = await api("/trust/workspace", {
       method: "POST",
@@ -547,7 +572,7 @@ describe("toso-bridge", () => {
     );
     expect(byId.gemini).toEqual({ perRun: true, persistent: true });
     expect(byId.codex).toEqual({ perRun: true, persistent: false });
-    expect(byId.devin).toEqual({ perRun: true, persistent: false });
+    expect(byId.devin).toEqual({ perRun: true, persistent: true });
     expect(byId.claude).toEqual({ perRun: false, persistent: false });
   });
 

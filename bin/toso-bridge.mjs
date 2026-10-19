@@ -66,8 +66,11 @@ const MAX_PTY_INPUT = 256 * 1024;
  *   trustArgs — flags appended to ONE headless run (/run) when auto-trust is
  *               on: the agent's documented "skip the folder check" switch
  *               for non-interactive mode, where no trust dialog can be shown.
- *   trustFile — the agent's own trust registry (JSON map path→TRUST_FOLDER)
- *               written only on an explicit "trust permanently" request.
+ *   trustFile — the agent's own trust registry, written only on an explicit
+ *               "trust permanently" request. `trustFormat` picks the shape:
+ *               default "gemini" → JSON map path→TRUST_FOLDER;
+ *               "trusted_paths" → Devin's {"trusted_paths":[canonical paths]}.
+ *               Unwired agents answer `trust_unsupported` honestly.
  * Claude has no folder-gate flag for print mode; its skip-permission flags
  * (and Codex's --full-auto) authorize ACTIONS, a different class, and are
  * deliberately not wired here.
@@ -96,6 +99,13 @@ const BUILTIN_AGENTS = {
     promptVia: "file",
     // Print mode cannot show devin's trust prompt and fails in untrusted folders.
     trustArgs: ["--respect-workspace-trust", "false"],
+    // Devin's own registry — verified live on a real install:
+    //   {"trusted_paths": ["\\\\?\\C:\\dir"]}  (%APPDATA% on Windows).
+    trustFile:
+      process.platform === "win32"
+        ? `${process.env.APPDATA ?? `${os.homedir()}\\AppData\\Roaming`}\\devin\\cli\\trusted_workspaces.json`
+        : "~/.config/devin/cli/trusted_workspaces.json",
+    trustFormat: "trusted_paths",
   },
   hermes: {
     label: "Hermes",
@@ -234,6 +244,18 @@ function writeTrust(adapter, dir) {
   }
   if (!data || typeof data !== "object" || Array.isArray(data)) {
     return { ok: false, error: "trust_file_unreadable", file };
+  }
+  // Devin's registry is an array of canonical paths, not a keyed map.
+  if (adapter.trustFormat === "trusted_paths") {
+    const entry = isWin ? `\\\\?\\${dir.replace(/\//g, "\\")}` : dir;
+    const list = Array.isArray(data.trusted_paths) ? data.trusted_paths : [];
+    const already = list.includes(entry);
+    if (!already) {
+      data.trusted_paths = [...list, entry];
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+    }
+    return { ok: true, file, key: entry, already };
   }
   const already = data[key] === "TRUST_FOLDER";
   if (!already) {
@@ -391,6 +413,8 @@ function loadAgents() {
               entry.trustArgs.every((a) => typeof a === "string"))) &&
           (entry.trustFile === undefined ||
             (typeof entry.trustFile === "string" && entry.trustFile)) &&
+          (entry.trustFormat === undefined ||
+            entry.trustFormat === "trusted_paths") &&
           (entry.interactiveArgs === undefined ||
             (Array.isArray(entry.interactiveArgs) &&
               entry.interactiveArgs.every((a) => typeof a === "string")))
@@ -403,6 +427,7 @@ function loadAgents() {
             ...(entry.trustEnv ? { trustEnv: entry.trustEnv } : {}),
             ...(entry.trustArgs ? { trustArgs: entry.trustArgs } : {}),
             ...(entry.trustFile ? { trustFile: entry.trustFile } : {}),
+            ...(entry.trustFormat ? { trustFormat: entry.trustFormat } : {}),
             ...(entry.interactiveArgs
               ? { interactiveArgs: entry.interactiveArgs }
               : {}),
@@ -731,7 +756,7 @@ function runAgent(
       trusted,
       status: "error",
       output: "",
-      error: `prompt_too_long_for_agent: ${agentId} يستقبل البرومبت عبر argv (~${MAX_ARGV_PROMPT} حرف كحد أقصى)؛ اختصر النص أو استخدم وكيلاً يقرأه من ملف/stdin`,
+      error: `prompt_too_long_for_agent: ${agentId} يستقبل التلقينة عبر argv (~${MAX_ARGV_PROMPT} حرف كحد أقصى)؛ اختصر النص أو استخدم وكيلاً يقرأه من ملف/stdin`,
       exitCode: null,
       startedAt: Date.now(),
       endedAt: Date.now(),

@@ -4,6 +4,8 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowRight,
+  ChevronsLeftRight,
+  ChevronsRightLeft,
   Languages,
   Trash2,
 } from "lucide-react";
@@ -140,22 +142,56 @@ function LangBox({
   lang,
   orderClass,
   empty,
+  expanded,
+  onToggleExpand,
+  fill,
   children,
 }: {
   lang: "en" | "ar";
   orderClass: string;
   empty: boolean;
+  /** True when this box currently covers the sibling (fold icon shown). */
+  expanded?: boolean;
+  /** Expand/fold toggle — its button sits at the corner facing the sibling. */
+  onToggleExpand?: () => void;
+  /** Fill the overlay's height instead of the fixed column height. */
+  fill?: boolean;
   children: ReactNode;
 }) {
   const en = lang === "en";
   return (
     <div
       dir={en ? "ltr" : "rtl"}
-      className={`flex h-96 min-w-0 flex-col rounded-2xl border border-slate-400 bg-white ${orderClass}`}
+      className={`flex ${fill ? "h-full" : "h-96"} min-w-0 flex-col rounded-2xl border border-slate-400 bg-white ${orderClass}`}
     >
-      <p className="border-b border-slate-200 py-2 text-center text-sm font-bold text-slate-700">
-        {en ? "English" : "العربية"}
-      </p>
+      <div className="relative border-b border-slate-200">
+        <p className="py-2 text-center text-sm font-bold text-slate-700">
+          {en ? "English" : "العربية"}
+        </p>
+        {onToggleExpand ? (
+          <button
+            type="button"
+            onClick={onToggleExpand}
+            aria-label={
+              expanded
+                ? "اطوِ إلى عرض العمودين"
+                : `وسّع النص ${en ? "الإنجليزي" : "العربي"}`
+            }
+            title={
+              expanded
+                ? "اطوِ إلى عرض العمودين"
+                : `وسّع هذا الصندوق فوق ${en ? "العربية" : "الإنجليزية"}`
+            }
+            className={`absolute top-1/2 -translate-y-1/2 rounded p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-ink ${en ? "right-2" : "left-2"}`}
+          >
+            {expanded ? (
+              <ChevronsRightLeft size={16} />
+            ) : (
+              <ChevronsLeftRight size={16} />
+            )}
+          </button>
+        ) : null}
+      </div>
       <ol className="flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden p-3">
         {empty ? (
           <li className="rounded-lg border border-dashed border-slate-300 px-3 py-6 text-center text-xs text-slate-400">
@@ -200,8 +236,95 @@ export function AgentTranscript({
   onClearAll?: () => void;
 }) {
   const [side, setSide] = useState<"in" | "out">("in");
+  /** Which language box currently covers its sibling (null = split view). */
+  const [expanded, setExpanded] = useState<"en" | "ar" | null>(null);
   const isIn = side === "in";
   const empty = turns.length === 0;
+
+  const enEntries = turns.map((t) =>
+    isIn ? (
+      <Entry key={t.jobId} n={t.n} lang="en">
+        {t.inputWire}
+      </Entry>
+    ) : t.status === "running" ? (
+      <Entry key={t.jobId} n={t.n} lang="en" muted>
+        waiting for the agent…
+      </Entry>
+    ) : (
+      <Entry key={t.jobId} n={t.n} lang="en">
+        <span className={t.status === "done" ? "" : "text-amber-800"}>
+          {t.outputWire || "—"}
+        </span>
+        {t.cleanedBy && (
+          <span className="block font-sans text-[10px] text-slate-500">
+            {t.cleanedBy === "gemini"
+              ? "cleaned by Gemini"
+              : t.cleanedBy === "local"
+                ? "extracted from the terminal"
+                : "one-shot run"}
+          </span>
+        )}
+        {t.outputRaw && t.outputRaw !== t.outputWire && (
+          <details className="font-sans text-[11px] text-slate-600">
+            <summary className="cursor-pointer">raw capture</summary>
+            <pre className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap rounded bg-white/70 p-2 font-mono text-[11px]">
+              {t.outputRaw}
+            </pre>
+          </details>
+        )}
+      </Entry>
+    ),
+  );
+  const arEntries = turns.map((t) =>
+    isIn ? (
+      <Entry key={t.jobId} n={t.n} lang="ar">
+        {t.inputUser}
+      </Entry>
+    ) : t.outputUser ? (
+      <Entry key={t.jobId} n={t.n} lang="ar">
+        {t.outputUser}
+      </Entry>
+    ) : t.status === "running" ? (
+      <Entry key={t.jobId} n={t.n} lang="ar" muted>
+        بانتظار رد الوكيل…
+      </Entry>
+    ) : t.status === "done" && t.outputWire.trim() ? (
+      <Entry
+        key={t.jobId}
+        n={t.n}
+        lang="ar"
+        muted={translatingJobs.has(t.jobId)}
+      >
+        {translatingJobs.has(t.jobId) ? (
+          "تُترجم…"
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => onTranslate(t.jobId)}
+              className="inline-flex items-center gap-1 rounded border border-[#82b366] bg-white px-2 py-0.5 text-[11px] font-bold text-emerald-800 hover:bg-emerald-50"
+            >
+              <Languages size={12} />
+              {t.translateError ? "أعد الترجمة" : "ترجمة"}
+            </button>
+            {t.translateError ? (
+              <span className="ms-1.5 text-[11px] text-amber-800">
+                تعذّرت الترجمة ({t.translateError})
+              </span>
+            ) : autoTranslate ? (
+              <span className="ms-1.5 text-[11px] text-slate-500">
+                الترجمة التلقائية في الطريق
+              </span>
+            ) : null}
+          </>
+        )}
+      </Entry>
+    ) : (
+      <Entry key={t.jobId} n={t.n} lang="ar" muted>
+        —
+      </Entry>
+    ),
+  );
 
   return (
     <section className="mt-4" dir="ltr">
@@ -249,46 +372,15 @@ export function AgentTranscript({
           </div>
         )}
       </div>
-      <div className="flex flex-col gap-3 rounded-b-lg rounded-tr-lg border border-amber-300 bg-amber-50 p-4 md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
+      <div className="relative flex flex-col gap-3 rounded-b-lg rounded-tr-lg border border-amber-300 bg-amber-50 p-4 md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
         <LangBox
           lang="en"
           empty={empty}
           orderClass={isIn ? "order-3 md:order-1" : "order-1"}
+          expanded={expanded === "en"}
+          onToggleExpand={() => setExpanded((v) => (v === "en" ? null : "en"))}
         >
-          {turns.map((t) =>
-            isIn ? (
-              <Entry key={t.jobId} n={t.n} lang="en">
-                {t.inputWire}
-              </Entry>
-            ) : t.status === "running" ? (
-              <Entry key={t.jobId} n={t.n} lang="en" muted>
-                waiting for the agent…
-              </Entry>
-            ) : (
-              <Entry key={t.jobId} n={t.n} lang="en">
-                <span className={t.status === "done" ? "" : "text-amber-800"}>
-                  {t.outputWire || "—"}
-                </span>
-                {t.cleanedBy && (
-                  <span className="block font-sans text-[10px] text-slate-500">
-                    {t.cleanedBy === "gemini"
-                      ? "cleaned by Gemini"
-                      : t.cleanedBy === "local"
-                        ? "extracted from the terminal"
-                        : "one-shot run"}
-                  </span>
-                )}
-                {t.outputRaw && t.outputRaw !== t.outputWire && (
-                  <details className="font-sans text-[11px] text-slate-600">
-                    <summary className="cursor-pointer">raw capture</summary>
-                    <pre className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap rounded bg-white/70 p-2 font-mono text-[11px]">
-                      {t.outputRaw}
-                    </pre>
-                  </details>
-                )}
-              </Entry>
-            ),
-          )}
+          {enEntries}
         </LangBox>
 
         <div
@@ -315,58 +407,26 @@ export function AgentTranscript({
           lang="ar"
           empty={empty}
           orderClass={isIn ? "order-1 md:order-3" : "order-3"}
+          expanded={expanded === "ar"}
+          onToggleExpand={() => setExpanded((v) => (v === "ar" ? null : "ar"))}
         >
-          {turns.map((t) =>
-            isIn ? (
-              <Entry key={t.jobId} n={t.n} lang="ar">
-                {t.inputUser}
-              </Entry>
-            ) : t.outputUser ? (
-              <Entry key={t.jobId} n={t.n} lang="ar">
-                {t.outputUser}
-              </Entry>
-            ) : t.status === "running" ? (
-              <Entry key={t.jobId} n={t.n} lang="ar" muted>
-                بانتظار رد الوكيل…
-              </Entry>
-            ) : t.status === "done" && t.outputWire.trim() ? (
-              <Entry
-                key={t.jobId}
-                n={t.n}
-                lang="ar"
-                muted={translatingJobs.has(t.jobId)}
-              >
-                {translatingJobs.has(t.jobId) ? (
-                  "تُترجم…"
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => onTranslate(t.jobId)}
-                      className="inline-flex items-center gap-1 rounded border border-[#82b366] bg-white px-2 py-0.5 text-[11px] font-bold text-emerald-800 hover:bg-emerald-50"
-                    >
-                      <Languages size={12} />
-                      {t.translateError ? "أعد الترجمة" : "ترجمة"}
-                    </button>
-                    {t.translateError ? (
-                      <span className="ms-1.5 text-[11px] text-amber-800">
-                        تعذّرت الترجمة ({t.translateError})
-                      </span>
-                    ) : autoTranslate ? (
-                      <span className="ms-1.5 text-[11px] text-slate-500">
-                        الترجمة التلقائية في الطريق
-                      </span>
-                    ) : null}
-                  </>
-                )}
-              </Entry>
-            ) : (
-              <Entry key={t.jobId} n={t.n} lang="ar" muted>
-                —
-              </Entry>
-            ),
-          )}
+          {arEntries}
         </LangBox>
+
+        {expanded ? (
+          <div className="absolute inset-0 z-10 p-4" dir="ltr">
+            <LangBox
+              lang={expanded}
+              empty={empty}
+              orderClass=""
+              expanded
+              fill
+              onToggleExpand={() => setExpanded(null)}
+            >
+              {expanded === "en" ? enEntries : arEntries}
+            </LangBox>
+          </div>
+        ) : null}
       </div>
     </section>
   );
