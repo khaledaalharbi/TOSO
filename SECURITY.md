@@ -32,11 +32,42 @@ threat model is deliberate and narrow — do not loosen it casually:
   involved, so prompt text is never interpreted.
 - `Origin` headers outside localhost (and `TOSO_BRIDGE_ORIGINS`) get 403 —
   a random website cannot drive your terminal through a rebinding attempt.
+- **Workspace (`cwd`)**: a request may name the folder an allowlisted agent
+  runs in. It must be absolute and exist, or the run is refused
+  (`invalid_workspace`) — never silently redirected. `/fs/check` answers
+  whether a path is an existing folder, which reveals local path existence
+  to a token holder (same class as `/run`).
+- **Trust is two separate classes.** Per-run trust injects an adapter's
+  documented folder-trust env (Gemini: `GEMINI_CLI_TRUST_WORKSPACE=true`)
+  into that one process; nothing is written. Permanent trust
+  (`/trust/workspace`) writes the folder into the agent's own trust file and
+  happens only on an explicit user click; a corrupt file is refused, not
+  overwritten. Action-authorizing flags (`claude --dangerously-skip-permissions`,
+  `codex --full-auto`) are **not** folder trust and are deliberately not wired.
+- **Embedded terminals (`/pty/*`)** run an allowlisted agent's interactive
+  TUI in a pseudo-terminal (`node-pty`, an optional native dependency loaded
+  lazily — `TOSO_BRIDGE_DISABLE_PTY=1` turns it off). `/pty/:id/input`
+  writes keystrokes into that session, so a token holder can drive the
+  agent interactively — including whatever tools the agent itself allows
+  under its own approval mode. The agent is started **without a lingering
+  shell** (no `-NoExit`): when it exits the session ends, so input never
+  reaches a free shell prompt. Sessions are capped (8) and their output
+  buffer bounded (2 MB). The stream is a header-authenticated `fetch()`, not
+  an `EventSource`, so the token is never put in a URL.
+- `/api/clean` (opt-in "smart clean") sends a terminal capture to Gemini to
+  re-flow it; the response is rejected unless ≥95% of its words occur in the
+  capture, so the model cannot inject text into the agent transcript.
+- `/open-terminal` launches an interactive window for an allowlisted agent
+  in the workspace and releases it: the window is the user's session, TOSO
+  never reads it back. Its script is passed as `-EncodedCommand`, so no
+  user-supplied text is re-parsed by a shell.
 
 Residual risk, stated honestly: **any local process running as you can read
-the bridge port and, if it learns the token, launch the allowed CLIs** — the
-same risk class as any localhost agent. If that is unacceptable for your
-environment, do not run the bridge; the copy-paste fallback remains.
+the bridge port and, if it learns the token, launch the allowed CLIs in any
+existing folder, type into their live embedded sessions, open agent windows,
+and add folders to an agent's trust file** — the same risk class as any
+localhost agent. If that is unacceptable
+for your environment, do not run the bridge; the copy-paste fallback remains.
 
 ## Known dependency findings (last audit: October 2026)
 
@@ -44,11 +75,11 @@ environment, do not run the bridge; the copy-paste fallback remains.
 runtime/browser bundle. The full audit reports 9 dev-only findings
 (7 high, 2 moderate) through two build-time chains:
 
-| Chain | Package | Advisory | Status |
-| --- | --- | --- | --- |
-| `tailwindcss@3` → `chokidar`/`micromatch` → | `braces@3.0.3` | ReDoS (high) | No patched `braces` release exists; fix requires the breaking Tailwind 4 migration |
-| `eslint-config-next` → `fast-glob` → `micromatch` → | `braces@3.0.3` | same | npm's autofix would *downgrade* `eslint-config-next` to 14.x — rejected |
-| `tailwindcss@3` → `postcss-nested` → | `postcss-selector-parser@6.1.4` | ReDoS (moderate) | Fixed in `7.1.6`, outside Tailwind 3's `^6` range |
+| Chain                                               | Package                         | Advisory         | Status                                                                             |
+| --------------------------------------------------- | ------------------------------- | ---------------- | ---------------------------------------------------------------------------------- |
+| `tailwindcss@3` → `chokidar`/`micromatch` →         | `braces@3.0.3`                  | ReDoS (high)     | No patched `braces` release exists; fix requires the breaking Tailwind 4 migration |
+| `eslint-config-next` → `fast-glob` → `micromatch` → | `braces@3.0.3`                  | same             | npm's autofix would _downgrade_ `eslint-config-next` to 14.x — rejected            |
+| `tailwindcss@3` → `postcss-nested` →                | `postcss-selector-parser@6.1.4` | ReDoS (moderate) | Fixed in `7.1.6`, outside Tailwind 3's `^6` range                                  |
 
 Why these are tolerated: all three run **at build/lint time only** and their
 input is repo-controlled (glob patterns in `tailwind.config`, project CSS).

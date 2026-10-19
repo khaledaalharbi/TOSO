@@ -1,9 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { agentCommand, agentSendMode } from "@/lib/bridge/agents";
 import {
+  appendTurn,
+  patchTurn,
+  type AgentLog,
+} from "@/components/agent-session-log";
+import {
   checkBridge,
+  checkWorkspace,
+  openAgentTerminal,
   sendPromptToAgent,
   translateToArabic,
+  trustWorkspace,
 } from "./agent-service";
 
 const BRIDGE = { url: "http://127.0.0.1:8676", token: "tok" };
@@ -38,6 +46,133 @@ describe("checkBridge", () => {
     expect(await checkBridge(BRIDGE)).toEqual({ state: "bad_token" });
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("down")));
     expect(await checkBridge(BRIDGE)).toEqual({ state: "offline" });
+  });
+});
+
+describe("workspace + terminal bridge actions", () => {
+  it("sendPromptToAgent forwards cwd and trust to /run", async () => {
+    const job = { id: "j9", status: "done", output: "ok", cwd: "C:\\App" };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true, agents: [] }))
+      .mockResolvedValueOnce(jsonResponse(202, { jobId: "j9", job }));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await sendPromptToAgent(
+      BRIDGE,
+      "gemini",
+      "hi",
+      undefined,
+      undefined,
+      { cwd: "  C:\\App ", trust: true },
+    );
+    expect(result).toEqual({ ok: true, job });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+      agent: "gemini",
+      prompt: "hi",
+      cwd: "C:\\App",
+      trust: true,
+    });
+  });
+
+  it("omits cwd/trust when unset so the bridge default applies", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true, agents: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse(202, { jobId: "j", job: { id: "j", status: "done" } }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    await sendPromptToAgent(BRIDGE, "gemini", "hi");
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+      agent: "gemini",
+      prompt: "hi",
+    });
+  });
+
+  it("surfaces an invalid workspace as its own state, not 'offline'", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(200, { ok: true, agents: [] }))
+        .mockResolvedValueOnce(
+          jsonResponse(400, {
+            error: "invalid_workspace",
+            detail: "المجلد غير موجود",
+          }),
+        ),
+    );
+    const result = await sendPromptToAgent(
+      BRIDGE,
+      "gemini",
+      "hi",
+      undefined,
+      undefined,
+      { cwd: "C:\\nope" },
+    );
+    expect(result).toEqual({
+      ok: false,
+      status: { state: "invalid_workspace", detail: "المجلد غير موجود" },
+    });
+  });
+
+  it("maps bridge action outcomes honestly", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse(200, { ok: true, path: "C:\\A" })),
+    );
+    expect(await checkWorkspace(BRIDGE, "C:\\A")).toEqual({
+      state: "ok",
+      path: "C:\\A",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(400, { error: "trust_unsupported", agent: "claude" }),
+        ),
+    );
+    expect((await trustWorkspace(BRIDGE, "claude", "C:\\A")).state).toBe(
+      "trust_unsupported",
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse(404, { error: "not_found" })),
+    );
+    const old = await openAgentTerminal(BRIDGE, "gemini");
+    expect(old.state).toBe("failed");
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("down")));
+    expect(await openAgentTerminal(BRIDGE, "gemini")).toEqual({
+      state: "offline",
+    });
+  });
+});
+
+describe("session log helpers", () => {
+  const turn = (jobId: string) => ({
+    jobId,
+    inputUser: "نص",
+    inputWire: "text",
+    outputWire: "out",
+    status: "done",
+  });
+
+  it("numbers turns per agent independently", () => {
+    let log: AgentLog = {};
+    log = appendTurn(log, "gemini", turn("a"));
+    log = appendTurn(log, "devin", turn("b"));
+    log = appendTurn(log, "gemini", turn("c"));
+    expect(log.gemini.map((t) => t.n)).toEqual([1, 2]);
+    expect(log.devin.map((t) => t.n)).toEqual([1]);
+  });
+
+  it("patches only the matching job and is a no-op otherwise", () => {
+    const log = appendTurn({}, "gemini", turn("a"));
+    const patched = patchTurn(log, "gemini", "a", { outputUser: "خرج" });
+    expect(patched.gemini[0].outputUser).toBe("خرج");
+    expect(patchTurn(log, "gemini", "zzz", { outputUser: "x" })).toBe(log);
+    expect(patchTurn(log, "devin", "a", { outputUser: "x" })).toBe(log);
   });
 });
 

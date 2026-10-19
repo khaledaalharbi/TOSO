@@ -1,7 +1,13 @@
 "use client";
 
-import { Languages, Send, TerminalSquare } from "lucide-react";
-import { useState } from "react";
+import {
+  FolderOpen,
+  Languages,
+  Send,
+  ShieldCheck,
+  TerminalSquare,
+} from "lucide-react";
+import { useEffect, useRef } from "react";
 import { agentLabel } from "@/lib/bridge/agents";
 import type { AgentJob } from "@/lib/services/agent-service";
 
@@ -64,6 +70,14 @@ export function AgentCard({
   const output = run.job?.output ?? "";
   const showTranslate =
     run.phase === "done" && output.trim() !== "" && translation === null;
+  const live = run.phase === "running";
+  const outputBox = useRef<HTMLDivElement>(null);
+  // While the agent runs, keep the newest output in view (the bridge's
+  // buffer grows on every poll).
+  useEffect(() => {
+    const el = outputBox.current;
+    if (live && el) el.scrollTop = el.scrollHeight;
+  }, [live, output.length]);
   return (
     <section className="border border-ink bg-white">
       <div className="h-1 bg-violet-500" />
@@ -75,9 +89,13 @@ export function AgentCard({
           </span>
           <h3 className="font-bold">نتيجة الوكيل</h3>
           <span
-            className={`px-2.5 py-1 text-[11px] font-bold ${phaseTone[run.phase]}`}
+            className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold ${phaseTone[run.phase]}`}
           >
+            {live && (
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-600" />
+            )}
             {phaseLabel[run.phase]}
+            {live ? " · مباشر" : ""}
           </span>
           {run.phase === "done" && run.job?.exitCode !== null && (
             <span
@@ -89,6 +107,27 @@ export function AgentCard({
             </span>
           )}
         </div>
+        {run.job && (
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <FolderOpen size={13} className="shrink-0 text-amber-600" />
+              {run.job.cwd ? (
+                <code dir="ltr" className="truncate font-mono text-slate-700">
+                  {run.job.cwd}
+                </code>
+              ) : (
+                <span>
+                  مجلد تشغيل الجسر — لم تُحدَّد مساحة عمل في الإعدادات
+                </span>
+              )}
+            </span>
+            {run.job.trusted && (
+              <span className="flex items-center gap-1 bg-emerald-50 px-1.5 py-0.5 font-bold text-emerald-700">
+                <ShieldCheck size={12} /> ثقة لهذه التشغيلة
+              </span>
+            )}
+          </div>
+        )}
 
         {run.phase === "offline" || (run.phase === "error" && !run.job) ? (
           <div className="border border-slate-300 bg-slate-50 p-4 text-sm">
@@ -115,8 +154,9 @@ export function AgentCard({
         ) : (
           <>
             <div
+              ref={outputBox}
               dir="ltr"
-              className="max-h-80 min-h-32 overflow-y-auto border border-slate-200 bg-slate-50/60 p-4 text-left text-sm leading-7 whitespace-pre-wrap break-words text-slate-700"
+              className="max-h-80 min-h-32 overflow-x-hidden overflow-y-auto border border-slate-200 bg-slate-50/60 p-4 text-left text-sm leading-7 whitespace-pre-wrap break-words text-slate-700"
             >
               {output ||
                 (run.phase === "done"

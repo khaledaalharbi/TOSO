@@ -1,6 +1,13 @@
 "use client";
 
-import { KeyRound, TerminalSquare, Trash2, X } from "lucide-react";
+import {
+  FolderOpen,
+  KeyRound,
+  Languages,
+  TerminalSquare,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useState } from "react";
 import { GeminiKeyGuide } from "@/components/gemini-key-guide";
 import { AGENT_OPTIONS, DEFAULT_BRIDGE_URL } from "@/lib/bridge/agents";
@@ -153,7 +160,7 @@ export function SettingsModal({
       aria-modal="true"
       aria-label="الإعدادات"
     >
-      <div className="w-full max-w-md border border-ink bg-white p-6 shadow-hard">
+      <div className="max-h-[92vh] w-full max-w-md overflow-y-auto border border-ink bg-white p-6 shadow-hard">
         <div className="mb-6 flex items-center justify-between border-b border-slate-200 pb-4">
           <button
             onClick={onClose}
@@ -363,6 +370,101 @@ export function SettingsModal({
                     : "لا يوجد جسر على هذا العنوان — شغّله بأمر npm run bridge."}
               </p>
             )}
+          </div>
+          <div className="border-t border-slate-200 pt-4">
+            <p className="flex items-center gap-2 text-sm font-bold">
+              <FolderOpen size={16} className="text-amber-600" />
+              مشاريع الوكلاء والثقة{" "}
+              <span className="font-normal text-slate-400">
+                مسار كل وكيل يُحدَّد من تبويبه في القسم 04
+              </span>
+            </p>
+            <label className="mt-3 flex cursor-pointer items-start gap-2.5 border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold">
+              <input
+                id="auto-trust"
+                name="auto-trust"
+                type="checkbox"
+                checked={config.autoTrust ?? false}
+                onChange={(event) =>
+                  onChange({ ...config, autoTrust: event.target.checked })
+                }
+                className="mt-0.5 h-4 w-4 shrink-0 accent-violet-700"
+              />
+              <span>
+                ثقة تلقائية بالمجلد لكل تشغيلة
+                <span className="block text-xs font-normal leading-5 text-slate-500">
+                  مفتاح مؤقت يُزرع في عملية الوكيل ويموت معها (Gemini:{" "}
+                  <code dir="ltr">GEMINI_CLI_TRUST_WORKSPACE</code>) — لا يُكتب
+                  أي ملف. لا يمنح Claude/Codex صلاحيات تنفيذ؛ تلك فئة مختلفة.
+                  الثقة الدائمة بمجلد معيّن زر في تبويب وكيله.
+                </span>
+              </span>
+            </label>
+            <label className="mt-3 flex cursor-pointer items-start gap-2.5 border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold">
+              <input
+                id="auto-terminal"
+                name="auto-terminal"
+                type="checkbox"
+                checked={config.autoTerminal ?? false}
+                onChange={(event) =>
+                  onChange({ ...config, autoTerminal: event.target.checked })
+                }
+                className="mt-0.5 h-4 w-4 shrink-0 accent-violet-700"
+              />
+              <span>
+                تشغيل جلسة الوكيل تلقائياً عند فتح تبويبه
+                <span className="block text-xs font-normal leading-5 text-slate-500">
+                  الطرفية المدمجة تبدأ وحدها عند فتح TOSO (للوكيل الافتراضي)
+                  وعند اختيار تبويب. الجلسة تبقى حيّة وتتذكر السياق حتى توقفها
+                  أو يخرج الوكيل — وتعود بعد تحديث الصفحة.
+                </span>
+              </span>
+            </label>
+          </div>
+          <div className="border-t border-slate-200 pt-4">
+            <p className="flex items-center gap-2 text-sm font-bold">
+              <Languages size={16} className="text-emerald-600" />
+              ردود الوكيل (تبويب OUT)
+            </p>
+            <label className="mt-3 flex cursor-pointer items-start gap-2.5 border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold">
+              <input
+                id="auto-translate"
+                name="auto-translate"
+                type="checkbox"
+                checked={config.autoTranslate ?? false}
+                onChange={(event) =>
+                  onChange({ ...config, autoTranslate: event.target.checked })
+                }
+                className="mt-0.5 h-4 w-4 shrink-0 accent-violet-700"
+              />
+              <span>
+                ترجمة تلقائية لكل رد
+                <span className="block text-xs font-normal leading-5 text-slate-500">
+                  مفعّل: يظهر كل رد بالعربية فور التقاطه (استدعاء ترجمة لكل رد).
+                  معطّل: زر «ترجمة» بجانب كل رد تضغطه عند الحاجة.
+                </span>
+              </span>
+            </label>
+            <label className="mt-3 flex cursor-pointer items-start gap-2.5 border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold">
+              <input
+                id="smart-clean"
+                name="smart-clean"
+                type="checkbox"
+                checked={config.smartClean ?? false}
+                onChange={(event) =>
+                  onChange({ ...config, smartClean: event.target.checked })
+                }
+                className="mt-0.5 h-4 w-4 shrink-0 accent-violet-700"
+              />
+              <span>
+                تنظيف ذكي للمخرجات عبر Gemini
+                <span className="block text-xs font-normal leading-5 text-slate-500">
+                  بعد الاستخراج المحلي من شاشة الطرفية، تمرّر Gemini الالتقاط
+                  لتجمع الأسطر المكسورة بعرض الطرفية وتحذف بقايا الواجهة. يُرفض
+                  أي ناتج فيه كلمات ليست في الالتقاط، ويبقى الاستخراج المحلي.
+                </span>
+              </span>
+            </label>
           </div>
         </div>
         <button

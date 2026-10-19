@@ -31,6 +31,20 @@ export interface ProviderConfig {
    * disabled while the picked agent equals this default.
    */
   autoSend?: boolean;
+  /**
+   * Absolute project folder per agent id (each agent tab has its own) —
+   * sent as that agent's run `cwd` so agents never work implicitly inside
+   * TOSO and two agents can work on two projects at once.
+   */
+  workspaces?: Record<string, string>;
+  /** Per-run folder trust (adapter env, dies with the process). */
+  autoTrust?: boolean;
+  /** Start an agent's embedded terminal session as soon as its tab is shown. */
+  autoTerminal?: boolean;
+  /** OUT tab: translate each agent reply automatically (else a button per reply). */
+  autoTranslate?: boolean;
+  /** Second, Gemini-based cleanup pass over terminal captures (grounded). */
+  smartClean?: boolean;
 }
 
 export interface TokenAnalysis {

@@ -20,6 +20,26 @@ import {
   type AgentRunState,
   type AgentTranslation,
 } from "@/components/agent-card";
+import {
+  AgentTabStrip,
+  AgentWorkspacePanel,
+  type TabStatus,
+  type TerminalNote,
+} from "@/components/agent-tabs";
+import {
+  AGENT_LOG_SESSION,
+  AgentTranscript,
+  appendTurn,
+  patchTurn,
+  restoreLog,
+  type AgentLog,
+  type AgentTurn,
+} from "@/components/agent-session-log";
+import {
+  AgentTerminal,
+  type AgentTerminalHandle,
+  type TerminalStatus,
+} from "@/components/agent-terminal";
 import { PipelineTrack } from "@/components/pipeline-track";
 import {
   SettingsModal,
@@ -34,6 +54,19 @@ import {
   agentLabel,
   agentSendMode,
 } from "@/lib/bridge/agents";
+import {
+  abortAllRuns,
+  beginRun,
+  type RunRegistry,
+} from "@/lib/bridge/run-registry";
+import {
+  LEGACY_WORKSPACE_STORAGE,
+  WORKSPACES_STORAGE,
+  parseWorkspaces,
+  serializeWorkspaces,
+  withWorkspace,
+  workspaceFor,
+} from "@/lib/bridge/workspaces";
 import type { DualOptimization } from "@/lib/optimizer/llm-optimizer";
 import type { EntityCheck } from "@/lib/optimizer/entity-guard";
 import type { QualityCheck } from "@/lib/optimizer/quality-guard";
@@ -44,6 +77,9 @@ import {
   providers,
 } from "@/lib/providers/registry";
 import {
+  cleanAgentOutput,
+  describeBridgeAction,
+  openAgentTerminal,
   sendPromptToAgent,
   translateToArabic,
 } from "@/lib/services/agent-service";
@@ -72,6 +108,111 @@ const BRIDGE_URL_STORAGE = "toso.bridgeUrl";
 const BRIDGE_TOKEN_STORAGE = "toso.bridgeToken";
 const AGENT_STORAGE = "toso.agent";
 const AUTO_SEND_STORAGE = "toso.autoSend";
+const AUTO_TRUST_STORAGE = "toso.autoTrust";
+const AUTO_TERMINAL_STORAGE = "toso.autoTerminal";
+const AUTO_TRANSLATE_STORAGE = "toso.autoTranslate";
+const SMART_CLEAN_STORAGE = "toso.smartClean";
+
+/** One agent tab's CLI leg: its latest run and that run's translation. */
+interface AgentSession {
+  run: AgentRunState | null;
+  translation: AgentTranslation | null;
+}
+const EMPTY_SESSION: AgentSession = { run: null, translation: null };
+
+/** The bridge-facing settings a terminal launch needs, for one agent's tab. */
+interface TerminalSettings {
+  bridgeUrl?: string;
+  bridgeToken?: string;
+  workspace?: string;
+  autoTrust?: boolean;
+}
+
+function terminalSettings(
+  config: ProviderConfig,
+  agentId: string,
+): TerminalSettings {
+  return {
+    bridgeUrl: config.bridgeUrl,
+    bridgeToken: config.bridgeToken,
+    workspace: workspaceFor(config.workspaces, agentId),
+    autoTrust: config.autoTrust,
+  };
+}
+
+/**
+ * Tab dot: a turn or one-shot run in flight beats everything; then the last
+ * turn's outcome; a live idle session reads as ready.
+ */
+function tabStatus(
+  run: AgentRunState | null,
+  turns: AgentTurn[] | undefined,
+  terminal: TerminalStatus | undefined,
+): TabStatus {
+  const last = turns?.at(-1);
+  if (
+    last?.status === "running" ||
+    run?.phase === "connecting" ||
+    run?.phase === "running"
+  ) {
+    return "running";
+  }
+  if (last) return last.status === "done" ? "done" : "error";
+  if (terminal === "live") return "done";
+  if (terminal === "error") return "error";
+  return "idle";
+}
+
+interface TerminalUi {
+  setBusy: (agent: string | null) => void;
+  setNote: (note: TerminalNote | null) => void;
+  setOpened: (
+    update: (opened: Record<string, number>) => Record<string, number>,
+  ) => void;
+}
+
+/**
+ * Opens a separate, EXTERNAL terminal window for the agent (a secondary
+ * option beside the embedded terminal): launch and release — TOSO never
+ * reads it, and it shares no context with the embedded session.
+ */
+async function launchAgentTerminal(
+  agentId: string,
+  settings: TerminalSettings,
+  ui: TerminalUi,
+) {
+  ui.setBusy(agentId);
+  ui.setNote(null);
+  try {
+    const result = await openAgentTerminal(
+      {
+        url: settings.bridgeUrl ?? DEFAULT_BRIDGE_URL,
+        token: settings.bridgeToken ?? "",
+      },
+      agentId,
+      { cwd: settings.workspace, trust: settings.autoTrust },
+    );
+    if (result.state === "ok") {
+      ui.setOpened((opened) => ({
+        ...opened,
+        [agentId]: (opened[agentId] ?? 0) + 1,
+      }));
+      ui.setNote({
+        agent: agentId,
+        ok: true,
+        text: `فُتحت نافذة خارجية لـ ${agentLabel(agentId)} — جلسة منفصلة عن الطرفية المدمجة، لا يقرؤها TOSO.`,
+      });
+    } else {
+      ui.setNote({
+        agent: agentId,
+        ok: false,
+        text: describeBridgeAction(result),
+      });
+    }
+  } finally {
+    ui.setBusy(null);
+  }
+}
 
 const formatCost = (value: number) =>
   value === 0
@@ -106,13 +247,43 @@ export function OptimizerWorkspace() {
     key: string;
     signal: string;
   } | null>(null);
-  // The CLI-agent leg: which text was sent, the job state, and the
-  // on-demand Arabic translation of the agent's output.
-  const [agentRun, setAgentRun] = useState<AgentRunState | null>(null);
-  const [agentTranslation, setAgentTranslation] =
-    useState<AgentTranslation | null>(null);
-  const [translating, setTranslating] = useState(false);
-  const agentAbort = useRef<AbortController | null>(null);
+  // The CLI-agent leg, one session per agent tab: which text was sent, the
+  // job state, and the on-demand Arabic translation of its output. Each
+  // agent has its own abort controller, so a send to Gemini never cancels
+  // a Claude run in another project.
+  const [sessions, setSessions] = useState<Record<string, AgentSession>>({});
+  const agentAbort = useRef<RunRegistry>({});
+  // Job ids being translated (card or log) — independent per job.
+  const [translatingJobs, setTranslatingJobs] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  // Numbered per-agent session log — React state only, gone with the tab.
+  const [agentLog, setAgentLog] = useState<AgentLog>({});
+  // Interactive terminal windows opened this session (count per agent).
+  const [terminalOpened, setTerminalOpened] = useState<Record<string, number>>(
+    {},
+  );
+  const [terminalBusy, setTerminalBusy] = useState<string | null>(null);
+  const [terminalNote, setTerminalNote] = useState<TerminalNote | null>(null);
+  const patchSession = (
+    agent: string,
+    update: (session: AgentSession) => AgentSession,
+  ) =>
+    setSessions((all) => ({
+      ...all,
+      [agent]: update(all[agent] ?? EMPTY_SESSION),
+    }));
+  const setRun = (
+    agent: string,
+    next:
+      | AgentRunState
+      | null
+      | ((current: AgentRunState | null) => AgentRunState | null),
+  ) =>
+    patchSession(agent, (session) => ({
+      ...session,
+      run: typeof next === "function" ? next(session.run) : next,
+    }));
   // The card-level agent pick — null means "the configured default". With
   // autoSend on, the send button is disabled exactly while the pick equals
   // the default (switching to another agent → manual mode).
@@ -124,6 +295,22 @@ export function OptimizerWorkspace() {
     defaultAgent,
   });
 
+  const terminalUi: TerminalUi = {
+    setBusy: setTerminalBusy,
+    setNote: setTerminalNote,
+    setOpened: setTerminalOpened,
+  };
+  const launchTerminal = (agentId: string, settings: TerminalSettings) =>
+    launchAgentTerminal(agentId, settings, terminalUi);
+  const activeSession = sessions[activeAgent] ?? EMPTY_SESSION;
+  const activeRun = activeSession.run;
+  // Embedded terminal per agent tab: its imperative handle (send/capture)
+  // and its live status (drives the tab dot and the one-shot fallback).
+  const terminals = useRef<Record<string, AgentTerminalHandle | null>>({});
+  const [terminalStatus, setTerminalStatus] = useState<
+    Record<string, TerminalStatus>
+  >({});
+
   // Hydrate the BYOK key and bridge settings once on mount, then mirror
   // every change to storage.
   useEffect(() => {
@@ -133,6 +320,18 @@ export function OptimizerWorkspace() {
       const bridgeToken = window.localStorage.getItem(BRIDGE_TOKEN_STORAGE);
       const agent = window.localStorage.getItem(AGENT_STORAGE);
       const autoSend = window.localStorage.getItem(AUTO_SEND_STORAGE);
+      const workspaces = parseWorkspaces(
+        window.localStorage.getItem(WORKSPACES_STORAGE),
+      );
+      // The single global folder was replaced by per-agent folders.
+      window.localStorage.removeItem(LEGACY_WORKSPACE_STORAGE);
+      const autoTrust = window.localStorage.getItem(AUTO_TRUST_STORAGE) === "1";
+      const autoTerminal =
+        window.localStorage.getItem(AUTO_TERMINAL_STORAGE) === "1";
+      const autoTranslate =
+        window.localStorage.getItem(AUTO_TRANSLATE_STORAGE) === "1";
+      const smartClean =
+        window.localStorage.getItem(SMART_CLEAN_STORAGE) === "1";
       setConfig((c) => ({
         ...c,
         ...(stored ? { userKey: stored } : {}),
@@ -140,7 +339,13 @@ export function OptimizerWorkspace() {
         ...(bridgeToken ? { bridgeToken } : {}),
         ...(agent ? { agent } : {}),
         ...(autoSend ? { autoSend: autoSend === "1" } : {}),
+        ...(Object.keys(workspaces).length ? { workspaces } : {}),
+        ...(autoTrust ? { autoTrust } : {}),
+        ...(autoTerminal ? { autoTerminal } : {}),
+        ...(autoTranslate ? { autoTranslate } : {}),
+        ...(smartClean ? { smartClean } : {}),
       }));
+      setAgentLog(restoreLog(window.sessionStorage.getItem(AGENT_LOG_SESSION)));
     } catch {
       setStorageWarning(true);
     } finally {
@@ -182,6 +387,21 @@ export function OptimizerWorkspace() {
       } else {
         window.localStorage.removeItem(AUTO_SEND_STORAGE);
       }
+      const workspacesJson = serializeWorkspaces(config.workspaces);
+      if (workspacesJson) {
+        window.localStorage.setItem(WORKSPACES_STORAGE, workspacesJson);
+      } else {
+        window.localStorage.removeItem(WORKSPACES_STORAGE);
+      }
+      for (const [key, on] of [
+        [AUTO_TRUST_STORAGE, config.autoTrust],
+        [AUTO_TERMINAL_STORAGE, config.autoTerminal],
+        [AUTO_TRANSLATE_STORAGE, config.autoTranslate],
+        [SMART_CLEAN_STORAGE, config.smartClean],
+      ] as const) {
+        if (on) window.localStorage.setItem(key, "1");
+        else window.localStorage.removeItem(key);
+      }
     } catch {
       setStorageWarning(true);
     }
@@ -190,8 +410,30 @@ export function OptimizerWorkspace() {
     config.bridgeToken,
     config.agent,
     config.autoSend,
+    config.workspaces,
+    config.autoTrust,
+    config.autoTerminal,
+    config.autoTranslate,
+    config.smartClean,
     keyHydrated,
   ]);
+  // The IN/OUT log lives as long as the tab (reloads included), like the
+  // reattachable terminal — closing the tab/browser erases it.
+  useEffect(() => {
+    if (!keyHydrated) return;
+    try {
+      if (Object.keys(agentLog).length) {
+        window.sessionStorage.setItem(
+          AGENT_LOG_SESSION,
+          JSON.stringify(agentLog),
+        );
+      } else {
+        window.sessionStorage.removeItem(AGENT_LOG_SESSION);
+      }
+    } catch {
+      /* quota or no storage — the log still works for this page view */
+    }
+  }, [agentLog, keyHydrated]);
   // A new default in settings clears any per-card override — the pick
   // returns to "the default" so auto-dispatch resumes its meaning.
   useEffect(() => setPickedAgent(null), [config.agent]);
@@ -236,7 +478,12 @@ export function OptimizerWorkspace() {
           nextReport.direction === "en"
             ? nextReport.english?.text
             : nextReport.arabic?.text;
-        if (primaryText) void sendToAgent(primaryText, defaultAgent);
+        if (primaryText)
+          void sendToAgent(
+            primaryText,
+            defaultAgent,
+            nextReport.originalPrompt,
+          );
       }
     } catch {
       setReport(null);
@@ -259,24 +506,30 @@ export function OptimizerWorkspace() {
     setOriginalRatio(null);
     setPhase("idle");
     setPrompt("");
-    agentAbort.current?.abort();
-    setAgentRun(null);
-    setAgentTranslation(null);
+    abortAllRuns(agentAbort.current);
+    setSessions({});
     setPickedAgent(null);
   }
 
   /**
    * Sends the polished text to the chosen CLI agent via the local bridge.
    * Every failure is its own honest state — bridge offline, bad token,
-   * agent crash — and a fresh send aborts the previous run's polling.
+   * agent crash — and a fresh send to the SAME agent aborts only that
+   * agent's previous run; other agents' tabs keep running untouched.
    */
-  async function sendToAgent(text: string, agentId: string) {
+  async function sendToAgent(text: string, agentId: string, inputUser: string) {
     const agent = agentId || config.agent || AGENT_OPTIONS[0].id;
-    agentAbort.current?.abort();
-    const controller = new AbortController();
-    agentAbort.current = controller;
-    setAgentTranslation(null);
-    setAgentRun({ agent, prompt: text, phase: "connecting" });
+    // The live embedded session is the primary path; the one-shot run is
+    // the honest fallback when the bridge has no PTY support.
+    const terminal = terminals.current[agent];
+    if (terminal && terminalStatus[agent] !== "unavailable") {
+      if (await sendViaTerminal(terminal, text, agent, inputUser)) return;
+    }
+    const controller = beginRun(agentAbort.current, agent);
+    patchSession(agent, () => ({
+      run: { agent, prompt: text, phase: "connecting" },
+      translation: null,
+    }));
     const bridge = {
       url: config.bridgeUrl ?? DEFAULT_BRIDGE_URL,
       token: config.bridgeToken ?? "",
@@ -288,7 +541,7 @@ export function OptimizerWorkspace() {
         text,
         controller.signal,
         (job) =>
-          setAgentRun((current) =>
+          setRun(agent, (current) =>
             current && current.phase !== "done" && current.phase !== "error"
               ? {
                   ...current,
@@ -297,24 +550,46 @@ export function OptimizerWorkspace() {
                 }
               : current,
           ),
+        {
+          cwd: workspaceFor(config.workspaces, agent),
+          trust: config.autoTrust,
+        },
       );
       if (!result.ok) {
-        const state = result.status.state;
-        setAgentRun({
+        const status = result.status;
+        setRun(agent, {
           agent,
           prompt: text,
-          phase: "offline",
+          phase: status.state === "invalid_workspace" ? "error" : "offline",
           message:
-            state === "bad_token"
-              ? "التوكن غير صحيح — انسخ التوكن الذي طبعه الجسر عند تشغيله إلى الإعدادات."
-              : state === "bad_url"
-                ? "عنوان الجسر غير صالح في الإعدادات."
-                : "الجسر غير متصل على هذا العنوان.",
+            status.state === "invalid_workspace"
+              ? `مجلد مشروع هذا الوكيل مرفوض${status.detail ? `: ${status.detail}` : ""} — صحّحه من تبويبه.`
+              : status.state === "bad_token"
+                ? "التوكن غير صحيح — انسخ التوكن الذي طبعه الجسر عند تشغيله إلى الإعدادات."
+                : status.state === "bad_url"
+                  ? "عنوان الجسر غير صالح في الإعدادات."
+                  : "الجسر غير متصل على هذا العنوان.",
         });
         return;
       }
       const job = result.job;
-      setAgentRun({
+      if (job.status !== "running") {
+        const output = job.output.trim();
+        setAgentLog((log) =>
+          appendTurn(log, agent, {
+            jobId: job.id,
+            inputUser,
+            inputWire: text,
+            outputWire: output || (job.error ?? ""),
+            cleanedBy: "headless",
+            status: job.status,
+          }),
+        );
+        if (job.status === "done" && output && config.autoTranslate) {
+          void translateJob(agent, job.id, output);
+        }
+      }
+      setRun(agent, {
         agent,
         prompt: text,
         phase:
@@ -328,7 +603,7 @@ export function OptimizerWorkspace() {
       });
     } catch {
       if (!controller.signal.aborted) {
-        setAgentRun({
+        setRun(agent, {
           agent,
           prompt: text,
           phase: "error",
@@ -338,29 +613,135 @@ export function OptimizerWorkspace() {
     }
   }
 
-  /** Translates the agent's English output via /api/translate (honest fallback). */
-  async function translateAgentOutput() {
-    const output = agentRun?.job?.output;
-    if (!output || translating) return;
-    setTranslating(true);
+  /**
+   * One turn through the agent's live terminal: type the text, wait for the
+   * TUI to settle, extract the reply deterministically, optionally let
+   * Gemini clean it (grounded), then translate per the user's setting.
+   * Returns false only when the bridge turned out to lack PTY support, so
+   * the caller falls back to a one-shot run.
+   */
+  async function sendViaTerminal(
+    terminal: AgentTerminalHandle,
+    text: string,
+    agent: string,
+    inputUser: string,
+  ): Promise<boolean> {
+    const jobId = `pty-${crypto.randomUUID()}`;
+    setAgentLog((log) =>
+      appendTurn(log, agent, {
+        jobId,
+        inputUser,
+        inputWire: text,
+        outputWire: "",
+        status: "running",
+      }),
+    );
+    try {
+      const capture = await terminal.send(text);
+      let output = capture.reply;
+      let cleanedBy: "local" | "gemini" = "local";
+      if (config.smartClean && capture.region) {
+        const smart = await cleanAgentOutput(
+          capture.region,
+          text,
+          config.model,
+          config.userKey,
+        );
+        if (smart.text) {
+          output = smart.text;
+          cleanedBy = "gemini";
+        }
+      }
+      setAgentLog((log) =>
+        patchTurn(log, agent, jobId, {
+          outputWire:
+            output ||
+            (capture.timedOut
+              ? "انتهت مهلة الالتقاط — الرد الكامل في الطرفية أعلاه."
+              : "لم يُلتقط رد نصي — راجع الطرفية أعلاه."),
+          outputRaw: capture.region,
+          cleanedBy,
+          status: output ? "done" : "error",
+        }),
+      );
+      if (output && config.autoTranslate)
+        void translateJob(agent, jobId, output);
+      return true;
+    } catch (error) {
+      if (terminal.status() === "unavailable") {
+        setAgentLog((log) => ({
+          ...log,
+          [agent]: (log[agent] ?? []).filter((t) => t.jobId !== jobId),
+        }));
+        return false;
+      }
+      setAgentLog((log) =>
+        patchTurn(log, agent, jobId, {
+          outputWire:
+            error instanceof Error
+              ? error.message
+              : "تعذّر الإرسال إلى الطرفية.",
+          status: "error",
+        }),
+      );
+      return true;
+    }
+  }
+
+  /**
+   * Translates one job's English output via /api/translate (honest
+   * fallback) and records it on the matching log turn; the card shows it
+   * too when that job is the current run.
+   */
+  async function translateJob(agent: string, jobId: string, output: string) {
+    if (!output.trim() || translatingJobs.has(jobId)) return;
+    setTranslatingJobs((jobs) => new Set(jobs).add(jobId));
     try {
       const result = await translateToArabic(
         output,
         config.model,
         config.userKey,
       );
-      setAgentTranslation(result);
+      setAgentLog((log) =>
+        patchTurn(
+          log,
+          agent,
+          jobId,
+          result.arabic
+            ? { outputUser: result.arabic, translateError: undefined }
+            : { translateError: result.fallbackReason ?? "unavailable" },
+        ),
+      );
+      // The card shows a translation only for that tab's CURRENT job.
+      patchSession(agent, (session) =>
+        session.run?.job?.id === jobId
+          ? { ...session, translation: result }
+          : session,
+      );
     } finally {
-      setTranslating(false);
+      setTranslatingJobs((jobs) => {
+        const next = new Set(jobs);
+        next.delete(jobId);
+        return next;
+      });
     }
+  }
+
+  /**
+   * A tab (or an output card's agent menu) picks the agent: it becomes the
+   * send target and its tab. Its embedded session auto-starts on show when
+   * the setting asks for it (handled by the terminal pane itself).
+   */
+  function selectAgent(agentId: string) {
+    setPickedAgent(agentId);
   }
 
   /** Bridge unreachable → hand the user a ready shell command instead. */
   async function copyAgentCommand() {
-    if (!agentRun) return;
+    if (!activeRun) return;
     try {
       await navigator.clipboard.writeText(
-        agentCommand(agentRun.agent, agentRun.prompt),
+        agentCommand(activeRun.agent, activeRun.prompt),
       );
     } catch {
       /* clipboard unavailable — the command is also visible in the card */
@@ -601,8 +982,14 @@ export function OptimizerWorkspace() {
                 report={report?.arabic ?? null}
                 agent={activeAgent}
                 agentDisabled={autoSendActive}
-                onSelectAgent={setPickedAgent}
-                onSend={(value) => void sendToAgent(value, activeAgent)}
+                onSelectAgent={selectAgent}
+                onSend={(value) =>
+                  void sendToAgent(
+                    value,
+                    activeAgent,
+                    report?.originalPrompt ?? prompt,
+                  )
+                }
               />
             );
             const englishCard = (
@@ -626,8 +1013,14 @@ export function OptimizerWorkspace() {
                 report={report?.english ?? null}
                 agent={activeAgent}
                 agentDisabled={autoSendActive}
-                onSelectAgent={setPickedAgent}
-                onSend={(value) => void sendToAgent(value, activeAgent)}
+                onSelectAgent={selectAgent}
+                onSend={(value) =>
+                  void sendToAgent(
+                    value,
+                    activeAgent,
+                    report?.originalPrompt ?? prompt,
+                  )
+                }
               />
             );
             return direction === "en"
@@ -642,20 +1035,124 @@ export function OptimizerWorkspace() {
           title="وكيل CLI"
           note="إرسال النص المنقّح إلى الوكيل واستقبال نتيجته"
         />
-        {agentRun ? (
-          <AgentCard
-            run={agentRun}
-            translation={agentTranslation}
-            translating={translating}
-            onTranslate={translateAgentOutput}
-            onCopyFallback={copyAgentCommand}
+        <AgentTabStrip
+          activeAgent={activeAgent}
+          status={Object.fromEntries(
+            AGENT_OPTIONS.map((opt) => [
+              opt.id,
+              tabStatus(
+                sessions[opt.id]?.run ?? null,
+                agentLog[opt.id],
+                terminalStatus[opt.id],
+              ),
+            ]),
+          )}
+          turns={Object.fromEntries(
+            Object.entries(agentLog).map(([id, turns]) => [id, turns.length]),
+          )}
+          onSelect={selectAgent}
+        />
+        <div
+          id="agent-tabpanel"
+          role="tabpanel"
+          aria-labelledby={`agent-tab-${activeAgent}`}
+        >
+          {/* 1 — project path & permissions */}
+          <AgentWorkspacePanel
+            key={activeAgent}
+            agent={activeAgent}
+            workspace={config.workspaces?.[activeAgent]}
+            bridge={{
+              url: config.bridgeUrl ?? DEFAULT_BRIDGE_URL,
+              token: config.bridgeToken ?? "",
+            }}
+            openedCount={terminalOpened[activeAgent] ?? 0}
+            terminalBusy={terminalBusy === activeAgent}
+            terminalNote={terminalNote}
+            onWorkspaceChange={(path) =>
+              setConfig((c) => ({
+                ...c,
+                workspaces: withWorkspace(c.workspaces, activeAgent, path),
+              }))
+            }
+            onOpenTerminal={() =>
+              void launchTerminal(
+                activeAgent,
+                terminalSettings(config, activeAgent),
+              )
+            }
           />
-        ) : (
-          <Placeholder
-            active={false}
-            text="من بطاقة مخرجات: اختر الوكيل من قائمة «الوكيل» ثم اضغط زرّه للإرسال اليدوي — أو فعّل الإرسال التلقائي من الإعدادات"
+          {/* 2 — the live agent terminal. Every agent keeps its own pane
+              mounted (hidden when not shown) so its session keeps running
+              and a turn can finish while you look at another tab. */}
+          {AGENT_OPTIONS.map((opt) => (
+            <div key={opt.id} hidden={opt.id !== activeAgent}>
+              <AgentTerminal
+                ref={(handle) => {
+                  terminals.current[opt.id] = handle;
+                }}
+                agent={opt.id}
+                bridge={{
+                  url: config.bridgeUrl ?? DEFAULT_BRIDGE_URL,
+                  token: config.bridgeToken ?? "",
+                }}
+                workspace={workspaceFor(config.workspaces, opt.id)}
+                trust={config.autoTrust}
+                autoStart={config.autoTerminal}
+                visible={opt.id === activeAgent && keyHydrated}
+                onStatus={(status) =>
+                  setTerminalStatus((all) =>
+                    all[opt.id] === status ? all : { ...all, [opt.id]: status },
+                  )
+                }
+              />
+            </div>
+          ))}
+          {/* One-shot fallback (bridge without PTY): show that run's card. */}
+          {terminalStatus[activeAgent] === "unavailable" && activeRun && (
+            <div className="mt-4">
+              <AgentCard
+                run={activeRun}
+                translation={activeSession.translation}
+                translating={
+                  activeRun.job ? translatingJobs.has(activeRun.job.id) : false
+                }
+                onTranslate={() =>
+                  activeRun.job &&
+                  void translateJob(
+                    activeRun.agent,
+                    activeRun.job.id,
+                    activeRun.job.output,
+                  )
+                }
+                onCopyFallback={copyAgentCommand}
+              />
+            </div>
+          )}
+          {/* 3 — IN / OUT, Arabic beside English, numbered per turn */}
+          <AgentTranscript
+            agent={activeAgent}
+            turns={agentLog[activeAgent] ?? []}
+            translatingJobs={translatingJobs}
+            autoTranslate={config.autoTranslate}
+            onTranslate={(jobId) => {
+              const turn = agentLog[activeAgent]?.find(
+                (t) => t.jobId === jobId,
+              );
+              if (turn) void translateJob(activeAgent, jobId, turn.outputWire);
+            }}
+            onClear={() =>
+              setAgentLog(({ [activeAgent]: _cleared, ...rest }) => rest)
+            }
+            onClearAll={
+              Object.keys(agentLog).some(
+                (id) => id !== activeAgent && agentLog[id].length > 0,
+              )
+                ? () => setAgentLog({})
+                : undefined
+            }
           />
-        )}
+        </div>
 
         {/* 05 — ANALYSIS */}
         <SpecHead

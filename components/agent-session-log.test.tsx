@@ -1,0 +1,121 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import {
+  AgentTranscript,
+  restoreLog,
+  type AgentTurn,
+} from "./agent-session-log";
+
+describe("restoreLog", () => {
+  it("restores turns and marks a reload-interrupted capture as an error", () => {
+    const saved = JSON.stringify({
+      gemini: [
+        {
+          n: 1,
+          jobId: "a",
+          inputUser: "س",
+          inputWire: "q",
+          outputWire: "ok",
+          status: "done",
+        },
+        {
+          n: 2,
+          jobId: "b",
+          inputUser: "س2",
+          inputWire: "q2",
+          outputWire: "",
+          status: "running",
+        },
+      ],
+    });
+    const log = restoreLog(saved);
+    expect(log.gemini.map((t) => t.status)).toEqual(["done", "error"]);
+    expect(log.gemini[1].outputWire).toContain("انقطع الالتقاط");
+  });
+
+  it("drops malformed data instead of crashing", () => {
+    for (const raw of [
+      null,
+      "",
+      "nope",
+      "[]",
+      JSON.stringify({ gemini: "x" }),
+    ]) {
+      expect(restoreLog(raw)).toEqual({});
+    }
+    expect(restoreLog(JSON.stringify({ gemini: [{ n: "1" }, null] }))).toEqual(
+      {},
+    );
+  });
+});
+
+const turns: AgentTurn[] = [
+  {
+    n: 1,
+    jobId: "a",
+    inputUser: "اذكر ثلاثة ألوان",
+    inputWire: "List three colors",
+    outputWire: "1. Red\n2. Yellow\n3. Blue",
+    outputRaw: "✦  1. Red\n   2. Yellow\n   3. Blue",
+    cleanedBy: "local",
+    outputUser: "١. أحمر",
+    status: "done",
+  },
+  {
+    n: 2,
+    jobId: "b",
+    inputUser: "والرابع؟",
+    inputWire: "And a fourth?",
+    outputWire: "",
+    status: "running",
+  },
+];
+
+const render = (props: Partial<Parameters<typeof AgentTranscript>[0]> = {}) =>
+  renderToStaticMarkup(
+    <AgentTranscript
+      agent="gemini"
+      turns={turns}
+      translatingJobs={new Set()}
+      onTranslate={() => {}}
+      onClear={() => {}}
+      {...props}
+    />,
+  );
+
+describe("AgentTranscript", () => {
+  it("opens on IN: each turn its own numbered rectangle, Arabic RTL and English LTR", () => {
+    const html = render();
+    expect(html).toContain('aria-selected="true"');
+    expect(html).toMatch(/<li dir="rtl"[^>]*>[^]*?1\.[^]*?اذكر ثلاثة ألوان/);
+    expect(html).toMatch(/<li dir="rtl"[^>]*>[^]*?2\.[^]*?والرابع؟/);
+    expect(html).toMatch(/<li dir="ltr"[^>]*>[^]*?1\.[^]*?List three colors/);
+    expect(html).toMatch(/<li dir="ltr"[^>]*>[^]*?2\.[^]*?And a fourth\?/);
+    expect(html.match(/<li dir="(rtl|ltr)"/g)).toHaveLength(4);
+  });
+
+  it("lays English left of Arabic with the arrow pointing Arabic → English on IN", () => {
+    const html = render();
+    const english = html.indexOf(">English<");
+    const arrow = html.indexOf("ترجمة من العربية إلى الإنجليزية");
+    const arabic = html.indexOf(">العربية<");
+    // Source order = visual order at md+ (the section is laid out LTR).
+    expect(english).toBeGreaterThan(-1);
+    expect(english).toBeLessThan(arrow);
+    expect(arrow).toBeLessThan(arabic);
+    expect(html).toContain("lucide-arrow-left");
+    expect(html).not.toContain("lucide-arrow-right");
+  });
+
+  it("states an empty tab honestly", () => {
+    const html = render({ turns: [] });
+    expect(html).toContain("لا دورات بعد مع Gemini CLI");
+    expect(html).not.toContain("مسح Gemini CLI");
+  });
+
+  it("offers per-agent clear, and clear-all only when asked", () => {
+    expect(render()).toContain("مسح Gemini CLI");
+    expect(render()).not.toContain("مسح الكل");
+    expect(render({ onClearAll: () => {} })).toContain("مسح الكل");
+  });
+});

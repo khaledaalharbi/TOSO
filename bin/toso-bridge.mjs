@@ -19,7 +19,13 @@
  *  - Env: TOSO_BRIDGE_PORT (default 8676), TOSO_BRIDGE_TOKEN (default:
  *    generated), TOSO_BRIDGE_ORIGINS (extra CORS origins, comma-separated),
  *    TOSO_AGENTS_FILE (JSON file extending the agent registry),
- *    TOSO_AGENT_CMD_<ID> (override an adapter's binary path).
+ *    TOSO_AGENT_CMD_<ID> (override an adapter's binary path),
+ *    TOSO_BRIDGE_WORKSPACE (default agent working directory when a request
+ *    names none — otherwise agents inherit the bridge's own cwd).
+ *  - Workspace isolation: the agent works in the folder the request names
+ *    (`cwd`), never implicitly inside TOSO. Trust is per run (adapter env,
+ *    dies with the process) unless the user explicitly asks the bridge to
+ *    record the folder in the agent's own trust file.
  */
 
 import http from "node:http";
@@ -29,7 +35,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const VERSION = "0.1.0";
+const VERSION = "0.3.0";
 const DEFAULT_PORT = 8676;
 const MAX_BODY = 256 * 1024;
 const MAX_PROMPT = 200_000;
@@ -39,6 +45,10 @@ const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_TIMEOUT_MS = 30 * 60 * 1000;
 const JOB_TTL_MS = 30 * 60 * 1000;
 const JOB_SWEEP_MS = 60 * 1000;
+const MAX_PTY_SESSIONS = 8;
+const PTY_BUFFER_CHARS = 2 * 1024 * 1024;
+const PTY_EXITED_TTL_MS = 5 * 60 * 1000;
+const MAX_PTY_INPUT = 256 * 1024;
 
 /**
  * Built-in adapters — each spawns the CLI headless. `promptVia` decides how
@@ -49,21 +59,43 @@ const JOB_SWEEP_MS = 60 * 1000;
  *   "file"  — a temp file path substituted into {file} (e.g. devin
  *             --prompt-file) for CLIs that take long prompts best that way.
  * `TOSO_AGENT_CMD_<ID>` overrides the binary for non-standard installs.
+ *
+ * Trust (folder-trust gates only — never permission bypasses):
+ *   trustEnv  — env injected into ONE run/terminal when the user enables
+ *               auto-trust; it dies with the process.
+ *   trustArgs — flags appended to ONE headless run (/run) when auto-trust is
+ *               on: the agent's documented "skip the folder check" switch
+ *               for non-interactive mode, where no trust dialog can be shown.
+ *   trustFile — the agent's own trust registry (JSON map path→TRUST_FOLDER)
+ *               written only on an explicit "trust permanently" request.
+ * Claude has no folder-gate flag for print mode; its skip-permission flags
+ * (and Codex's --full-auto) authorize ACTIONS, a different class, and are
+ * deliberately not wired here.
  */
 const BUILTIN_AGENTS = {
   claude: { label: "Claude Code", cmd: "claude", args: ["-p"] },
-  codex: { label: "OpenAI Codex", cmd: "codex", args: ["exec"] },
+  codex: {
+    label: "OpenAI Codex",
+    cmd: "codex",
+    args: ["exec"],
+    // `codex exec` refuses folders outside a trusted git repo without it.
+    trustArgs: ["--skip-git-repo-check"],
+  },
   gemini: {
     label: "Gemini CLI",
     cmd: "gemini",
     args: ["-p", "{prompt}"],
     promptVia: "argv",
+    trustEnv: { GEMINI_CLI_TRUST_WORKSPACE: "true" },
+    trustFile: "~/.gemini/trustedFolders.json",
   },
   devin: {
     label: "Devin",
     cmd: "devin",
     args: ["-p", "--prompt-file", "{file}"],
     promptVia: "file",
+    // Print mode cannot show devin's trust prompt and fails in untrusted folders.
+    trustArgs: ["--respect-workspace-trust", "false"],
   },
   hermes: {
     label: "Hermes",
@@ -75,6 +107,20 @@ const BUILTIN_AGENTS = {
 
 /** Windows CreateProcess tops out near 32K chars — guard argv delivery. */
 const MAX_ARGV_PROMPT = 30_000;
+
+/**
+ * Host-integration variables that must not leak into agent processes. A
+ * bridge started from an IDE terminal (Devin Desktop / Windsurf) inherits
+ * ACP_BACKEND, which makes `devin` think it is an ACP backend: it then
+ * ignores the user's login ("Not logged in") — verified live.
+ */
+const HOST_ENV_BLOCKLIST = ["ACP_BACKEND"];
+
+function agentEnv(extra = {}) {
+  const env = { ...process.env, ...extra };
+  for (const key of HOST_ENV_BLOCKLIST) delete env[key];
+  return env;
+}
 
 const isWin = process.platform === "win32";
 
@@ -124,6 +170,204 @@ function buildSpawn(adapter, via, prompt, promptFile) {
   };
 }
 
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function validEnvMap(value) {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.entries(value).every(
+      ([key, v]) => ENV_NAME.test(key) && typeof v === "string",
+    )
+  );
+}
+
+const expandHome = (p) =>
+  p === "~" || p.startsWith("~/") || p.startsWith("~\\")
+    ? path.join(os.homedir(), p.slice(1))
+    : p;
+
+/**
+ * Workspace resolution: the request's `cwd` → TOSO_BRIDGE_WORKSPACE → null
+ * (inherit the bridge's cwd). A named folder must be absolute and exist —
+ * an invalid one is refused, never silently swapped for another folder.
+ */
+function resolveWorkspace(raw, { fallback = true } = {}) {
+  if (raw !== undefined && raw !== null && typeof raw !== "string") {
+    return { ok: false, detail: "المسار يجب أن يكون نصاً" };
+  }
+  const value =
+    raw?.trim() || (fallback ? process.env.TOSO_BRIDGE_WORKSPACE?.trim() : "");
+  if (!value) return { ok: true, cwd: null };
+  if (!path.isAbsolute(value)) {
+    return {
+      ok: false,
+      detail: "المسار يجب أن يكون مطلقاً (مثل C:\\Projects\\App)",
+    };
+  }
+  const resolved = path.resolve(value);
+  try {
+    if (!fs.statSync(resolved).isDirectory()) {
+      return { ok: false, detail: "المسار موجود لكنه ليس مجلداً" };
+    }
+  } catch {
+    return { ok: false, detail: "المجلد غير موجود" };
+  }
+  return { ok: true, cwd: resolved };
+}
+
+/** Gemini's trust registry keys Windows paths lower-cased with forward slashes. */
+const trustKey = (dir) => (isWin ? dir.replace(/\\/g, "/").toLowerCase() : dir);
+
+/** Records `dir` in the adapter's trust file — explicit user request only. */
+function writeTrust(adapter, dir) {
+  const file = expandHome(adapter.trustFile);
+  const key = trustKey(dir);
+  let data = {};
+  try {
+    data = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      return { ok: false, error: "trust_file_unreadable", file };
+    }
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return { ok: false, error: "trust_file_unreadable", file };
+  }
+  const already = data[key] === "TRUST_FOLDER";
+  if (!already) {
+    data[key] = "TRUST_FOLDER";
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+  }
+  return { ok: true, file, key, already };
+}
+
+/** POSIX: is `cmd` runnable (absolute path or found on PATH)? */
+function onPath(cmd) {
+  const candidates = cmd.includes("/")
+    ? [cmd]
+    : (process.env.PATH ?? "")
+        .split(path.delimiter)
+        .filter(Boolean)
+        .map((dir) => path.join(dir, cmd));
+  return candidates.some((file) => {
+    try {
+      fs.accessSync(file, fs.constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+}
+
+const shQuote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
+
+/**
+ * Opens an interactive terminal window running the agent inside `dir` —
+ * launch and release: the window belongs to the user, outlives the bridge,
+ * and its contents never flow back into TOSO.
+ */
+function openTerminal(adapter, dir, trust) {
+  const trustEnv = trust && adapter.trustEnv ? adapter.trustEnv : {};
+  const interactive = [adapter.cmd, ...(adapter.interactiveArgs ?? [])];
+  return new Promise((resolve) => {
+    if (isWin) {
+      // The window's own script travels -EncodedCommand (base64 UTF-16LE),
+      // so no quoting survives Start-Process's argument joining to break it.
+      const script = [
+        `$Host.UI.RawUI.WindowTitle = ${psQuote(`TOSO · ${adapter.label} · ${dir}`)}`,
+        ...Object.entries(trustEnv).map(
+          ([k, v]) => `$env:${k} = ${psQuote(v)}`,
+        ),
+        `& ${interactive.map(psQuote).join(" ")}`,
+      ].join("; ");
+      const encoded = Buffer.from(script, "utf16le").toString("base64");
+      const outer = [
+        `if (-not (Get-Command ${psQuote(adapter.cmd)} -ErrorAction SilentlyContinue)) { exit 127 }`,
+        "$shell = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell' }",
+        `Start-Process $shell -WorkingDirectory ${psQuote(dir)} -ArgumentList '-NoExit','-EncodedCommand','${encoded}'`,
+        "exit 0",
+      ].join("; ");
+      const child = spawn("powershell", ["-NoProfile", "-Command", outer], {
+        stdio: "ignore",
+        windowsHide: true,
+        env: agentEnv(), // Start-Process hands this env to the window
+      });
+      child.on("error", (error) =>
+        resolve({ ok: false, error: "terminal_failed", detail: error.message }),
+      );
+      child.on("close", (code) =>
+        resolve(
+          code === 0
+            ? { ok: true }
+            : code === 127
+              ? { ok: false, error: "agent_not_installed" }
+              : { ok: false, error: "terminal_failed", detail: `exit_${code}` },
+        ),
+      );
+      return;
+    }
+    if (!onPath(adapter.cmd)) {
+      resolve({ ok: false, error: "agent_not_installed" });
+      return;
+    }
+    const env = agentEnv(trustEnv);
+    if (process.platform === "darwin") {
+      const line = [
+        `cd ${shQuote(dir)}`,
+        ...Object.entries(trustEnv).map(
+          ([k, v]) => `export ${k}=${shQuote(v)}`,
+        ),
+        interactive.map(shQuote).join(" "),
+      ].join(" && ");
+      const apple = line.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      const child = spawn(
+        "osascript",
+        ["-e", `tell application "Terminal" to do script "${apple}"`],
+        { stdio: "ignore" },
+      );
+      child.on("error", (error) =>
+        resolve({ ok: false, error: "terminal_failed", detail: error.message }),
+      );
+      child.on("close", (code) =>
+        resolve(
+          code === 0
+            ? { ok: true }
+            : { ok: false, error: "terminal_failed", detail: `exit_${code}` },
+        ),
+      );
+      return;
+    }
+    const emulators = [
+      ["x-terminal-emulator", ["-e", ...interactive]],
+      ["gnome-terminal", ["--", ...interactive]],
+      ["konsole", ["-e", ...interactive]],
+      ["xterm", ["-e", ...interactive]],
+    ];
+    const attempt = (i) => {
+      if (i >= emulators.length) {
+        resolve({ ok: false, error: "no_terminal_found" });
+        return;
+      }
+      const [bin, args] = emulators[i];
+      const child = spawn(bin, args, {
+        cwd: dir,
+        env,
+        detached: true,
+        stdio: "ignore",
+      });
+      child.on("error", () => attempt(i + 1));
+      child.on("spawn", () => {
+        child.unref();
+        resolve({ ok: true });
+      });
+    };
+    attempt(0);
+  });
+}
+
 function loadAgents() {
   const agents = { ...BUILTIN_AGENTS };
   const file = process.env.TOSO_AGENTS_FILE;
@@ -140,13 +384,28 @@ function loadAgents() {
               entry.args.every((a) => typeof a === "string"))) &&
           (entry.label === undefined || typeof entry.label === "string") &&
           (entry.promptVia === undefined ||
-            ["stdin", "argv", "file"].includes(entry.promptVia))
+            ["stdin", "argv", "file"].includes(entry.promptVia)) &&
+          (entry.trustEnv === undefined || validEnvMap(entry.trustEnv)) &&
+          (entry.trustArgs === undefined ||
+            (Array.isArray(entry.trustArgs) &&
+              entry.trustArgs.every((a) => typeof a === "string"))) &&
+          (entry.trustFile === undefined ||
+            (typeof entry.trustFile === "string" && entry.trustFile)) &&
+          (entry.interactiveArgs === undefined ||
+            (Array.isArray(entry.interactiveArgs) &&
+              entry.interactiveArgs.every((a) => typeof a === "string")))
         ) {
           agents[id] = {
             label: entry.label || id,
             cmd: entry.cmd,
             args: entry.args ?? [],
             ...(entry.promptVia ? { promptVia: entry.promptVia } : {}),
+            ...(entry.trustEnv ? { trustEnv: entry.trustEnv } : {}),
+            ...(entry.trustArgs ? { trustArgs: entry.trustArgs } : {}),
+            ...(entry.trustFile ? { trustFile: entry.trustFile } : {}),
+            ...(entry.interactiveArgs
+              ? { interactiveArgs: entry.interactiveArgs }
+              : {}),
           };
         }
       }
@@ -174,6 +433,194 @@ const EXTRA_ORIGINS = (process.env.TOSO_BRIDGE_ORIGINS ?? "")
 
 /** @type {Map<string, {id:string, agent:string, status:string, output:string, error:?string, exitCode:?number, startedAt:number, endedAt:?number, child:import("node:child_process").ChildProcess, timer:NodeJS.Timeout}>} */
 const jobs = new Map();
+
+/*
+ * Embedded terminals — one live interactive agent session per PTY. The
+ * agent's own TUI runs in a pseudo-terminal; the UI renders it (xterm.js)
+ * and types into it. Unlike /run, the process stays alive between prompts
+ * and keeps its context.
+ *
+ * node-pty is the bridge's only (optional, native) dependency: it is loaded
+ * lazily, so every other endpoint works without it and /pty/start answers
+ * `pty_unavailable` honestly. TOSO_BRIDGE_DISABLE_PTY=1 turns it off.
+ *
+ * The agent runs WITHOUT a lingering shell: when it exits, the session
+ * ends. Input therefore only ever reaches the agent's own prompt (governed
+ * by its own approval modes), never a free shell.
+ */
+let ptyModule; // undefined = not tried yet, null = unavailable
+async function loadPty() {
+  if (ptyModule !== undefined) return ptyModule;
+  if (process.env.TOSO_BRIDGE_DISABLE_PTY === "1") return (ptyModule = null);
+  try {
+    const mod = await import("node-pty");
+    ptyModule = typeof mod.spawn === "function" ? mod : (mod.default ?? null);
+  } catch {
+    ptyModule = null;
+  }
+  return ptyModule;
+}
+
+/** @type {Map<string, {id:string, agent:string, cwd:string, trusted:boolean, proc:any, buffer:string, base:number, listeners:Set<(e:object)=>void>, exitCode:?number, endedAt:?number, startedAt:number}>} */
+const ptySessions = new Map();
+
+function ptySpawnSpec(adapter) {
+  const interactive = [adapter.cmd, ...(adapter.interactiveArgs ?? [])];
+  if (isWin) {
+    // .cmd/.ps1 shims need a shell; it exits with the agent (no -NoExit).
+    return {
+      file: "powershell.exe",
+      args: [
+        "-NoLogo",
+        "-NoProfile",
+        "-Command",
+        [
+          `if (-not (Get-Command ${psQuote(adapter.cmd)} -ErrorAction SilentlyContinue)) { exit 127 }`,
+          `& ${interactive.map(psQuote).join(" ")}`,
+          "exit $LASTEXITCODE",
+        ].join("; "),
+      ],
+    };
+  }
+  return { file: adapter.cmd, args: adapter.interactiveArgs ?? [] };
+}
+
+const clampDim = (value, fallback) =>
+  Number.isInteger(value) && value >= 2 && value <= 500 ? value : fallback;
+
+function ptyView(session) {
+  return {
+    id: session.id,
+    agent: session.agent,
+    cwd: session.cwd,
+    trusted: session.trusted,
+    alive: session.exitCode === null,
+    exitCode: session.exitCode,
+    startedAt: session.startedAt,
+    size: session.base + session.buffer.length,
+  };
+}
+
+function ptyEmit(session, event) {
+  for (const listener of session.listeners) listener(event);
+}
+
+async function startPty(agentId, cwd, trust, cols, rows) {
+  const pty = await loadPty();
+  if (!pty) return { ok: false, status: 503, error: "pty_unavailable" };
+  if (
+    [...ptySessions.values()].filter((s) => s.exitCode === null).length >=
+    MAX_PTY_SESSIONS
+  ) {
+    return { ok: false, status: 429, error: "too_many_sessions" };
+  }
+  const adapter = AGENTS[agentId];
+  const trusted = Boolean(trust && adapter.trustEnv);
+  const spec = ptySpawnSpec(adapter);
+  let proc;
+  try {
+    proc = pty.spawn(spec.file, spec.args, {
+      name: "xterm-256color",
+      cols: clampDim(cols, 100),
+      rows: clampDim(rows, 30),
+      cwd,
+      env: agentEnv({
+        ...(trusted ? adapter.trustEnv : {}),
+        TERM: "xterm-256color",
+        COLORTERM: "truecolor",
+      }),
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      status: 400,
+      error: "pty_spawn_failed",
+      detail: error.message,
+    };
+  }
+  const session = {
+    id: crypto.randomUUID(),
+    agent: agentId,
+    cwd,
+    trusted,
+    proc,
+    buffer: "",
+    base: 0,
+    listeners: new Set(),
+    exitCode: null,
+    endedAt: null,
+    startedAt: Date.now(),
+  };
+  proc.onData((data) => {
+    const offset = session.base + session.buffer.length;
+    session.buffer += data;
+    // Bounded replay buffer: drop the oldest output, keep offsets absolute.
+    if (session.buffer.length > PTY_BUFFER_CHARS) {
+      const drop = session.buffer.length - PTY_BUFFER_CHARS;
+      session.buffer = session.buffer.slice(drop);
+      session.base += drop;
+    }
+    ptyEmit(session, { o: offset, d: data });
+  });
+  proc.onExit(({ exitCode }) => {
+    session.exitCode = exitCode ?? -1;
+    session.endedAt = Date.now();
+    ptyEmit(session, { exit: session.exitCode });
+  });
+  ptySessions.set(session.id, session);
+  return { ok: true, session };
+}
+
+function killPty(session) {
+  if (session.exitCode !== null) return;
+  const pid = session.proc.pid;
+  try {
+    session.proc.kill();
+  } catch {
+    /* already gone */
+  }
+  if (isWin && pid) {
+    spawn("taskkill", ["/T", "/F", "/PID", String(pid)], {
+      stdio: "ignore",
+      windowsHide: true,
+    }).on("error", () => {});
+  }
+}
+
+/**
+ * Streams a session as NDJSON over one held response: the buffered output
+ * from `from` (so a reload/reattach replays the screen), then live chunks,
+ * then `{exit}`. A fetch() stream — not EventSource — so the token header
+ * still gates it.
+ */
+function streamPty(req, res, session, from) {
+  res.writeHead(200, {
+    "Content-Type": "application/x-ndjson; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+  });
+  const start = Math.max(session.base, Number.isSafeInteger(from) ? from : 0);
+  const backlog = session.buffer.slice(start - session.base);
+  res.write(
+    `${JSON.stringify({ o: start, d: backlog, ...(start > (from || 0) ? { truncated: true } : {}) })}\n`,
+  );
+  if (session.exitCode !== null) {
+    res.end(`${JSON.stringify({ exit: session.exitCode })}\n`);
+    return;
+  }
+  const listener = (event) => {
+    res.write(`${JSON.stringify(event)}\n`);
+    if (event.exit !== undefined) res.end();
+  };
+  session.listeners.add(listener);
+  const detach = () => session.listeners.delete(listener);
+  req.on("close", detach);
+  res.on("close", detach);
+}
+
+process.on("exit", () => {
+  for (const session of ptySessions.values()) killPty(session);
+});
 
 function originAllowed(origin) {
   if (!origin) return true; // curl / non-browser callers — token still gates.
@@ -234,6 +681,8 @@ function jobView(job) {
     exitCode: job.exitCode,
     startedAt: job.startedAt,
     endedAt: job.endedAt,
+    cwd: job.cwd, // null → the bridge's own working directory
+    trusted: job.trusted,
   };
 }
 
@@ -265,13 +714,21 @@ function killJob(job) {
   }
 }
 
-function runAgent(agentId, prompt, timeoutMs) {
+function runAgent(
+  agentId,
+  prompt,
+  timeoutMs,
+  { cwd = null, trust = false } = {},
+) {
   const adapter = AGENTS[agentId];
   const via = adapter.promptVia ?? "stdin";
+  const trusted = Boolean(trust && (adapter.trustEnv || adapter.trustArgs));
   if (via === "argv" && !isWin && prompt.length > MAX_ARGV_PROMPT) {
     const job = {
       id: crypto.randomUUID(),
       agent: agentId,
+      cwd,
+      trusted,
       status: "error",
       output: "",
       error: `prompt_too_long_for_agent: ${agentId} يستقبل البرومبت عبر argv (~${MAX_ARGV_PROMPT} حرف كحد أقصى)؛ اختصر النص أو استخدم وكيلاً يقرأه من ملف/stdin`,
@@ -287,6 +744,8 @@ function runAgent(agentId, prompt, timeoutMs) {
   const job = {
     id: crypto.randomUUID(),
     agent: agentId,
+    cwd,
+    trusted,
     status: "running",
     output: "",
     error: null,
@@ -311,7 +770,12 @@ function runAgent(agentId, prompt, timeoutMs) {
     }
   }
 
-  const spec = buildSpawn(adapter, via, prompt, job.promptFile);
+  // Per-run folder trust for headless mode: the adapter's documented flag.
+  const runAdapter =
+    trusted && adapter.trustArgs
+      ? { ...adapter, args: [...adapter.args, ...adapter.trustArgs] }
+      : adapter;
+  const spec = buildSpawn(runAdapter, via, prompt, job.promptFile);
   let child;
   try {
     // POSIX: no shell, argv verbatim. Windows: PowerShell wrapper (see
@@ -319,6 +783,8 @@ function runAgent(agentId, prompt, timeoutMs) {
     child = spawn(spec.cmd, spec.args, {
       stdio: [spec.stdin ? "pipe" : "ignore", "pipe", "pipe"],
       windowsHide: true,
+      ...(cwd ? { cwd } : {}),
+      env: agentEnv(trusted && adapter.trustEnv ? adapter.trustEnv : {}),
     });
   } catch (error) {
     finish(job, "error", `agent_spawn_failed: ${error.message}`, null);
@@ -401,15 +867,25 @@ async function handle(req, res) {
     sendJson(req, res, 200, {
       ok: true,
       version: VERSION,
+      pty: Boolean(await loadPty()),
       agents: Object.entries(AGENTS).map(([id, a]) => ({
         id,
         label: a.label,
+        trust: {
+          perRun: Boolean(a.trustEnv || a.trustArgs),
+          persistent: Boolean(a.trustFile),
+        },
       })),
     });
     return;
   }
 
-  if (req.method === "POST" && url.pathname === "/run") {
+  if (
+    req.method === "POST" &&
+    ["/run", "/fs/check", "/trust/workspace", "/open-terminal"].includes(
+      url.pathname,
+    )
+  ) {
     let body;
     try {
       body = JSON.parse(await readBody(req));
@@ -421,7 +897,23 @@ async function handle(req, res) {
       sendJson(req, res, 400, { error: "invalid_request" });
       return;
     }
-    const { agent, prompt, timeoutMs } = body;
+    if (url.pathname === "/fs/check") {
+      const ws = resolveWorkspace(body.path, { fallback: false });
+      sendJson(
+        req,
+        res,
+        200,
+        ws.ok && ws.cwd
+          ? { ok: true, path: ws.cwd }
+          : {
+              ok: false,
+              error: "invalid_workspace",
+              detail: ws.ok ? "المسار فارغ" : ws.detail,
+            },
+      );
+      return;
+    }
+    const { agent } = body;
     if (typeof agent !== "string" || !AGENTS[agent]) {
       sendJson(req, res, 400, {
         error: "unknown_agent",
@@ -429,6 +921,44 @@ async function handle(req, res) {
       });
       return;
     }
+    const adapter = AGENTS[agent];
+    const ws = resolveWorkspace(body.cwd, {
+      fallback: url.pathname !== "/trust/workspace",
+    });
+    if (!ws.ok) {
+      sendJson(req, res, 400, {
+        error: "invalid_workspace",
+        detail: ws.detail,
+      });
+      return;
+    }
+    if (url.pathname === "/trust/workspace") {
+      if (!ws.cwd) {
+        sendJson(req, res, 400, {
+          error: "invalid_workspace",
+          detail: "حدّد مجلد مساحة العمل أولاً",
+        });
+        return;
+      }
+      if (!adapter.trustFile) {
+        sendJson(req, res, 400, { error: "trust_unsupported", agent });
+        return;
+      }
+      const result = writeTrust(adapter, ws.cwd);
+      sendJson(req, res, result.ok ? 200 : 409, result);
+      return;
+    }
+    if (url.pathname === "/open-terminal") {
+      const dir = ws.cwd ?? process.cwd();
+      const result = await openTerminal(adapter, dir, body.trust === true);
+      sendJson(req, res, result.ok ? 200 : 400, {
+        ...result,
+        cwd: dir,
+        trusted: body.trust === true && Boolean(adapter.trustEnv),
+      });
+      return;
+    }
+    const { prompt, timeoutMs } = body;
     if (typeof prompt !== "string" || !prompt.trim()) {
       sendJson(req, res, 400, { error: "empty_prompt" });
       return;
@@ -441,8 +971,16 @@ async function handle(req, res) {
       Number.isFinite(timeoutMs) && timeoutMs > 0
         ? Math.min(timeoutMs, MAX_TIMEOUT_MS)
         : DEFAULT_TIMEOUT_MS;
-    const job = runAgent(agent, prompt, timeout);
+    const job = runAgent(agent, prompt, timeout, {
+      cwd: ws.cwd,
+      trust: body.trust === true,
+    });
     sendJson(req, res, 202, { jobId: job.id, job: jobView(job) });
+    return;
+  }
+
+  if (url.pathname.startsWith("/pty/")) {
+    await handlePty(req, res, url);
     return;
   }
 
@@ -470,6 +1008,106 @@ async function handle(req, res) {
   sendJson(req, res, 404, { error: "not_found" });
 }
 
+async function readJson(req, res) {
+  let body;
+  try {
+    body = JSON.parse((await readBody(req)) || "{}");
+  } catch {
+    sendJson(req, res, 400, { error: "invalid_json" });
+    return null;
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    sendJson(req, res, 400, { error: "invalid_request" });
+    return null;
+  }
+  return body;
+}
+
+async function handlePty(req, res, url) {
+  if (req.method === "POST" && url.pathname === "/pty/start") {
+    const body = await readJson(req, res);
+    if (!body) return;
+    if (typeof body.agent !== "string" || !AGENTS[body.agent]) {
+      sendJson(req, res, 400, {
+        error: "unknown_agent",
+        agents: Object.keys(AGENTS),
+      });
+      return;
+    }
+    const ws = resolveWorkspace(body.cwd);
+    if (!ws.ok) {
+      sendJson(req, res, 400, {
+        error: "invalid_workspace",
+        detail: ws.detail,
+      });
+      return;
+    }
+    const result = await startPty(
+      body.agent,
+      ws.cwd ?? process.cwd(),
+      body.trust === true,
+      body.cols,
+      body.rows,
+    );
+    if (!result.ok) {
+      sendJson(req, res, result.status, {
+        error: result.error,
+        ...(result.detail ? { detail: result.detail } : {}),
+      });
+      return;
+    }
+    sendJson(req, res, 201, { ok: true, session: ptyView(result.session) });
+    return;
+  }
+
+  const match = url.pathname.match(
+    /^\/pty\/([\w-]+)(?:\/(stream|input|resize))?$/,
+  );
+  const session = match ? ptySessions.get(match[1]) : null;
+  if (!session) {
+    sendJson(req, res, 404, { error: "pty_not_found" });
+    return;
+  }
+  const action = match[2];
+  if (req.method === "GET" && !action) {
+    sendJson(req, res, 200, { ok: true, session: ptyView(session) });
+    return;
+  }
+  if (req.method === "GET" && action === "stream") {
+    streamPty(req, res, session, Number(url.searchParams.get("from") ?? 0));
+    return;
+  }
+  if (req.method === "DELETE" && !action) {
+    killPty(session);
+    ptySessions.delete(session.id);
+    sendJson(req, res, 200, { ok: true });
+    return;
+  }
+  if (req.method === "POST" && (action === "input" || action === "resize")) {
+    const body = await readJson(req, res);
+    if (!body) return;
+    if (session.exitCode !== null) {
+      sendJson(req, res, 409, {
+        error: "pty_exited",
+        exitCode: session.exitCode,
+      });
+      return;
+    }
+    if (action === "input") {
+      if (typeof body.data !== "string" || body.data.length > MAX_PTY_INPUT) {
+        sendJson(req, res, 400, { error: "invalid_input" });
+        return;
+      }
+      session.proc.write(body.data);
+    } else {
+      session.proc.resize(clampDim(body.cols, 100), clampDim(body.rows, 30));
+    }
+    sendJson(req, res, 200, { ok: true });
+    return;
+  }
+  sendJson(req, res, 404, { error: "not_found" });
+}
+
 const server = http.createServer((req, res) => {
   handle(req, res).catch((error) => {
     sendJson(req, res, 500, { error: "internal", detail: String(error) });
@@ -481,6 +1119,11 @@ setInterval(() => {
   const cutoff = Date.now() - JOB_TTL_MS;
   for (const [id, job] of jobs) {
     if (job.endedAt && job.endedAt < cutoff) jobs.delete(id);
+  }
+  // Exited terminals linger briefly so the UI can read their last screen.
+  const ptyCutoff = Date.now() - PTY_EXITED_TTL_MS;
+  for (const [id, session] of ptySessions) {
+    if (session.endedAt && session.endedAt < ptyCutoff) ptySessions.delete(id);
   }
 }, JOB_SWEEP_MS).unref();
 
