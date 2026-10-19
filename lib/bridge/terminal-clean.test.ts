@@ -55,6 +55,25 @@ describe("pendingDecision (live first-run screens)", () => {
     expect(pendingDecision(PERMISSION_TURN.join("\n"))).toBe("إذن تنفيذ أداة");
   });
 
+  it("recognizes Claude's bare Yes/No menu and Codex's run-confirm", () => {
+    const claudeMenu = [
+      "  ❯ 1. Yes",
+      "    2. Yes, and don't ask again for git commands",
+      "    3. No",
+      "    Enter to confirm · Esc to cancel",
+    ];
+    // The menu footer alone is already a known decision class.
+    expect(pendingDecision(claudeMenu.join("\n"))).toBeTruthy();
+    expect(
+      pendingDecision("Would you like to run the following command?"),
+    ).toBe("إذن تنفيذ أداة");
+    expect(pendingDecision("Do you want to make this edit to app.ts?")).toBe(
+      "إذن تنفيذ أداة",
+    );
+    // Cleaning keeps nothing of the menu chrome.
+    expect(cleanReplyLines(claudeMenu)).toBe("");
+  });
+
   it("stays quiet on a normal ready prompt", () => {
     expect(pendingDecision(capture.t3)).toBeNull();
     expect(pendingDecision(" › Ask Codex to do anything")).toBeNull();

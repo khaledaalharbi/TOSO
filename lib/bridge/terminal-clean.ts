@@ -56,11 +56,12 @@ const DECISION_PATTERNS: [RegExp, string][] = [
     "الثقة بالمجلد",
   ],
   [/allow .{0,40}work in this folder/i, "السماح بالعمل في المجلد"],
-  // Gemini/Claude tool-approval dialogs ("Allow execution of [Shell]?",
-  // "Do you want to run ...") — the agent is waiting on a permission, the
-  // turn is not done, and the dialog must not be captured as the reply.
+  // Tool-approval dialogs across the TUIs — Gemini "Allow execution of
+  // [Shell]?", Claude "Do you want to proceed?", Codex "Would you like to
+  // run the following command?". The agent waits on a permission, the turn
+  // is not done, and the dialog must not be captured as the reply.
   [
-    /allow execution of|allow this (action|command|tool)|do you want to (run|execute|proceed)|proceed with .{0,40}\?/i,
+    /allow execution of|allow this (action|command|tool)|do you want to (run|execute|proceed|make|apply)|would you like to (run|execute)|proceed with .{0,40}\?|apply this (edit|change)/i,
     "إذن تنفيذ أداة",
   ],
   [/enter to confirm|↵ to choose|to select\s*·/i, "اختيار من قائمة"],
@@ -137,11 +138,12 @@ function dedent(lines: string[]): string[] {
  * as a unit — suppression stops at the first line that isn't dialog-shaped.
  */
 const DIALOG_START =
-  /^\s*\?\s|allow execution of|allow this (action|command|tool)/i;
+  /^\s*\?\s|allow execution of|allow this (action|command|tool)|do you want to (run|execute|proceed|make|apply)|would you like to (run|execute)/i;
 // yes/no qualify as menu options only in the menus' own phrasing ("No,
-// suggest changes", "Yes.") — a plain "No files" list item is reply text.
+// suggest changes", "Yes.", Claude's bare "❯ 1. Yes"/"3. No") — a plain
+// "No files" list item is reply text. Codex menus use "1)" not "1.".
 const PERMISSION_OPTION =
-  /^\s*[●○·•]?\s*\d+\.\s+(allow|accept|deny|always|never|suggest|yes[,.]|no[,.])/i;
+  /^\s*[●○·•❯]?\s*\d+[.)]\s+(allow|accept|deny|always|never|suggest|yes([,.]|\s*$)|no([,.]|\s*$))/i;
 const BOX_CONTENT = /^\s*│[^\n]*│\s*$/;
 const ESC_HINT = /\(\s*esc\s*\)\s*$|\besc to (quit|cancel|back|leave)\b/i;
 
