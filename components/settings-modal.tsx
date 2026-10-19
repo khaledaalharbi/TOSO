@@ -12,6 +12,10 @@ import { useState } from "react";
 import { GeminiKeyGuide } from "@/components/gemini-key-guide";
 import { AGENT_OPTIONS, DEFAULT_BRIDGE_URL } from "@/lib/bridge/agents";
 import { checkBridge } from "@/lib/services/agent-service";
+import {
+  checkAvailableModels,
+  type ModelCheckResponse,
+} from "@/lib/services/model-service";
 import { providers } from "@/lib/providers/registry";
 import type { ProviderConfig } from "@/lib/types";
 
@@ -94,6 +98,31 @@ export function SettingsModal({
   const [bridgeStatus, setBridgeStatus] = useState<
     "idle" | "checking" | "ok" | "bad_token" | "offline"
   >("idle");
+  const [modelCheck, setModelCheck] = useState<
+    | "idle"
+    | "checking"
+    | { state: "ok"; data: Extract<ModelCheckResponse, { state: "ok" }> }
+    | "no_key"
+    | "offline"
+  >("idle");
+
+  async function verifyModels() {
+    if (modelCheck === "checking") return;
+    setModelCheck("checking");
+    const result = await checkAvailableModels(
+      config.userKey?.trim() || undefined,
+    );
+    setModelCheck(
+      result.state === "ok" ? { state: "ok", data: result } : result.state,
+    );
+  }
+
+  const unavailableModels =
+    typeof modelCheck === "object" && modelCheck.state === "ok"
+      ? new Set(
+          modelCheck.data.results.filter((r) => !r.available).map((r) => r.id),
+        )
+      : new Set<string>();
 
   async function verifyBridge() {
     if (bridgeStatus === "checking") return;
@@ -191,10 +220,67 @@ export function SettingsModal({
               {options.map((model) => (
                 <option key={model.id} value={model.id}>
                   {model.label}
+                  {unavailableModels.has(model.id) ? " — غير متاح" : ""}
                 </option>
               ))}
             </select>
           </label>
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={verifyModels}
+              disabled={modelCheck === "checking"}
+              className="border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:border-ink hover:text-ink disabled:opacity-50"
+            >
+              {modelCheck === "checking" ? "يفحص النماذج…" : "تحقق من النماذج"}
+            </button>
+            {modelCheck === "no_key" ? (
+              <p className="mt-2 border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                لا يوجد مفتاح للفحص — أضف مفتاحك أعلاه أو اضبط مفتاح الخادم.
+              </p>
+            ) : null}
+            {modelCheck === "offline" ? (
+              <p className="mt-2 border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                تعذّر الوصول — راجع الاتصال وأعد المحاولة.
+              </p>
+            ) : null}
+            {typeof modelCheck === "object" && modelCheck.state === "ok" ? (
+              <div className="mt-2 space-y-1.5 border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                {modelCheck.data.results.map((result) => (
+                  <div key={result.id} className="flex items-center gap-2">
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-full ${result.available ? "bg-emerald-500" : "bg-rose-500"}`}
+                      aria-hidden="true"
+                    />
+                    <span className="font-mono font-semibold" dir="ltr">
+                      {result.id}
+                    </span>
+                    {!result.available ? (
+                      <span className="text-slate-500">
+                        {result.status === 429
+                          ? "الحصة منتهية"
+                          : result.status === "network"
+                            ? "تعذّر الوصول"
+                            : `http_${result.status}`}
+                      </span>
+                    ) : null}
+                  </div>
+                ))}
+                {modelCheck.data.extras?.length ? (
+                  <p className="pt-1 leading-5 text-slate-600">
+                    نماذج أخرى متاحة لحسابك غير مسجلة بعد:{" "}
+                    <span dir="ltr" className="font-mono">
+                      {modelCheck.data.extras.join("، ")}
+                    </span>
+                  </p>
+                ) : null}
+                <p className="text-slate-400">
+                  عبر {modelCheck.data.viaUserKey ? "مفتاحك" : "مفتاح الخادم"} —
+                  فحص حرّ بلا تكلفة
+                </p>
+              </div>
+            ) : null}
+          </div>
           <label className="block text-sm font-semibold">
             مفتاح Gemini الخاص بك{" "}
             <span className="font-normal text-slate-400">

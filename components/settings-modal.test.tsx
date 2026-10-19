@@ -88,8 +88,17 @@ describe("SettingsModal key status", () => {
 
   it("hides the status block entirely without a saved key", () => {
     const markup = render(config());
-    expect(markup).not.toContain("تحقق");
+    // The key's own verify button is absent — the models-check button
+    // ("تحقق من النماذج") lives in another block and stays.
+    expect(markup).not.toMatch(/>تحقق</);
     expect(markup).not.toContain("••••");
+  });
+
+  it("exposes a models check button and the auto-send toggle", () => {
+    const html = render(config());
+    expect(html).toContain("تحقق من النماذج");
+    expect(html).toContain("إرسال تلقائي إلى الوكيل الافتراضي");
+    expect(html).toContain("الوكيل الافتراضي");
   });
 
   it("mentions the AQ. prefix hint inside the guide", () => {
