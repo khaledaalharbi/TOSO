@@ -56,6 +56,13 @@ const DECISION_PATTERNS: [RegExp, string][] = [
     "الثقة بالمجلد",
   ],
   [/allow .{0,40}work in this folder/i, "السماح بالعمل في المجلد"],
+  // Gemini/Claude tool-approval dialogs ("Allow execution of [Shell]?",
+  // "Do you want to run ...") — the agent is waiting on a permission, the
+  // turn is not done, and the dialog must not be captured as the reply.
+  [
+    /allow execution of|allow this (action|command|tool)|do you want to (run|execute|proceed)|proceed with .{0,40}\?/i,
+    "إذن تنفيذ أداة",
+  ],
   [/enter to confirm|↵ to choose|to select\s*·/i, "اختيار من قائمة"],
   [/choice \[default/i, "سؤال إعداد أولي"],
   [/\[(y\/n|Y\/n|y\/N)\]|\(y\/n\)/, "سؤال نعم/لا"],
@@ -122,10 +129,47 @@ function dedent(lines: string[]): string[] {
   );
 }
 
+/**
+ * Tool-approval dialogs paint as one contiguous block: a "?" pending line
+ * ("? Shell  git …"), the boxed command preview, "Allow execution of …",
+ * then numbered options ("● 1. Allow once"). A boxed line can be real reply
+ * content (the reply itself renders inside a box), so the block is dropped
+ * as a unit — suppression stops at the first line that isn't dialog-shaped.
+ */
+const DIALOG_START =
+  /^\s*\?\s|allow execution of|allow this (action|command|tool)/i;
+// yes/no qualify as menu options only in the menus' own phrasing ("No,
+// suggest changes", "Yes.") — a plain "No files" list item is reply text.
+const PERMISSION_OPTION =
+  /^\s*[●○·•]?\s*\d+\.\s+(allow|accept|deny|always|never|suggest|yes[,.]|no[,.])/i;
+const BOX_CONTENT = /^\s*│[^\n]*│\s*$/;
+const ESC_HINT = /\(\s*esc\s*\)\s*$|\besc to (quit|cancel|back|leave)\b/i;
+
 /** Cleans a block of reply lines (chrome already cut off). */
 export function cleanReplyLines(lines: string[]): string {
   let markDone = false;
+  let inDialog = false;
   const kept = lines
+    .filter((line) => {
+      if (!line.trim()) return !inDialog;
+      if (inDialog) {
+        if (
+          PERMISSION_OPTION.test(line) ||
+          BOX_CONTENT.test(line) ||
+          BOX_ONLY.test(line) ||
+          ESC_HINT.test(line) ||
+          DIALOG_START.test(line)
+        ) {
+          return false;
+        }
+        inDialog = false; // dialog ended — fall through to normal filters
+      }
+      if (DIALOG_START.test(line) || PERMISSION_OPTION.test(line)) {
+        inDialog = true;
+        return false;
+      }
+      return true;
+    })
     .filter(
       (l) => !TOOL_STATUS.test(l) && !SPINNER.test(l) && !STATUS_LINE.test(l),
     )

@@ -28,12 +28,31 @@ const DEVIN_TRUST = [
 ].join("\n");
 const HERMES_FIRST_RUN =
   "Help improve Hermes?\n  1) Yes\n  2) Ask later\n  3) No thanks\nChoice [default 3]:";
+// Rebuilt from the live Gemini CLI screen (user capture, 2026-10-19): a tool
+// call ran, then the next command sat waiting on the approval menu.
+const PERMISSION_TURN = [
+  '  ✓  Shell git log -n 10 --format="%h %ad %s" --date=short',
+  "     fatal: unable to access 'NUL': Invalid argument",
+  "",
+  "? Shell  git --no-pager log -n 10 --oneline",
+  "╭──────────────────────────────────────────────╮",
+  "│ git --no-pager log -n 10 --oneline           │",
+  "╰──────────────────────────────────────────────╯",
+  " Allow execution of [Shell]?",
+  " ● 1. Allow once",
+  "   2. Allow for this session",
+  "   3. No, suggest changes (esc)",
+];
 
 describe("pendingDecision (live first-run screens)", () => {
   it("recognizes Claude's and Devin's trust dialogs and Hermes's setup question", () => {
     expect(pendingDecision(CLAUDE_TRUST)).toBe("الثقة بالمجلد");
     expect(pendingDecision(DEVIN_TRUST)).toBe("الثقة بالمجلد");
     expect(pendingDecision(HERMES_FIRST_RUN)).toBe("سؤال إعداد أولي");
+  });
+
+  it("flags a pending tool-approval menu as a decision, not a reply", () => {
+    expect(pendingDecision(PERMISSION_TURN.join("\n"))).toBe("إذن تنفيذ أداة");
   });
 
   it("stays quiet on a normal ready prompt", () => {
@@ -161,6 +180,19 @@ describe("isAgentBusy", () => {
 });
 
 describe("cleanReplyLines", () => {
+  it("strips a tool-approval dialog as a block, keeps real content", () => {
+    const cleaned = cleanReplyLines(PERMISSION_TURN);
+    expect(cleaned).not.toMatch(/allow|execution|suggest|\?/i);
+    // The finished command's own output is real content, not dialog chrome.
+    expect(cleaned).toContain("fatal: unable to access 'NUL'");
+  });
+
+  it("does not eat a reply's own numbered list", () => {
+    expect(
+      cleanReplyLines(["1. Red", "2. No files found", "3. Yes we did"]),
+    ).toBe("1. Red\n2. No files found\n3. Yes we did");
+  });
+
   it("drops tool-status and box lines, strips borders, dedents", () => {
     expect(
       cleanReplyLines([

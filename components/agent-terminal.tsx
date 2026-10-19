@@ -347,10 +347,21 @@ export function AgentTerminal({
       let timedOut = false;
       await sleep(1500);
       while (statusRef.current === "live" && !captureNow.current) {
-        const busy = isAgentBusy(viewport(term));
+        const screen = viewport(term);
+        const busy = isAgentBusy(screen);
         sawBusy ||= busy;
+        // A pending dialog (tool approval, menu) is neither busy nor done —
+        // the agent is waiting on the user, not finished. Keep waiting so an
+        // answered prompt resumes the turn instead of capturing the dialog.
+        const waitingOnUser = Boolean(pendingDecision(screen));
         const quiet = Date.now() - lastOutput.current >= QUIET_MS;
-        if (!busy && quiet && (sawBusy || Date.now() - t0 > MIN_TURN_MS)) break;
+        if (
+          !busy &&
+          !waitingOnUser &&
+          quiet &&
+          (sawBusy || Date.now() - t0 > MIN_TURN_MS)
+        )
+          break;
         if (Date.now() - t0 > TURN_MAX_MS) {
           timedOut = true;
           break;
@@ -358,8 +369,17 @@ export function AgentTerminal({
         await sleep(250);
       }
       const after = bufferLines(term);
+      const reply = extractReply(before, after, text);
+      // Still waiting on a permission/menu and nothing real was captured —
+      // record the blocker honestly instead of an empty or noisy reply.
+      const pending = pendingDecision(viewport(term));
+      if (pending && !reply) {
+        throw new Error(
+          `${agentLabel(agent)} ينتظر قراراً منك في الطرفية أعلاه (${pending}) — أجب عليه ثم أعد الإرسال.`,
+        );
+      }
       return {
-        reply: extractReply(before, after, text),
+        reply,
         region: turnRegion(before, after),
         timedOut,
       };
