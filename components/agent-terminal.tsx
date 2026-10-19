@@ -215,6 +215,14 @@ export function AgentTerminal({
   async function start() {
     if (statusRef.current === "starting" || statusRef.current === "live")
       return;
+    // No folder = no session — the bridge would inherit TOSO's own cwd.
+    if (!props.current.workspace?.trim()) {
+      setMessage(
+        "حدّد مجلد المشروع المستهدف أولاً — حقل «مشروع» أعلى هذه اللوحة — فالجلسة لن تبدأ على مجلد غير محدد.",
+      );
+      setStatus("idle");
+      return;
+    }
     setStatus("starting");
     setMessage(null);
     firstOutput.current = 0;

@@ -676,6 +676,11 @@ export function SettingsModal({
             title="مشاريع الوكلاء والثقة"
             hint="مسار كل وكيل يُحدَّد من تبويبه في القسم 04"
           >
+            <p className="border border-slate-200 bg-white px-3 py-2 text-xs leading-5 text-slate-600">
+              <b>مستويان:</b> هذه المفاتيح عامة تسري على كل وكيل يدعمها — أما
+              مجلد المشروع المستهدف وزر الثقة الدائمة فهما <b>لكل وكيل</b>
+              في تبويبه بالقسم 04، والوكيل لا يعمل قبل تحديد مجلد.
+            </p>
             <label className="mt-3 flex cursor-pointer items-start gap-2.5 border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold">
               <input
                 id="auto-trust"
@@ -692,8 +697,9 @@ export function SettingsModal({
                 <span className="block text-xs font-normal leading-5 text-slate-500">
                   مفتاح مؤقت يُزرع في عملية الوكيل ويموت معها (Gemini:{" "}
                   <code dir="ltr">GEMINI_CLI_TRUST_WORKSPACE</code>) — لا يُكتب
-                  أي ملف. لا يمنح Claude/Codex صلاحيات تنفيذ؛ تلك فئة مختلفة.
-                  الثقة الدائمة بمجلد معيّن زر في تبويب وكيله.
+                  أي ملف. <b>النطاق: الوكلاء الداعمون فقط — حالياً Gemini</b>.
+                  لا يمنح Claude/Codex صلاحيات تنفيذ؛ تلك فئة مختلفة. الثقة
+                  الدائمة بمجلد معيّن زر في تبويب وكيله.
                 </span>
               </span>
             </label>
@@ -712,8 +718,9 @@ export function SettingsModal({
                 تشغيل جلسة الوكيل تلقائياً عند فتح تبويبه
                 <span className="block text-xs font-normal leading-5 text-slate-500">
                   الطرفية المدمجة تبدأ وحدها عند فتح TOSO (للوكيل الافتراضي)
-                  وعند اختيار تبويب. الجلسة تبقى حيّة وتتذكر السياق حتى توقفها
-                  أو يخرج الوكيل — وتعود بعد تحديث الصفحة.
+                  وعند اختيار تبويب — <b>ينطبق على كل الوكلاء</b>، ولا تبدأ جلسة
+                  قبل تحديد مجلد الوكيل. الجلسة تبقى حيّة وتتذكر السياق حتى
+                  توقفها أو يخرج الوكيل — وتعود بعد تحديث الصفحة.
                 </span>
               </span>
             </label>

@@ -183,6 +183,15 @@ async function launchAgentTerminal(
 ) {
   ui.setBusy(agentId);
   ui.setNote(null);
+  if (!settings.workspace?.trim()) {
+    ui.setNote({
+      agent: agentId,
+      ok: false,
+      text: `حدّد مجلد المشروع المستهدف لتبويب ${agentLabel(agentId)} أولاً — نافذة خارجية بلا مجلد تعمل على مجلد TOSO نفسه.`,
+    });
+    ui.setBusy(null);
+    return;
+  }
   try {
     const result = await openAgentTerminal(
       {
@@ -519,6 +528,18 @@ export function OptimizerWorkspace() {
    */
   async function sendToAgent(text: string, agentId: string, inputUser: string) {
     const agent = agentId || config.agent || AGENT_OPTIONS[0].id;
+    // A run needs its own project folder — without one the bridge would
+    // silently operate on TOSO itself, which this tool must never do.
+    if (!workspaceFor(config.workspaces, agent)?.trim()) {
+      setRun(agent, {
+        agent,
+        prompt: text,
+        phase: "error",
+        message:
+          "حدّد مجلد المشروع المستهدف في تبويب هذا الوكيل أولاً — لن يعمل على مجلد غير محدد.",
+      });
+      return;
+    }
     // The live embedded session is the primary path; the one-shot run is
     // the honest fallback when the bridge has no PTY support.
     const terminal = terminals.current[agent];
