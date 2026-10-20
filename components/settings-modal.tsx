@@ -4,7 +4,6 @@ import {
   Check,
   ChevronDown,
   CircleHelp,
-  FolderOpen,
   KeyRound,
   Languages,
   Sparkles,
@@ -670,60 +669,6 @@ export function SettingsModal({
                     : "لا يوجد جسر على هذا العنوان — شغّله بأمر npm run bridge."}
               </p>
             )}
-          </Section>
-          <Section
-            icon={<FolderOpen size={16} className="text-amber-600" />}
-            title="مشاريع الوكلاء والثقة"
-            hint="مسار كل وكيل يُحدَّد من تبويبه في القسم 04"
-          >
-            <p className="border border-slate-200 bg-white px-3 py-2 text-xs leading-5 text-slate-600">
-              <b>مستويان:</b> هذه المفاتيح عامة تسري على كل وكيل يدعمها — أما
-              مجلد المشروع المستهدف وزر الثقة الدائمة فهما <b>لكل وكيل</b>
-              في تبويبه بالقسم 04، والوكيل لا يعمل قبل تحديد مجلد.
-            </p>
-            <label className="mt-3 flex cursor-pointer items-start gap-2.5 border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold">
-              <input
-                id="auto-trust"
-                name="auto-trust"
-                type="checkbox"
-                checked={config.autoTrust ?? false}
-                onChange={(event) =>
-                  onChange({ ...config, autoTrust: event.target.checked })
-                }
-                className="mt-0.5 h-4 w-4 shrink-0 accent-violet-700"
-              />
-              <span>
-                ثقة تلقائية بالمجلد لكل تشغيلة
-                <span className="block text-xs font-normal leading-5 text-slate-500">
-                  مفتاح مؤقت يُزرع في عملية الوكيل ويموت معها (Gemini:{" "}
-                  <code dir="ltr">GEMINI_CLI_TRUST_WORKSPACE</code>) — لا يُكتب
-                  أي ملف. <b>النطاق: الوكلاء الداعمون فقط — حالياً Gemini</b>.
-                  لا يمنح Claude/Codex صلاحيات تنفيذ؛ تلك فئة مختلفة. الثقة
-                  الدائمة بمجلد معيّن زر في تبويب وكيله.
-                </span>
-              </span>
-            </label>
-            <label className="mt-3 flex cursor-pointer items-start gap-2.5 border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold">
-              <input
-                id="auto-terminal"
-                name="auto-terminal"
-                type="checkbox"
-                checked={config.autoTerminal ?? false}
-                onChange={(event) =>
-                  onChange({ ...config, autoTerminal: event.target.checked })
-                }
-                className="mt-0.5 h-4 w-4 shrink-0 accent-violet-700"
-              />
-              <span>
-                تشغيل جلسة الوكيل تلقائياً عند فتح تبويبه
-                <span className="block text-xs font-normal leading-5 text-slate-500">
-                  الطرفية المدمجة تبدأ وحدها عند فتح TOSO (للوكيل الافتراضي)
-                  وعند اختيار تبويب — <b>ينطبق على كل الوكلاء</b>، ولا تبدأ جلسة
-                  قبل تحديد مجلد الوكيل. الجلسة تبقى حيّة وتتذكر السياق حتى
-                  توقفها أو يخرج الوكيل — وتعود بعد تحديث الصفحة.
-                </span>
-              </span>
-            </label>
           </Section>
           <Section
             icon={<Languages size={16} className="text-emerald-600" />}

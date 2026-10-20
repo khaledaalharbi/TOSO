@@ -37,10 +37,12 @@ export interface ProviderConfig {
    * TOSO and two agents can work on two projects at once.
    */
   workspaces?: Record<string, string>;
-  /** Per-run folder trust (adapter env, dies with the process). */
-  autoTrust?: boolean;
-  /** Start an agent's embedded terminal session as soon as its tab is shown. */
-  autoTerminal?: boolean;
+  /**
+   * Per-run folder trust per agent id (the tab's «ثقة لكل تشغيلة» toggle,
+   * adapter env, dies with the process). Per-agent because support differs —
+   * only agents with a documented per-run trust env get a working toggle.
+   */
+  autoTrustAgents?: Record<string, boolean>;
   /** OUT tab: translate each agent reply automatically (else a button per reply). */
   autoTranslate?: boolean;
   /** Second, Gemini-based cleanup pass over terminal captures (grounded). */

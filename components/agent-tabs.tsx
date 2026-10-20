@@ -1,6 +1,6 @@
 "use client";
 
-import { FolderOpen, MonitorUp, ShieldCheck } from "lucide-react";
+import { Check, FolderOpen, MonitorUp, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { AGENT_OPTIONS, agentLabel } from "@/lib/bridge/agents";
 import {
@@ -98,9 +98,11 @@ export interface TerminalNote {
 }
 
 /**
- * The active tab's project controls: its folder, a check, permanent trust
- * for that folder, and its interactive terminal. Rendered with
- * `key={agent}` so the check/trust verdicts never leak between tabs.
+ * The active tab's project controls — one honest sequence: the folder,
+ * its check, this agent's per-run trust toggle, its permanent trust, and
+ * its interactive terminal. Each success turns its icon green; a verdict
+ * is bound to the folder it described, so editing the path retires it.
+ * Rendered with `key={agent}` so verdicts never leak between tabs.
  */
 export function AgentWorkspacePanel({
   agent,
@@ -109,7 +111,9 @@ export function AgentWorkspacePanel({
   openedCount,
   terminalBusy,
   terminalNote,
+  autoTrust,
   onWorkspaceChange,
+  onAutoTrustChange,
   onOpenTerminal,
 }: {
   agent: string;
@@ -119,23 +123,31 @@ export function AgentWorkspacePanel({
   openedCount: number;
   terminalBusy: boolean;
   terminalNote: TerminalNote | null;
+  /** This agent's «ثقة لكل تشغيلة» switch. */
+  autoTrust: boolean;
   onWorkspaceChange: (path: string) => void;
+  onAutoTrustChange: (on: boolean) => void;
   onOpenTerminal: () => void;
 }) {
   const label = agentLabel(agent);
+  const option = AGENT_OPTIONS.find((opt) => opt.id === agent);
   const path = workspace?.trim() ?? "";
-  // Verdicts are bound to the folder they described — editing the path
-  // silently retires the old one.
   const [note, setNote] = useState<{
     path: string;
     ok: boolean;
     text: string;
   } | null>(null);
+  // Green state per step, bound to the folder it was earned on.
+  const [done, setDone] = useState<{ path: string; step: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const shown = note && note.path === path ? note : null;
   const termNote = terminalNote?.agent === agent ? terminalNote : null;
+  const checked = done.some((d) => d.path === path && d.step === "check");
+  const trusted = done.some((d) => d.path === path && d.step === "trust");
+  const greenBtn = "border-emerald-500 bg-emerald-50 text-emerald-700";
 
   async function act(
+    step: string,
     run: () => ReturnType<typeof checkWorkspace>,
     okText: (r: Awaited<ReturnType<typeof checkWorkspace>>) => string,
   ) {
@@ -143,12 +155,18 @@ export function AgentWorkspacePanel({
     setBusy(true);
     try {
       const result = await run();
+      const ok = result.state === "ok";
       setNote({
         path,
-        ok: result.state === "ok",
-        text:
-          result.state === "ok" ? okText(result) : describeBridgeAction(result),
+        ok,
+        text: ok ? okText(result) : describeBridgeAction(result),
       });
+      if (ok) {
+        setDone((all) => [
+          ...all.filter((d) => !(d.path === path && d.step === step)),
+          { path, step },
+        ]);
+      }
     } finally {
       setBusy(false);
     }
@@ -177,29 +195,30 @@ export function AgentWorkspacePanel({
         <button
           type="button"
           disabled={!path || busy}
+          title="يفحص أن المجلد موجود على جهازك قبل التشغيل"
           onClick={() =>
             void act(
+              "check",
               () => checkWorkspace(bridge, path),
               (r) =>
                 `المجلد موجود — ${label} سيعمل داخل: ${r.state === "ok" ? (r.path ?? path) : path}`,
             )
           }
-          className="shrink-0 border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-600 transition hover:border-ink hover:text-ink disabled:opacity-50"
+          className={`flex shrink-0 items-center gap-1.5 border px-4 py-2.5 text-sm font-bold transition disabled:opacity-50 ${
+            checked
+              ? greenBtn
+              : "border-slate-300 bg-white text-slate-600 hover:border-ink hover:text-ink"
+          }`}
         >
-          {busy ? "…" : "فحص"}
+          {busy ? "…" : checked ? <Check size={14} /> : null}
+          {checked ? "مفحوص" : "فحص"}
         </button>
-      </div>
-      <p className="mt-1.5 text-xs leading-5 text-slate-500">
-        {path
-          ? "كل تشغيل وكل طرفية لهذا الوكيل تبدأ داخل هذا المجلد — ولا تتأثر بمشاريع الوكلاء الآخرين."
-          : "فارغ: يعمل هذا الوكيل في مجلد تشغيل الجسر — وتوسم بطاقة النتيجة بذلك."}
-      </p>
-      <div className="mt-3 flex flex-wrap gap-2">
         <button
           type="button"
-          disabled={!path || busy}
+          disabled={!path || busy || !option?.trustPersistent}
           onClick={() =>
             void act(
+              "trust",
               () => trustWorkspace(bridge, agent, path),
               (r) =>
                 r.state === "ok" && r.already
@@ -207,12 +226,52 @@ export function AgentWorkspacePanel({
                   : `سُجّل المجلد موثوقاً دائماً في ${r.state === "ok" ? (r.file ?? "ملف ثقة الوكيل") : ""}.`,
             )
           }
-          title="يكتب في ملف إعدادات الوكيل نفسه — أثره يشمل جلساتك اليدوية خارج TOSO أيضاً"
-          className="flex items-center gap-1.5 border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-600 transition hover:border-ink hover:text-ink disabled:opacity-50"
+          title={
+            option?.trustPersistent
+              ? "يكتب في ملف إعدادات الوكيل نفسه — أثره يشمل جلساتك اليدوية خارج TOSO أيضاً"
+              : "هذا الوكيل لا يملك ملف ثقة معروفاً — ثقته تُدار من داخله"
+          }
+          className={`flex shrink-0 items-center gap-1.5 border px-3 py-2.5 text-sm font-bold transition disabled:opacity-50 ${
+            trusted
+              ? greenBtn
+              : "border-slate-300 bg-white text-slate-600 hover:border-ink hover:text-ink"
+          }`}
         >
           <ShieldCheck size={14} />
-          ثقة دائمة بالمجلد
+          {trusted
+            ? "موثوق دائماً"
+            : option?.trustPersistent
+              ? "ثقة دائمة بالمجلد"
+              : "ثقة دائمة — غير مدعومة"}
         </button>
+      </div>
+      <p className="mt-1.5 text-xs leading-5 text-slate-500">
+        {path
+          ? "كل تشغيل وكل طرفية لهذا الوكيل تبدأ داخل هذا المجلد — ولا تتأثر بمشاريع الوكلاء الآخرين."
+          : "إلزامي: لن يعمل هذا الوكيل قبل تحديد مجلد المشروع المستهدف هنا."}
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {option?.trustPerRun ? (
+          <label
+            className="flex cursor-pointer items-center gap-1.5 border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-600 transition hover:border-ink hover:text-ink"
+            title="مفتاح مؤقت يُزرع في عملية الوكيل ويموت معها — لا يُكتب أي ملف"
+          >
+            <input
+              type="checkbox"
+              checked={autoTrust}
+              onChange={(event) => onAutoTrustChange(event.target.checked)}
+              className="h-3.5 w-3.5 accent-violet-700"
+            />
+            ثقة لكل تشغيلة
+          </label>
+        ) : (
+          <span
+            className="cursor-not-allowed border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-400"
+            title="لا يملك هذا الوكيل متغير ثقة موثقاً لكل تشغيلة"
+          >
+            ثقة لكل تشغيلة — غير مدعومة
+          </span>
+        )}
         <button
           type="button"
           disabled={terminalBusy}

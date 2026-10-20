@@ -120,7 +120,6 @@ export function AgentTerminal({
   bridge,
   workspace,
   trust,
-  autoStart,
   visible,
   onStatus,
   ref,
@@ -129,8 +128,6 @@ export function AgentTerminal({
   bridge: BridgeConfig;
   workspace?: string;
   trust?: boolean;
-  /** Start the session as soon as this tab is shown. */
-  autoStart?: boolean;
   visible: boolean;
   onStatus?: (status: TerminalStatus) => void;
   ref?: Ref<AgentTerminalHandle>;
@@ -477,15 +474,11 @@ export function AgentTerminal({
     };
   }, []);
 
-  // Showing the tab: refit, and auto-start if asked (after the reattach check).
+  // Showing the tab: refit (after the reattach check).
   useEffect(() => {
     if (!visible || !restored) return;
     safeFit();
-    if (autoStart && statusRef.current === "idle") void start();
-    // start() reads live props through refs; re-running on its identity
-    // would restart sessions.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, restored, autoStart]);
+  }, [visible, restored]);
 
   const cwdChanged =
     status === "live" &&

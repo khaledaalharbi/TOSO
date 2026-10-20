@@ -60,10 +60,16 @@ import {
   type RunRegistry,
 } from "@/lib/bridge/run-registry";
 import {
+  AUTO_TRUST_AGENTS_STORAGE,
+  LEGACY_AUTO_TERMINAL_STORAGE,
+  LEGACY_AUTO_TRUST_STORAGE,
   LEGACY_WORKSPACE_STORAGE,
   WORKSPACES_STORAGE,
+  parseAgentFlags,
   parseWorkspaces,
+  serializeAgentFlags,
   serializeWorkspaces,
+  withAgentFlag,
   withWorkspace,
   workspaceFor,
 } from "@/lib/bridge/workspaces";
@@ -108,8 +114,6 @@ const BRIDGE_URL_STORAGE = "toso.bridgeUrl";
 const BRIDGE_TOKEN_STORAGE = "toso.bridgeToken";
 const AGENT_STORAGE = "toso.agent";
 const AUTO_SEND_STORAGE = "toso.autoSend";
-const AUTO_TRUST_STORAGE = "toso.autoTrust";
-const AUTO_TERMINAL_STORAGE = "toso.autoTerminal";
 const AUTO_TRANSLATE_STORAGE = "toso.autoTranslate";
 const SMART_CLEAN_STORAGE = "toso.smartClean";
 
@@ -136,7 +140,7 @@ function terminalSettings(
     bridgeUrl: config.bridgeUrl,
     bridgeToken: config.bridgeToken,
     workspace: workspaceFor(config.workspaces, agentId),
-    autoTrust: config.autoTrust,
+    autoTrust: config.autoTrustAgents?.[agentId],
   };
 }
 
@@ -334,9 +338,20 @@ export function OptimizerWorkspace() {
       );
       // The single global folder was replaced by per-agent folders.
       window.localStorage.removeItem(LEGACY_WORKSPACE_STORAGE);
-      const autoTrust = window.localStorage.getItem(AUTO_TRUST_STORAGE) === "1";
-      const autoTerminal =
-        window.localStorage.getItem(AUTO_TERMINAL_STORAGE) === "1";
+      const autoTrustAgents = parseAgentFlags(
+        window.localStorage.getItem(AUTO_TRUST_AGENTS_STORAGE),
+      );
+      // Migrations: a single trust boolean predated the per-agent map (it
+      // applied to gemini — then the only supporting agent), and the
+      // auto-terminal toggle was removed; sessions start on first send.
+      if (
+        window.localStorage.getItem(LEGACY_AUTO_TRUST_STORAGE) === "1" &&
+        !autoTrustAgents.gemini
+      ) {
+        autoTrustAgents.gemini = true;
+      }
+      window.localStorage.removeItem(LEGACY_AUTO_TRUST_STORAGE);
+      window.localStorage.removeItem(LEGACY_AUTO_TERMINAL_STORAGE);
       const autoTranslate =
         window.localStorage.getItem(AUTO_TRANSLATE_STORAGE) === "1";
       const smartClean =
@@ -349,8 +364,7 @@ export function OptimizerWorkspace() {
         ...(agent ? { agent } : {}),
         ...(autoSend ? { autoSend: autoSend === "1" } : {}),
         ...(Object.keys(workspaces).length ? { workspaces } : {}),
-        ...(autoTrust ? { autoTrust } : {}),
-        ...(autoTerminal ? { autoTerminal } : {}),
+        ...(Object.keys(autoTrustAgents).length ? { autoTrustAgents } : {}),
         ...(autoTranslate ? { autoTranslate } : {}),
         ...(smartClean ? { smartClean } : {}),
       }));
@@ -402,9 +416,13 @@ export function OptimizerWorkspace() {
       } else {
         window.localStorage.removeItem(WORKSPACES_STORAGE);
       }
+      const autoTrustJson = serializeAgentFlags(config.autoTrustAgents);
+      if (autoTrustJson) {
+        window.localStorage.setItem(AUTO_TRUST_AGENTS_STORAGE, autoTrustJson);
+      } else {
+        window.localStorage.removeItem(AUTO_TRUST_AGENTS_STORAGE);
+      }
       for (const [key, on] of [
-        [AUTO_TRUST_STORAGE, config.autoTrust],
-        [AUTO_TERMINAL_STORAGE, config.autoTerminal],
         [AUTO_TRANSLATE_STORAGE, config.autoTranslate],
         [SMART_CLEAN_STORAGE, config.smartClean],
       ] as const) {
@@ -420,8 +438,7 @@ export function OptimizerWorkspace() {
     config.agent,
     config.autoSend,
     config.workspaces,
-    config.autoTrust,
-    config.autoTerminal,
+    config.autoTrustAgents,
     config.autoTranslate,
     config.smartClean,
     keyHydrated,
@@ -573,7 +590,7 @@ export function OptimizerWorkspace() {
           ),
         {
           cwd: workspaceFor(config.workspaces, agent),
-          trust: config.autoTrust,
+          trust: config.autoTrustAgents?.[agent],
         },
       );
       if (!result.ok) {
@@ -1096,6 +1113,17 @@ export function OptimizerWorkspace() {
                 workspaces: withWorkspace(c.workspaces, activeAgent, path),
               }))
             }
+            autoTrust={Boolean(config.autoTrustAgents?.[activeAgent])}
+            onAutoTrustChange={(on) =>
+              setConfig((c) => ({
+                ...c,
+                autoTrustAgents: withAgentFlag(
+                  c.autoTrustAgents,
+                  activeAgent,
+                  on,
+                ),
+              }))
+            }
             onOpenTerminal={() =>
               void launchTerminal(
                 activeAgent,
@@ -1118,8 +1146,7 @@ export function OptimizerWorkspace() {
                   token: config.bridgeToken ?? "",
                 }}
                 workspace={workspaceFor(config.workspaces, opt.id)}
-                trust={config.autoTrust}
-                autoStart={config.autoTerminal}
+                trust={config.autoTrustAgents?.[opt.id]}
                 visible={opt.id === activeAgent && keyHydrated}
                 onStatus={(status) =>
                   setTerminalStatus((all) =>

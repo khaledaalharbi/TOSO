@@ -57,3 +57,49 @@ export function serializeWorkspaces(
   const clean = parseWorkspaces(JSON.stringify(all ?? {}));
   return Object.keys(clean).length ? JSON.stringify(clean) : null;
 }
+
+/**
+ * Per-agent boolean toggles stored as one small JSON map — same shape and
+ * same defensive parsing as the workspaces map. Used for the per-tab
+ * «ثقة لكل تشغيلة» switch.
+ */
+export type AgentFlags = Record<string, boolean>;
+
+export const AUTO_TRUST_AGENTS_STORAGE = "toso.autoTrustAgents";
+
+/** Pre-map single trust boolean — migrated to `{gemini:true}` then removed. */
+export const LEGACY_AUTO_TRUST_STORAGE = "toso.autoTrust";
+
+/** Removed feature: sessions start on first send or the start button only. */
+export const LEGACY_AUTO_TERMINAL_STORAGE = "toso.autoTerminal";
+
+export function parseAgentFlags(raw: string | null): AgentFlags {
+  if (!raw) return {};
+  try {
+    const data: unknown = JSON.parse(raw);
+    if (!data || typeof data !== "object" || Array.isArray(data)) return {};
+    return Object.fromEntries(
+      Object.entries(data).filter(([, v]) => v === true),
+    );
+  } catch {
+    return {};
+  }
+}
+
+export function withAgentFlag(
+  all: AgentFlags | undefined,
+  agent: string,
+  on: boolean,
+): AgentFlags | undefined {
+  const next = { ...all };
+  if (on) next[agent] = true;
+  else delete next[agent];
+  return Object.keys(next).length ? next : undefined;
+}
+
+export function serializeAgentFlags(
+  all: AgentFlags | undefined,
+): string | null {
+  const clean = parseAgentFlags(JSON.stringify(all ?? {}));
+  return Object.keys(clean).length ? JSON.stringify(clean) : null;
+}

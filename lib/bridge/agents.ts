@@ -9,11 +9,21 @@ export interface AgentOption {
   label: string;
   /** Command prefix used when building the copy-paste fallback. */
   cmd: string;
+  /** Per-run folder trust exists for this agent (bridge adapter trustEnv). */
+  trustPerRun?: boolean;
+  /** Permanent folder trust exists (the agent's own registry, trustFile). */
+  trustPersistent?: boolean;
 }
 
 export const AGENT_OPTIONS: AgentOption[] = [
-  { id: "gemini", label: "Gemini CLI", cmd: "gemini -p" },
-  { id: "devin", label: "Devin", cmd: "devin -p" },
+  {
+    id: "gemini",
+    label: "Gemini CLI",
+    cmd: "gemini -p",
+    trustPerRun: true,
+    trustPersistent: true,
+  },
+  { id: "devin", label: "Devin", cmd: "devin -p", trustPersistent: true },
   { id: "hermes", label: "Hermes", cmd: "hermes --oneshot" },
   { id: "claude", label: "Claude Code", cmd: "claude -p" },
   { id: "codex", label: "OpenAI Codex", cmd: "codex exec" },

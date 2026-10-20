@@ -15,7 +15,9 @@ const panel = (
       openedCount={0}
       terminalBusy={false}
       terminalNote={null}
+      autoTrust={false}
       onWorkspaceChange={() => {}}
+      onAutoTrustChange={() => {}}
       onOpenTerminal={() => {}}
       {...overrides}
     />,
@@ -60,9 +62,24 @@ describe("AgentWorkspacePanel", () => {
     expect(html).not.toContain("agent-workspace-gemini");
   });
 
-  it("states the bridge-folder fallback when the agent has no project", () => {
+  it("states the folder is required when the agent has no project", () => {
     const html = panel({ workspace: undefined });
-    expect(html).toContain("فارغ: يعمل هذا الوكيل في مجلد تشغيل الجسر");
+    expect(html).toContain("إلزامي: لن يعمل هذا الوكيل قبل تحديد مجلد");
+  });
+
+  it("marks unsupported agents honestly — no permanent trust, no per-run toggle", () => {
+    const html = panel(); // claude: neither trust contract exists
+    expect(html).toContain("ثقة دائمة — غير مدعومة");
+    expect(html).toContain("ثقة لكل تشغيلة — غير مدعومة");
+    // A supporting agent gets both controls enabled instead.
+    const gemini = panel({ agent: "gemini" });
+    expect(gemini).toContain("ثقة دائمة بالمجلد");
+    expect(gemini).toContain("ثقة لكل تشغيلة");
+    expect(gemini).not.toContain("غير مدعومة");
+    // Devin supports permanent trust but no per-run env.
+    const devin = panel({ agent: "devin" });
+    expect(devin).toContain("ثقة دائمة بالمجلد");
+    expect(devin).toContain("ثقة لكل تشغيلة — غير مدعومة");
   });
 
   it("shows a terminal note only on the tab it belongs to", () => {
@@ -74,17 +91,17 @@ describe("AgentWorkspacePanel", () => {
   });
 
   it("counts opened windows and disables check/trust with no folder", () => {
-    // Opening tags by their unique title/class, so each assertion is about one button.
+    // Opening tags by their unique marker, so each assertion is about one button.
     const tag = (html: string, marker: string) =>
       html.match(new RegExp(`<button[^>]*${marker}[^>]*>`))?.[0] ?? "";
-    const empty = panel({ workspace: "", openedCount: 3 });
+    const empty = panel({ workspace: "", openedCount: 3, agent: "gemini" });
     expect(empty).toMatch(/>3<\/span>/);
     expect(tag(empty, "يكتب في ملف إعدادات")).toContain('disabled=""');
     expect(tag(empty, "نافذة PowerShell")).not.toContain('disabled=""');
-    expect(empty).toMatch(/<button[^>]*disabled=""[^>]*>فحص<\/button>/);
+    expect(tag(empty, "يفحص أن المجلد")).toContain('disabled=""');
     // With a folder the check and trust buttons are enabled too.
-    const set = panel();
+    const set = panel({ agent: "gemini" });
     expect(tag(set, "يكتب في ملف إعدادات")).not.toContain('disabled=""');
-    expect(set).not.toMatch(/<button[^>]*disabled=""[^>]*>فحص<\/button>/);
+    expect(tag(set, "يفحص أن المجلد")).not.toContain('disabled=""');
   });
 });
