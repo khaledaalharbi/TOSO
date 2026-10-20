@@ -3,7 +3,11 @@
 import { Check, FolderOpen, MonitorUp, Play, ShieldCheck } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import type { TerminalStatus } from "@/components/agent-terminal";
-import { AGENT_OPTIONS, agentLabel } from "@/lib/bridge/agents";
+import {
+  AGENT_OPTIONS,
+  agentLabel,
+  type TrustCapability,
+} from "@/lib/bridge/agents";
 import {
   checkWorkspace,
   describeBridgeAction,
@@ -107,6 +111,79 @@ const stepTone: Record<StepState, string> = {
   unsupported: "border-dashed border-slate-200 bg-slate-50 text-slate-400",
 };
 
+/** The named capability badge on a trust step — the user-facing vocabulary. */
+const capabilityBadge: Record<TrustCapability, { text: string; tone: string }> =
+  {
+    supported: { text: "مدعوم", tone: "border-violet-300 text-violet-700" },
+    auto: {
+      text: "مدعوم تلقائياً",
+      tone: "border-emerald-400 bg-white text-emerald-700",
+    },
+    unwired: { text: "غير مربوط", tone: "border-amber-300 text-amber-700" },
+    unsupported: { text: "غير مدعوم", tone: "border-slate-300 text-slate-500" },
+  };
+
+/**
+ * A trust step's whole presentation from its capability: `auto` needs no
+ * action and reads green from the start; `supported` waits for the folder
+ * check, then for the user; the other two explain why nothing can be done.
+ */
+function trustStep(
+  capability: TrustCapability,
+  done: boolean,
+  checked: boolean,
+  copy: {
+    title: string;
+    doneTitle: string;
+    openTag: string;
+    hint: string;
+    unsupportedHint: string;
+    unsupportedTag: string;
+  },
+): {
+  state: StepState;
+  title: string;
+  tag: string;
+  hint: string;
+  settled?: boolean;
+} {
+  switch (capability) {
+    case "auto":
+      return {
+        state: "done",
+        title: copy.title,
+        tag: "لا يحتاج تفعيلاً",
+        hint: "لا يسأل هذا الوكيل عن ثقة المجلد أصلاً — لا شيء لتفعيله",
+        settled: true,
+      };
+    case "unwired":
+      return {
+        state: "unsupported",
+        title: copy.title,
+        tag: "الوكيل يملك الآلية ولم تُربط بـTOSO بعد",
+        hint: "آلية الثقة موجودة لدى الوكيل لكنها غير مربوطة بـTOSO بعد",
+      };
+    case "unsupported":
+      return {
+        state: "unsupported",
+        title: copy.title,
+        tag: copy.unsupportedTag,
+        hint: copy.unsupportedHint,
+      };
+    case "supported":
+      return {
+        state: !checked ? "locked" : done ? "done" : "open",
+        title: done ? copy.doneTitle : copy.title,
+        tag: !checked
+          ? "اختياري — يُفتح بعد فحص المجلد"
+          : done
+            ? "اختياري — مُفعّل"
+            : copy.openTag,
+        hint: copy.hint,
+      };
+  }
+}
+
 /**
  * One tile of the setup sequence: its number, what it does, and whether
  * it is required. The tile itself is the action (button semantics).
@@ -121,6 +198,7 @@ function Step({
   busy,
   pressed,
   settled,
+  badge,
   onClick,
 }: {
   n: number;
@@ -129,6 +207,8 @@ function Step({
   hint: string;
   tag: string;
   icon: ReactNode;
+  /** Named capability (مدعوم / مدعوم تلقائياً / غير مربوط / غير مدعوم). */
+  badge?: { text: string; tone: string };
   busy?: boolean;
   /** Toggle steps report their on/off state to assistive tech. */
   pressed?: boolean;
@@ -158,10 +238,17 @@ function Step({
       >
         {state === "done" ? <Check size={13} strokeWidth={3} /> : n}
       </span>
-      <span className="min-w-0">
-        <span className="flex items-center gap-1.5 text-sm font-bold">
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-center gap-1.5 text-sm font-bold">
           {icon}
           {busy ? "…" : title}
+          {badge ? (
+            <span
+              className={`border px-1.5 py-px text-[10px] leading-4 font-bold ${badge.tone}`}
+            >
+              {badge.text}
+            </span>
+          ) : null}
         </span>
         <span className="block text-[11px] font-semibold opacity-75">
           {tag}
@@ -250,8 +337,28 @@ export function AgentWorkspacePanel({
     }
   }
 
-  const after = (supported: boolean | undefined, done: boolean): StepState =>
-    !supported ? "unsupported" : !checked ? "locked" : done ? "done" : "open";
+  const caps = option?.trust ?? {
+    persistent: "unsupported" as const,
+    perRun: "unsupported" as const,
+  };
+  const persistent = trustStep(caps.persistent, trusted, checked, {
+    title: "ثقة دائمة",
+    doneTitle: "موثوق دائماً",
+    openTag: "اختياري — اضغط للتفعيل",
+    hint: "يكتب في ملف إعدادات الوكيل نفسه — أثره يشمل جلساتك اليدوية خارج TOSO أيضاً",
+    unsupportedHint: "هذا الوكيل لا يملك ملف ثقة معروفاً — ثقته تُدار من داخله",
+    unsupportedTag: "لا ملف ثقة لديه — أجب سؤال الثقة داخل الطرفية",
+  });
+  const perRun = trustStep(caps.perRun, autoTrust, checked, {
+    title: "ثقة لكل تشغيلة",
+    doneTitle: "ثقة لكل تشغيلة: مفعّلة",
+    openTag: live
+      ? "اختياري — يسري عند إعادة التشغيل"
+      : "اختياري — اضغط للتبديل",
+    hint: "مفتاح مؤقت يُزرع في عملية الوكيل ويموت معها — لا يُكتب أي ملف",
+    unsupportedHint: "لا يملك هذا الوكيل متغير ثقة موثقاً لكل تشغيلة",
+    unsupportedTag: "لا متغير مؤقت لديه — استخدم ② أو أجب داخل الطرفية",
+  });
 
   return (
     <div className="border-x border-b border-ink bg-white p-4">
@@ -303,14 +410,8 @@ export function AgentWorkspacePanel({
         />
         <Step
           n={2}
-          state={after(option?.trustPersistent, trusted)}
-          title={trusted ? "موثوق دائماً" : "ثقة دائمة"}
-          tag={option?.trustPersistent ? "اختياري" : "غير مدعومة لهذا الوكيل"}
-          hint={
-            option?.trustPersistent
-              ? "يكتب في ملف إعدادات الوكيل نفسه — أثره يشمل جلساتك اليدوية خارج TOSO أيضاً"
-              : "هذا الوكيل لا يملك ملف ثقة معروفاً — ثقته تُدار من داخله"
-          }
+          {...persistent}
+          badge={capabilityBadge[caps.persistent]}
           icon={<ShieldCheck size={14} />}
           busy={busy === "trusted"}
           onClick={() =>
@@ -326,22 +427,10 @@ export function AgentWorkspacePanel({
         />
         <Step
           n={3}
-          state={after(option?.trustPerRun, autoTrust)}
-          title={autoTrust ? "ثقة لكل تشغيلة: مفعّلة" : "ثقة لكل تشغيلة"}
-          tag={
-            !option?.trustPerRun
-              ? "غير مدعومة لهذا الوكيل"
-              : live
-                ? "اختياري — يسري عند إعادة التشغيل"
-                : "اختياري — اضغط للتبديل"
-          }
-          hint={
-            option?.trustPerRun
-              ? "مفتاح مؤقت يُزرع في عملية الوكيل ويموت معها — لا يُكتب أي ملف"
-              : "لا يملك هذا الوكيل متغير ثقة موثقاً لكل تشغيلة"
-          }
+          {...perRun}
+          badge={capabilityBadge[caps.perRun]}
           icon={<ShieldCheck size={14} />}
-          pressed={option?.trustPerRun ? autoTrust : undefined}
+          pressed={caps.perRun === "supported" ? autoTrust : undefined}
           onClick={() => onAutoTrustChange(!autoTrust)}
         />
         <Step

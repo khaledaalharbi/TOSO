@@ -53,6 +53,8 @@ export type BridgeActionResult =
         | "invalid_workspace"
         | "trust_unsupported"
         | "trust_file_unreadable"
+        | "trust_conflict"
+        | "trust_path_unsupported"
         | "agent_not_installed"
         | "no_terminal_found"
         | "failed";
@@ -225,6 +227,8 @@ const ACTION_STATES = new Set<string>([
   "invalid_workspace",
   "trust_unsupported",
   "trust_file_unreadable",
+  "trust_conflict",
+  "trust_path_unsupported",
   "agent_not_installed",
   "no_terminal_found",
 ]);
@@ -320,6 +324,10 @@ export function describeBridgeAction(result: BridgeActionResult): string {
       return "هذا الوكيل لا يملك ملف ثقة معروفاً — ثقته تُدار من داخله.";
     case "trust_file_unreadable":
       return "ملف الثقة الخاص بالوكيل غير قابل للقراءة — لم يُعدَّل شيء.";
+    case "trust_conflict":
+      return "المجلد مسجّل في إعدادات الوكيل بمستوى ثقة آخر — لم يُعدَّل شيء؛ غيّره من داخل الوكيل.";
+    case "trust_path_unsupported":
+      return "مسار المجلد يحوي علامة ' لا يقبلها ملف إعدادات الوكيل — لم يُعدَّل شيء.";
     case "agent_not_installed":
       return "الوكيل غير مثبّت أو غير موجود في PATH.";
     case "no_terminal_found":

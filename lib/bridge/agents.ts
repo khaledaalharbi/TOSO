@@ -4,15 +4,23 @@
  * fallback shell command and the default bridge address.
  */
 
+/**
+ * What one trust step means for one agent — every agent states each step
+ * explicitly, so the tab can name the situation instead of a vague "no":
+ *   supported   — the agent has the mechanism and TOSO drives it;
+ *   auto        — not needed: the agent has no folder-trust gate at all;
+ *   unwired     — the agent has a mechanism TOSO has not connected yet;
+ *   unsupported — the agent gates folders but offers no such mechanism.
+ */
+export type TrustCapability = "supported" | "auto" | "unwired" | "unsupported";
+
 export interface AgentOption {
   id: string;
   label: string;
   /** Command prefix used when building the copy-paste fallback. */
   cmd: string;
-  /** Per-run folder trust exists for this agent (bridge adapter trustEnv). */
-  trustPerRun?: boolean;
-  /** Permanent folder trust exists (the agent's own registry, trustFile). */
-  trustPersistent?: boolean;
+  /** Mirrors the bridge adapter: trustFile (persistent), trustEnv (perRun). */
+  trust: { persistent: TrustCapability; perRun: TrustCapability };
 }
 
 export const AGENT_OPTIONS: AgentOption[] = [
@@ -20,13 +28,33 @@ export const AGENT_OPTIONS: AgentOption[] = [
     id: "gemini",
     label: "Gemini CLI",
     cmd: "gemini -p",
-    trustPerRun: true,
-    trustPersistent: true,
+    trust: { persistent: "supported", perRun: "supported" },
   },
-  { id: "devin", label: "Devin", cmd: "devin -p", trustPersistent: true },
-  { id: "hermes", label: "Hermes", cmd: "hermes --oneshot" },
-  { id: "claude", label: "Claude Code", cmd: "claude -p" },
-  { id: "codex", label: "OpenAI Codex", cmd: "codex exec" },
+  {
+    id: "devin",
+    label: "Devin",
+    cmd: "devin -p",
+    trust: { persistent: "supported", perRun: "unsupported" },
+  },
+  {
+    // Verified: no folder-trust concept (help, config.yaml) — it never asks.
+    id: "hermes",
+    label: "Hermes",
+    cmd: "hermes --oneshot",
+    trust: { persistent: "auto", perRun: "auto" },
+  },
+  {
+    id: "claude",
+    label: "Claude Code",
+    cmd: "claude -p",
+    trust: { persistent: "supported", perRun: "unsupported" },
+  },
+  {
+    id: "codex",
+    label: "OpenAI Codex",
+    cmd: "codex exec",
+    trust: { persistent: "supported", perRun: "unsupported" },
+  },
 ];
 
 export const DEFAULT_BRIDGE_URL = "http://127.0.0.1:8676";

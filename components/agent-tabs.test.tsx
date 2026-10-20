@@ -126,15 +126,42 @@ describe("AgentWorkspacePanel", () => {
     expect(tag(html, START)).toContain("emerald");
   });
 
-  it("marks unsupported trust steps per agent — even after the check", () => {
-    const claude = panel({ checked: true }); // neither trust contract exists
-    expect(claude.match(/غير مدعومة لهذا الوكيل/g)).toHaveLength(2);
-    expect(tag(claude, "لا يملك ملف ثقة")).toContain('disabled=""');
+  it("names each trust capability with an explicit badge", () => {
+    const badges = (html: string) =>
+      [
+        ...html.matchAll(/<span class="border px-1\.5[^"]*">([^<]+)<\/span>/g),
+      ].map((m) => m[1]);
+    expect(badges(panel({ agent: "gemini" }))).toEqual(["مدعوم", "مدعوم"]);
+    expect(badges(panel({ agent: "claude" }))).toEqual(["مدعوم", "غير مدعوم"]);
+    expect(badges(panel({ agent: "codex" }))).toEqual(["مدعوم", "غير مدعوم"]);
+    expect(badges(panel({ agent: "devin" }))).toEqual(["مدعوم", "غير مدعوم"]);
+    expect(badges(panel({ agent: "hermes" }))).toEqual([
+      "مدعوم تلقائياً",
+      "مدعوم تلقائياً",
+    ]);
+  });
+
+  it("shows 'auto' steps green from the start — nothing to click", () => {
+    // Hermes has no folder-trust gate: ②/③ are satisfied before any check.
+    const html = panel({ agent: "hermes" });
+    for (const m of ["لا يسأل هذا الوكيل"]) {
+      const steps = html.match(
+        new RegExp(`<button[^>]*title="[^"]*${m}[^"]*"[^>]*>`, "g"),
+      );
+      expect(steps).toHaveLength(2);
+      for (const step of steps ?? []) {
+        expect(step).toContain("emerald");
+        expect(step).toContain('disabled=""');
+      }
+    }
+    expect(html).toContain("لا يحتاج تفعيلاً");
+  });
+
+  it("keeps unsupported steps disabled with a way forward, even after the check", () => {
+    const claude = panel({ agent: "claude", checked: true });
+    expect(tag(claude, TRUST)).not.toContain('disabled=""'); // wired now
     expect(tag(claude, "لا يملك هذا الوكيل متغير")).toContain('disabled=""');
-    // Devin: permanent trust yes, per-run no.
-    const devin = panel({ agent: "devin", checked: true });
-    expect(tag(devin, TRUST)).not.toContain('disabled=""');
-    expect(devin.match(/غير مدعومة لهذا الوكيل/g)).toHaveLength(1);
+    expect(claude).toContain("استخدم ② أو أجب داخل الطرفية");
   });
 
   it("shows a terminal note only on the tab it belongs to", () => {

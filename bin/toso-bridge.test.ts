@@ -26,6 +26,8 @@ let workDir: string;
 let targetDir: string;
 let trustFile: string;
 let devinTrustFile: string;
+let claudeTrustFile: string;
+let codexTrustFile: string;
 
 function api(
   p: string,
@@ -76,6 +78,21 @@ beforeAll(async () => {
   mkdirSync(targetDir);
   trustFile = path.join(workDir, "trust", "trustedFolders.json");
   devinTrustFile = path.join(workDir, "trust", "trusted_workspaces.json");
+  claudeTrustFile = path.join(workDir, "trust", ".claude.json");
+  codexTrustFile = path.join(workDir, "trust", "config.toml");
+  // Real-shaped existing state the bridge must preserve.
+  mkdirSync(path.dirname(claudeTrustFile), { recursive: true });
+  writeFileSync(
+    claudeTrustFile,
+    JSON.stringify({
+      numStartups: 7,
+      projects: { "C:/Other": { allowedTools: [] } },
+    }),
+  );
+  writeFileSync(
+    codexTrustFile,
+    'model = "x"\n\n[projects.\'c:\\other\']\ntrust_level = "untrusted"\n',
+  );
   const agentsFile = path.join(workDir, "agents.json");
   writeFileSync(
     agentsFile,
@@ -142,6 +159,18 @@ beforeAll(async () => {
         cmd: process.execPath,
         trustFile: devinTrustFile,
         trustFormat: "trusted_paths",
+      },
+      claudelike: {
+        label: "ClaudeLike",
+        cmd: process.execPath,
+        trustFile: claudeTrustFile,
+        trustFormat: "claude_projects",
+      },
+      codexlike: {
+        label: "CodexLike",
+        cmd: process.execPath,
+        trustFile: codexTrustFile,
+        trustFormat: "codex_toml",
       },
       ghost: {
         label: "Ghost",
@@ -531,10 +560,66 @@ describe("toso-bridge", () => {
     expect((await (await call()).json()).already).toBe(true);
   });
 
+  it("/trust/workspace sets Claude's project flag and keeps every other key", async () => {
+    const call = () =>
+      api("/trust/workspace", {
+        method: "POST",
+        body: JSON.stringify({ agent: "claudelike", cwd: targetDir }),
+      });
+    const first = await (await call()).json();
+    expect(first).toMatchObject({ ok: true, already: false });
+    const data = JSON.parse(readFileSync(claudeTrustFile, "utf8"));
+    expect(data.numStartups).toBe(7);
+    expect(data.projects["C:/Other"]).toEqual({ allowedTools: [] });
+    expect(data.projects[first.key]).toEqual({ hasTrustDialogAccepted: true });
+    if (process.platform === "win32") {
+      expect(first.key).toMatch(/^[A-Z]:\//);
+      expect(first.key).not.toContain("\\");
+    }
+    expect((await (await call()).json()).already).toBe(true);
+  });
+
+  it("/trust/workspace appends a Codex TOML table once, never rewriting others", async () => {
+    const call = (cwd: string) =>
+      api("/trust/workspace", {
+        method: "POST",
+        body: JSON.stringify({ agent: "codexlike", cwd }),
+      });
+    const first = await (await call(targetDir)).json();
+    expect(first).toMatchObject({ ok: true, already: false });
+    const text = readFileSync(codexTrustFile, "utf8");
+    expect(text.startsWith("model = \"x\"\n\n[projects.'c:\\other']")).toBe(
+      true,
+    );
+    expect(text).toContain(
+      `[projects.'${first.key}']\ntrust_level = "trusted"\n`,
+    );
+    expect((await (await call(targetDir)).json()).already).toBe(true);
+    expect(readFileSync(codexTrustFile, "utf8")).toBe(text);
+  });
+
+  it("/trust/workspace reports a Codex table at another level as a conflict", async () => {
+    const other = path.join(workDir, "other-level");
+    mkdirSync(other, { recursive: true });
+    const key = process.platform === "win32" ? other.toLowerCase() : other;
+    writeFileSync(
+      codexTrustFile,
+      `[projects.'${key}']\ntrust_level = "untrusted"\n`,
+    );
+    const before = readFileSync(codexTrustFile, "utf8");
+    const res = await api("/trust/workspace", {
+      method: "POST",
+      body: JSON.stringify({ agent: "codexlike", cwd: other }),
+    });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("trust_conflict");
+    expect(readFileSync(codexTrustFile, "utf8")).toBe(before);
+  });
+
   it("/trust/workspace refuses agents without a trust file and empty folders", async () => {
     const unsupported = await api("/trust/workspace", {
       method: "POST",
-      body: JSON.stringify({ agent: "claude", cwd: targetDir }),
+      body: JSON.stringify({ agent: "hermes", cwd: targetDir }),
     });
     expect(unsupported.status).toBe(400);
     expect((await unsupported.json()).error).toBe("trust_unsupported");
@@ -571,9 +656,10 @@ describe("toso-bridge", () => {
       agents.map((a: { id: string; trust: unknown }) => [a.id, a.trust]),
     );
     expect(byId.gemini).toEqual({ perRun: true, persistent: true });
-    expect(byId.codex).toEqual({ perRun: true, persistent: false });
+    expect(byId.codex).toEqual({ perRun: true, persistent: true });
     expect(byId.devin).toEqual({ perRun: true, persistent: true });
-    expect(byId.claude).toEqual({ perRun: false, persistent: false });
+    expect(byId.claude).toEqual({ perRun: false, persistent: true });
+    expect(byId.hermes).toEqual({ perRun: false, persistent: false });
   });
 
   /** Reads an NDJSON PTY stream until `until(text)` or exit, within `ms`. */

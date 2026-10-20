@@ -69,20 +69,35 @@ const MAX_PTY_INPUT = 256 * 1024;
  *   trustFile — the agent's own trust registry, written only on an explicit
  *               "trust permanently" request. `trustFormat` picks the shape:
  *               default "gemini" → JSON map path→TRUST_FOLDER;
- *               "trusted_paths" → Devin's {"trusted_paths":[canonical paths]}.
+ *               "trusted_paths" → Devin's {"trusted_paths":[canonical paths]};
+ *               "claude_projects" → ~/.claude.json projects[path]
+ *                 .hasTrustDialogAccepted (every other key preserved);
+ *               "codex_toml" → a [projects.'path'] trust_level table
+ *                 appended to config.toml (never rewrites existing tables).
  *               Unwired agents answer `trust_unsupported` honestly.
- * Claude has no folder-gate flag for print mode; its skip-permission flags
- * (and Codex's --full-auto) authorize ACTIONS, a different class, and are
- * deliberately not wired here.
+ * Claude's skip-permission flags (and Codex's --full-auto) authorize
+ * ACTIONS, a different class, and are deliberately not wired here.
  */
 const BUILTIN_AGENTS = {
-  claude: { label: "Claude Code", cmd: "claude", args: ["-p"] },
+  claude: {
+    label: "Claude Code",
+    cmd: "claude",
+    args: ["-p"],
+    // Verified on a real install: keys are the folder with forward slashes,
+    // case preserved — "C:/MyProject": {"hasTrustDialogAccepted": true}.
+    trustFile: "~/.claude.json",
+    trustFormat: "claude_projects",
+  },
   codex: {
     label: "OpenAI Codex",
     cmd: "codex",
     args: ["exec"],
     // `codex exec` refuses folders outside a trusted git repo without it.
     trustArgs: ["--skip-git-repo-check"],
+    // Verified on a real install: [projects.'c:\myproject\toso']
+    // trust_level = "trusted" — lower-cased, backslashes, literal string.
+    trustFile: "~/.codex/config.toml",
+    trustFormat: "codex_toml",
   },
   gemini: {
     label: "Gemini CLI",
@@ -230,9 +245,57 @@ function resolveWorkspace(raw, { fallback = true } = {}) {
 /** Gemini's trust registry keys Windows paths lower-cased with forward slashes. */
 const trustKey = (dir) => (isWin ? dir.replace(/\\/g, "/").toLowerCase() : dir);
 
+/** Upper-case a Windows drive letter — agents record cwd as "C:\…". */
+const upperDrive = (dir) =>
+  isWin ? dir.replace(/^([a-z]):/, (_, d) => `${d.toUpperCase()}:`) : dir;
+
+/**
+ * Codex keeps trust in TOML. No parser dependency: a missing table is
+ * appended (always valid TOML at end of file); an existing table is only
+ * READ — never rewritten — so a non-"trusted" level is reported as a
+ * conflict instead of creating a duplicate table that would break Codex.
+ */
+function writeCodexTrust(file, dir) {
+  const key = isWin ? dir.toLowerCase() : dir;
+  // A literal TOML string cannot hold a single quote.
+  if (key.includes("'")) {
+    return { ok: false, error: "trust_path_unsupported", file };
+  }
+  const header = `[projects.'${key}']`;
+  let text = "";
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      return { ok: false, error: "trust_file_unreadable", file };
+    }
+  }
+  const lines = text.split(/\r?\n/);
+  const at = lines.findIndex((line) => line.trim() === header);
+  if (at >= 0) {
+    const body = [];
+    for (const line of lines.slice(at + 1)) {
+      if (line.trim().startsWith("[")) break;
+      body.push(line.trim());
+    }
+    return body.includes('trust_level = "trusted"')
+      ? { ok: true, file, key, already: true }
+      : { ok: false, error: "trust_conflict", file, key };
+  }
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const sep = !text || text.endsWith("\n") ? "" : eol;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.appendFileSync(
+    file,
+    `${sep}${eol}${header}${eol}trust_level = "trusted"${eol}`,
+  );
+  return { ok: true, file, key, already: false };
+}
+
 /** Records `dir` in the adapter's trust file — explicit user request only. */
 function writeTrust(adapter, dir) {
   const file = expandHome(adapter.trustFile);
+  if (adapter.trustFormat === "codex_toml") return writeCodexTrust(file, dir);
   const key = trustKey(dir);
   let data = {};
   try {
@@ -245,9 +308,32 @@ function writeTrust(adapter, dir) {
   if (!data || typeof data !== "object" || Array.isArray(data)) {
     return { ok: false, error: "trust_file_unreadable", file };
   }
+  // Claude keeps a per-project record inside its big state file — touch
+  // only the trust flag and preserve every other key.
+  if (adapter.trustFormat === "claude_projects") {
+    const entry = isWin ? upperDrive(dir).replace(/\\/g, "/") : dir;
+    const projects =
+      data.projects &&
+      typeof data.projects === "object" &&
+      !Array.isArray(data.projects)
+        ? data.projects
+        : {};
+    const already = projects[entry]?.hasTrustDialogAccepted === true;
+    if (!already) {
+      data.projects = {
+        ...projects,
+        [entry]: { ...projects[entry], hasTrustDialogAccepted: true },
+      };
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+    }
+    return { ok: true, file, key: entry, already };
+  }
   // Devin's registry is an array of canonical paths, not a keyed map.
   if (adapter.trustFormat === "trusted_paths") {
-    const entry = isWin ? `\\\\?\\${dir.replace(/\//g, "\\")}` : dir;
+    const entry = isWin
+      ? `\\\\?\\${upperDrive(dir).replace(/\//g, "\\")}`
+      : dir;
     const list = Array.isArray(data.trusted_paths) ? data.trusted_paths : [];
     const already = list.includes(entry);
     if (!already) {
@@ -414,7 +500,9 @@ function loadAgents() {
           (entry.trustFile === undefined ||
             (typeof entry.trustFile === "string" && entry.trustFile)) &&
           (entry.trustFormat === undefined ||
-            entry.trustFormat === "trusted_paths") &&
+            ["trusted_paths", "claude_projects", "codex_toml"].includes(
+              entry.trustFormat,
+            )) &&
           (entry.interactiveArgs === undefined ||
             (Array.isArray(entry.interactiveArgs) &&
               entry.interactiveArgs.every((a) => typeof a === "string")))
