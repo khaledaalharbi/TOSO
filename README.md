@@ -121,10 +121,13 @@ lib/services/optimization-service.ts
 lib/services/agent-service.ts  عميل الجسر: صحّة، إرسال، استطلاع الوظيفة، ترجمة النتيجة
 lib/bridge/agents.ts           سجل الوكلاء في الواجهة + بناء أمر السقوط الجاهز
 lib/server/gemini.ts           مناداة Gemini المشتركة بين مساري API (مضيف + سلسلة نماذج)
-app/api/optimize/route.ts      نقطة التحسين الوحيدة التي تلمس مفتاح Agent Platform
-app/api/translate/route.ts     ترجمة مخرجات الوكيل الإنجليزية إلى العربية
-app/api/tokens/count/route.ts  نقطة قياس الـTokens الوحيدة (countTokens)
-bin/toso-bridge.mjs            الجسر المحلي: تشغيل CLI agents headless والتقاط النتيجة
+app/api/optimize/route.ts        نقطة التحسين الوحيدة التي تلمس مفتاح Agent Platform
+app/api/translate/route.ts       ترجمة مخرجات الوكيل الإنجليزية إلى العربية
+app/api/clean/route.ts           pass ثانية اختيارية (إعدادات): Gemini يوصل الأسطر المكسورة بعرض الطرفية
+app/api/tokens/count/route.ts    نقطة قياس الـTokens الوحيدة (countTokens)
+app/api/models/check/route.ts    فحص إتاحة النماذج حياً لكل مفتاح عبر countTokens المجاني
+app/api/bridge/session/route.ts  اكتشاف جلسة الجسر تلقائياً وتقديم {url, token} للواجهة
+bin/toso-bridge.mjs              الجسر المحلي: تشغيل CLI agents headless والتقاط النتيجة
 lib/mcp/contract.ts            عقد TypeScript لواجهة MCP المستقبلية
 ```
 
@@ -142,7 +145,7 @@ lib/mcp/contract.ts            عقد TypeScript لواجهة MCP المستقب
 - الاستدعاء عبر **Vertex AI Agent Platform Express mode** (`POST /v1/publishers/google/models/{model}:generateContent?key=...`). الرد يُقرأ من `candidates[0].content.parts[].text`، وتُحوّل حقول `usageMetadata` إلى `usage` بعد التحقق من أنها أعداد صحيحة غير سالبة. كل حقل اختياري، و`usage: null` إذا لم يُرجع Gemini بيانات صالحة؛ لا نعوّض الحقول المفقودة بأصفار ولا نضيف طلب API. يلزم مفتاح Express mode؛ مفتاح AI Studio القديم لا يوجّه الطلبات إلى Agent Platform.
 - **تعليمات النظام (`systemInstruction`)** ثابتة ومنفصلة عن نص المستخدم في `contents`: الأولوية لحفظ المهمة والنفي والشروط والاستثناءات والشكل المطلوب قبل الاختصار، وعدم اختراع تفاصيل. لغة المخرجات ثابتة مهما كانت لغة المدخل (`arabic` عربية دائماً بأسلوب المستخدم وصوته مع إبقاء كلمات اللهجة كما وردت، `english` إنجليزية دائماً، `note` عربية دائماً) — مدخل غير عربي يُنقل مقصوده إلى العربية بأمانة. البرومبت الناتج لا يتجاوز طول المدخل ما أمكن دون إخلال بالدقة. تُطلب مراجعة داخلية في الاستدعاء نفسه دون ادعاء أنها فحص مستقل. يفرض `generationConfig.responseFormat` مخطط JSON للحقول الثلاثة؛ فحص الكيانات المحلي يبقى بعد الرد لأنه لا يكفي الوثوق بتعليمات النموذج وحدها.
 - `generationConfig.thinkingConfig.thinkingLevel: "LOW"` يحدّ التفكير لأن إعادة الصياغة ليست استدلالًا عميقًا. واجهة `generateContent` لا تعرض خيار Interactions `store: false`؛ تنطبق سياسة بيانات Agent Platform ومراقبة إساءة الاستخدام على الطلب. قد تُسجّل Google مطالبات مشتبهًا بها لمراجعة إساءة الاستخدام لمدة تصل إلى 90 يومًا، ولا تستخدم هذه السجلات لتدريب النماذج ([التفاصيل](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/abuse-monitoring)).
-- **سلسلة سقوط بين النماذج**: يجرّب النموذج المطلوب ثم بقية نماذج Gemini بالترتيب (`3.8-flash → 3.5-flash → 3.5-flash-lite → 3.1-pro`); عند `429` ينتقل للتالي، و`5xx` يعيد المحاولة مرتين قبل الانتقال، وكل محاولة مربوطة بمهلة 15 ثانية. مفتاح العملية واحد لكل طلب — مفتاح المستخدم إن وُجد وإلا مفتاح الخادم؛ لا مفاتيح احتياطية ولا مزج بين المضيفين. حقل `model` يوضّح النموذج الفعلي الذي خدم الرد، و`viaUserKey` يوضّح أي مفتاح دفع التكلفة.
+- **سلسلة سقوط بين النماذج**: يجرّب النموذج المطلوب ثم بقية نماذج Gemini بالترتيب (`3.8-flash → 3.5-flash → 3.5-flash-lite → 3.1-pro-preview`); عند `429` ينتقل للتالي، و`5xx` يعيد المحاولة مرتين قبل الانتقال، وكل محاولة مربوطة بمهلة 15 ثانية. مفتاح العملية واحد لكل طلب — مفتاح المستخدم إن وُجد وإلا مفتاح الخادم؛ لا مفاتيح احتياطية ولا مزج بين المضيفين. حقل `model` يوضّح النموذج الفعلي الذي خدم الرد، و`viaUserKey` يوضّح أي مفتاح دفع التكلفة.
 
 ## الطبقات الحتمية قبل/بعد النموذج
 
@@ -169,6 +172,8 @@ lib/mcp/contract.ts            عقد TypeScript لواجهة MCP المستقب
 - `countTokens` يعيد نفس العدد لكل نماذج Gemini (tokenizer مشترك) — انظر `Docs/reports/token-benchmark.md`.
 
 ## إعدادات Devin (`.devin/`)
+
+> كل محتوى `.devin/` مستبعد بـ`.gitignore` — بيئة الوكيل المحلية على جهاز المطوّر ولا تُستنسخ مع المستودع؛ مُوثَّقة هنا لأن `AGENTS.md` يشير إليها.
 
 - `skills/gemini-api-dev/` — مهارة تطوير Gemini API (Agent Platform وInteractions API، النماذج الحالية، SDK `@google/genai`، مرجع الترحيل) منقولة من مشروع JrsAlsoq_v2 — المصدر لأي عمل مستقبلي على Gemini هنا.
 - `skills/vercel-react-best-practices/` — مهارة أفضل ممارسات React و Next.js من Vercel Engineering لتحسين الأداء وتجنب شلالات الشبكة.
