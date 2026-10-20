@@ -52,6 +52,8 @@ export interface AgentTerminalHandle {
    * cannot run (unavailable / failed start / exited mid-turn).
    */
   send: (text: string) => Promise<TurnCapture>;
+  /** Starts the session — the last step of the tab's setup sequence. */
+  start: () => Promise<void>;
   /** Current status, read synchronously (no render lag). */
   status: () => TerminalStatus;
 }
@@ -120,6 +122,7 @@ export function AgentTerminal({
   bridge,
   workspace,
   trust,
+  ready,
   visible,
   onStatus,
   ref,
@@ -128,6 +131,8 @@ export function AgentTerminal({
   bridge: BridgeConfig;
   workspace?: string;
   trust?: boolean;
+  /** The tab's mandatory folder check passed for the current workspace. */
+  ready: boolean;
   visible: boolean;
   onStatus?: (status: TerminalStatus) => void;
   ref?: Ref<AgentTerminalHandle>;
@@ -146,9 +151,9 @@ export function AgentTerminal({
   const statusRef = useRef<TerminalStatus>("idle");
   const messageRef = useRef<string | null>(null);
   // Latest props for async callbacks (they outlive the render that made them).
-  const props = useRef({ bridge, workspace, trust, onStatus });
+  const props = useRef({ bridge, workspace, trust, ready, onStatus });
   useEffect(() => {
-    props.current = { bridge, workspace, trust, onStatus };
+    props.current = { bridge, workspace, trust, ready, onStatus };
   });
 
   const [status, setStatusState] = useState<TerminalStatus>("idle");
@@ -212,10 +217,11 @@ export function AgentTerminal({
   async function start() {
     if (statusRef.current === "starting" || statusRef.current === "live")
       return;
-    // No folder = no session — the bridge would inherit TOSO's own cwd.
-    if (!props.current.workspace?.trim()) {
+    // No checked folder = no session — the bridge would inherit TOSO's own
+    // cwd, and an unchecked path may not exist.
+    if (!props.current.workspace?.trim() || !props.current.ready) {
       setMessage(
-        "حدّد مجلد المشروع المستهدف أولاً — حقل «مشروع» أعلى هذه اللوحة — فالجلسة لن تبدأ على مجلد غير محدد.",
+        "افحص مجلد المشروع أولاً — الخطوة ① أعلى هذه اللوحة — فالجلسة لا تبدأ قبل نجاح الفحص.",
       );
       setStatus("idle");
       return;
@@ -394,7 +400,11 @@ export function AgentTerminal({
     }
   }
 
-  useImperativeHandle(ref, () => ({ send, status: () => statusRef.current }));
+  useImperativeHandle(ref, () => ({
+    send,
+    start,
+    status: () => statusRef.current,
+  }));
 
   // Mount: create xterm (client-only modules), then re-attach a session that
   // survived a page reload.
@@ -511,6 +521,8 @@ export function AgentTerminal({
               <ScanText size={12} /> يلتقط الرد… التقط الآن
             </button>
           )}
+          {/* Starting lives in the tab's setup sequence (step ④); once a
+              session runs, restart/stop belong to the terminal itself. */}
           {status === "live" || status === "starting" ? (
             <>
               <button
@@ -528,15 +540,7 @@ export function AgentTerminal({
                 <Square size={12} /> إيقاف
               </button>
             </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void start()}
-              className="flex items-center gap-1 border border-emerald-400/60 px-2.5 py-1 font-bold text-emerald-300 transition hover:bg-emerald-400/10"
-            >
-              <Play size={12} /> تشغيل الجلسة
-            </button>
-          )}
+          ) : null}
         </div>
       </div>
       {(message || cwdChanged) && (
@@ -559,8 +563,9 @@ export function AgentTerminal({
             dir="rtl"
             className="pointer-events-none absolute inset-0 grid place-items-center px-6 text-center text-sm text-white/40"
           >
-            الجلسة غير مشغّلة — اضغط «تشغيل الجلسة» أو أرسل نصاً من بطاقة
-            المخرجات فتبدأ تلقائياً.
+            {ready
+              ? "الجلسة غير مشغّلة — اضغط «④ تشغيل الجلسة» أعلاه، أو أرسل نصاً من بطاقة المخرجات فتبدأ تلقائياً."
+              : "الجلسة غير مشغّلة — ابدأ بالخطوة ① «فحص» أعلاه."}
           </p>
         )}
       </div>

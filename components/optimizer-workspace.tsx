@@ -60,8 +60,12 @@ import {
   type RunRegistry,
 } from "@/lib/bridge/run-registry";
 import {
+  AGENT_SETUP_SESSION,
   AUTO_TRUST_AGENTS_STORAGE,
   LEGACY_AUTO_TERMINAL_STORAGE,
+  parseAgentSetup,
+  setupDone,
+  type AgentSetup,
   LEGACY_AUTO_TRUST_STORAGE,
   LEGACY_WORKSPACE_STORAGE,
   WORKSPACES_STORAGE,
@@ -130,17 +134,21 @@ interface TerminalSettings {
   bridgeToken?: string;
   workspace?: string;
   autoTrust?: boolean;
+  /** Step ① passed for this folder. */
+  checked: boolean;
 }
 
 function terminalSettings(
   config: ProviderConfig,
   agentId: string,
+  checked: boolean,
 ): TerminalSettings {
   return {
     bridgeUrl: config.bridgeUrl,
     bridgeToken: config.bridgeToken,
     workspace: workspaceFor(config.workspaces, agentId),
     autoTrust: config.autoTrustAgents?.[agentId],
+    checked,
   };
 }
 
@@ -187,11 +195,11 @@ async function launchAgentTerminal(
 ) {
   ui.setBusy(agentId);
   ui.setNote(null);
-  if (!settings.workspace?.trim()) {
+  if (!settings.workspace?.trim() || !settings.checked) {
     ui.setNote({
       agent: agentId,
       ok: false,
-      text: `حدّد مجلد المشروع المستهدف لتبويب ${agentLabel(agentId)} أولاً — نافذة خارجية بلا مجلد تعمل على مجلد TOSO نفسه.`,
+      text: `افحص مجلد مشروع ${agentLabel(agentId)} أولاً (الخطوة ①) — نافذة خارجية بلا مجلد مفحوص قد تعمل على مجلد TOSO نفسه.`,
     });
     ui.setBusy(null);
     return;
@@ -278,6 +286,11 @@ export function OptimizerWorkspace() {
   );
   const [terminalBusy, setTerminalBusy] = useState<string | null>(null);
   const [terminalNote, setTerminalNote] = useState<TerminalNote | null>(null);
+  // Per-agent setup steps (① check, ② permanent trust), bound to the folder
+  // each succeeded on — survives tab switches and reloads (sessionStorage).
+  const [agentSetup, setAgentSetup] = useState<AgentSetup>({});
+  const folderChecked = (agent: string) =>
+    setupDone(agentSetup, config.workspaces, agent, "checked");
   const patchSession = (
     agent: string,
     update: (session: AgentSession) => AgentSession,
@@ -369,6 +382,9 @@ export function OptimizerWorkspace() {
         ...(smartClean ? { smartClean } : {}),
       }));
       setAgentLog(restoreLog(window.sessionStorage.getItem(AGENT_LOG_SESSION)));
+      setAgentSetup(
+        parseAgentSetup(window.sessionStorage.getItem(AGENT_SETUP_SESSION)),
+      );
     } catch {
       setStorageWarning(true);
     } finally {
@@ -460,6 +476,21 @@ export function OptimizerWorkspace() {
       /* quota or no storage — the log still works for this page view */
     }
   }, [agentLog, keyHydrated]);
+  useEffect(() => {
+    if (!keyHydrated) return;
+    try {
+      if (Object.keys(agentSetup).length) {
+        window.sessionStorage.setItem(
+          AGENT_SETUP_SESSION,
+          JSON.stringify(agentSetup),
+        );
+      } else {
+        window.sessionStorage.removeItem(AGENT_SETUP_SESSION);
+      }
+    } catch {
+      /* no storage — the steps still hold for this page view */
+    }
+  }, [agentSetup, keyHydrated]);
   // A new default in settings clears any per-card override — the pick
   // returns to "the default" so auto-dispatch resumes its meaning.
   useEffect(() => setPickedAgent(null), [config.agent]);
@@ -545,15 +576,17 @@ export function OptimizerWorkspace() {
    */
   async function sendToAgent(text: string, agentId: string, inputUser: string) {
     const agent = agentId || config.agent || AGENT_OPTIONS[0].id;
-    // A run needs its own project folder — without one the bridge would
-    // silently operate on TOSO itself, which this tool must never do.
-    if (!workspaceFor(config.workspaces, agent)?.trim()) {
-      setRun(agent, {
+    // A run needs its own CHECKED project folder — without one the bridge
+    // would silently operate on TOSO itself. The note lands in that agent's
+    // tab (shown now), where the setup sequence lives.
+    if (!folderChecked(agent)) {
+      setPickedAgent(agent);
+      setTerminalNote({
         agent,
-        prompt: text,
-        phase: "error",
-        message:
-          "حدّد مجلد المشروع المستهدف في تبويب هذا الوكيل أولاً — لن يعمل على مجلد غير محدد.",
+        ok: false,
+        text: workspaceFor(config.workspaces, agent)
+          ? `لم يُرسَل النص: افحص مجلد مشروع ${agentLabel(agent)} أولاً — الخطوة ① «فحص المجلد».`
+          : `لم يُرسَل النص: حدّد مجلد مشروع ${agentLabel(agent)} ثم افحصه — الخطوة ①.`,
       });
       return;
     }
@@ -767,8 +800,8 @@ export function OptimizerWorkspace() {
 
   /**
    * A tab (or an output card's agent menu) picks the agent: it becomes the
-   * send target and its tab. Its embedded session auto-starts on show when
-   * the setting asks for it (handled by the terminal pane itself).
+   * send target and its tab. Its session starts only from the tab's setup
+   * sequence (step ④) or the first send — never on show.
    */
   function selectAgent(agentId: string) {
     setPickedAgent(agentId);
@@ -1104,6 +1137,14 @@ export function OptimizerWorkspace() {
               url: config.bridgeUrl ?? DEFAULT_BRIDGE_URL,
               token: config.bridgeToken ?? "",
             }}
+            checked={folderChecked(activeAgent)}
+            trusted={setupDone(
+              agentSetup,
+              config.workspaces,
+              activeAgent,
+              "trusted",
+            )}
+            sessionStatus={terminalStatus[activeAgent]}
             openedCount={terminalOpened[activeAgent] ?? 0}
             terminalBusy={terminalBusy === activeAgent}
             terminalNote={terminalNote}
@@ -1113,6 +1154,16 @@ export function OptimizerWorkspace() {
                 workspaces: withWorkspace(c.workspaces, activeAgent, path),
               }))
             }
+            onStepDone={(step, path) =>
+              setAgentSetup((all) => ({
+                ...all,
+                [activeAgent]: { ...all[activeAgent], [step]: path },
+              }))
+            }
+            onStart={() => {
+              setTerminalNote(null);
+              void terminals.current[activeAgent]?.start();
+            }}
             autoTrust={Boolean(config.autoTrustAgents?.[activeAgent])}
             onAutoTrustChange={(on) =>
               setConfig((c) => ({
@@ -1127,7 +1178,11 @@ export function OptimizerWorkspace() {
             onOpenTerminal={() =>
               void launchTerminal(
                 activeAgent,
-                terminalSettings(config, activeAgent),
+                terminalSettings(
+                  config,
+                  activeAgent,
+                  folderChecked(activeAgent),
+                ),
               )
             }
           />
@@ -1147,6 +1202,7 @@ export function OptimizerWorkspace() {
                 }}
                 workspace={workspaceFor(config.workspaces, opt.id)}
                 trust={config.autoTrustAgents?.[opt.id]}
+                ready={folderChecked(opt.id)}
                 visible={opt.id === activeAgent && keyHydrated}
                 onStatus={(status) =>
                   setTerminalStatus((all) =>

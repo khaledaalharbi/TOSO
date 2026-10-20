@@ -59,6 +59,46 @@ export function serializeWorkspaces(
 }
 
 /**
+ * Per-agent setup steps, each holding the folder it succeeded on — editing
+ * the path retires them (the stored path no longer matches). The check is
+ * a snapshot, so this lives in sessionStorage, not localStorage.
+ */
+export type AgentSetup = Record<string, { checked?: string; trusted?: string }>;
+
+export const AGENT_SETUP_SESSION = "toso.agentSetup";
+
+export function parseAgentSetup(raw: string | null): AgentSetup {
+  if (!raw) return {};
+  try {
+    const data: unknown = JSON.parse(raw);
+    if (!data || typeof data !== "object" || Array.isArray(data)) return {};
+    const out: AgentSetup = {};
+    for (const [agent, value] of Object.entries(data)) {
+      if (!value || typeof value !== "object") continue;
+      const { checked, trusted } = value as Record<string, unknown>;
+      out[agent] = {
+        ...(typeof checked === "string" ? { checked } : {}),
+        ...(typeof trusted === "string" ? { trusted } : {}),
+      };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** Has `step` succeeded for the agent's CURRENT folder? */
+export function setupDone(
+  setup: AgentSetup,
+  workspaces: Workspaces | undefined,
+  agent: string,
+  step: "checked" | "trusted",
+): boolean {
+  const path = workspaceFor(workspaces, agent);
+  return Boolean(path) && setup[agent]?.[step] === path;
+}
+
+/**
  * Per-agent boolean toggles stored as one small JSON map — same shape and
  * same defensive parsing as the workspaces map. Used for the per-tab
  * «ثقة لكل تشغيلة» switch.

@@ -1,10 +1,55 @@
 import { describe, expect, it } from "vitest";
 import {
+  parseAgentFlags,
+  parseAgentSetup,
   parseWorkspaces,
+  serializeAgentFlags,
   serializeWorkspaces,
+  setupDone,
+  withAgentFlag,
   withWorkspace,
   workspaceFor,
 } from "./workspaces";
+
+describe("agent setup steps", () => {
+  it("counts a step only for the folder it succeeded on", () => {
+    const setup = { gemini: { checked: "C:\\A", trusted: "C:\\A" } };
+    expect(setupDone(setup, { gemini: "C:\\A" }, "gemini", "checked")).toBe(
+      true,
+    );
+    // Editing the path re-locks the sequence.
+    expect(setupDone(setup, { gemini: "C:\\B" }, "gemini", "checked")).toBe(
+      false,
+    );
+    expect(setupDone(setup, { gemini: " C:\\A " }, "gemini", "trusted")).toBe(
+      true,
+    );
+    expect(setupDone(setup, undefined, "gemini", "checked")).toBe(false);
+    expect(setupDone({}, { devin: "C:\\A" }, "devin", "checked")).toBe(false);
+  });
+
+  it("parses stored steps defensively", () => {
+    expect(
+      parseAgentSetup(
+        JSON.stringify({ gemini: { checked: "C:\\A", trusted: 5 }, x: null }),
+      ),
+    ).toEqual({ gemini: { checked: "C:\\A" } });
+    for (const raw of [null, "", "nope", "[]"]) {
+      expect(parseAgentSetup(raw)).toEqual({});
+    }
+  });
+});
+
+describe("per-agent flags", () => {
+  it("keeps only true flags and drops the map when empty", () => {
+    expect(parseAgentFlags('{"gemini":true,"devin":false,"x":"1"}')).toEqual({
+      gemini: true,
+    });
+    expect(withAgentFlag({ gemini: true }, "gemini", false)).toBeUndefined();
+    expect(withAgentFlag(undefined, "devin", true)).toEqual({ devin: true });
+    expect(serializeAgentFlags({})).toBeNull();
+  });
+});
 
 describe("per-agent workspaces", () => {
   it("parses a stored map and drops malformed or blank entries", () => {
