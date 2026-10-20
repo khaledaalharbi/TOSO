@@ -327,10 +327,9 @@ function writeReport() {
         "",
       ]),
   ];
-  writeFileSync(
-    path.resolve(__dirname, "../../outputs/agent-live-probe.md"),
-    lines.join("\n"),
-  );
+  const outDir = path.resolve(__dirname, "../../outputs");
+  mkdirSync(outDir, { recursive: true });
+  writeFileSync(path.join(outDir, "agent-live-probe.md"), lines.join("\n"));
 }
 
 describe.skipIf(AGENTS.length === 0)(
