@@ -145,6 +145,66 @@ describe("Codex TUI conventions (live)", () => {
   });
 });
 
+describe("Hermes TUI conventions (live)", () => {
+  const rule = "─".repeat(120);
+  const sent =
+    "Briefly explain the difference between TCP and UDP protocols with one example for each, without executing any commands.";
+  const before = [rule, "❯ Explain this error and how to fix it", rule];
+  const statusBar =
+    " ☤ gemini-3.5-flash-lite │ 22.4K/1M │ [░░░░░░░░░░] 2% │ ◎ 28.5% │ ◷ 6.9s │ ↑ 149 t/s │ 2m │ .. ─ Explain TCP and UDP diffe...";
+
+  it("keeps the answer inside the ☤ Hermes box, not the status line before it", () => {
+    // Captured from a real turn: the rule between "Initializing agent..."
+    // and the box used to end the capture, leaving only the status line.
+    const after = [
+      rule,
+      `● ${sent}`,
+      "Initializing agent...",
+      rule,
+      `╭─ ☤ Hermes ${"─".repeat(100)}╮`,
+      "هلا والله! أبشر، خليني أشرح لك الفرق بين البروتوكولين باختصار:",
+      "1. TCP (Transmission Control Protocol):",
+      "   * مثال عليه: تصفح المواقع أو إرسال الإيميلات.",
+      "2. UDP (User Datagram Protocol):",
+      "   * مثال عليه: البث المباشر ومكالمات الفيديو.",
+      `╰${"─".repeat(120)}╯`,
+      statusBar,
+      rule,
+      "❯ Explain this error and how to fix it",
+      rule,
+    ];
+    expect(extractReply(before, after, sent)).toBe(
+      [
+        "هلا والله! أبشر، خليني أشرح لك الفرق بين البروتوكولين باختصار:",
+        "1. TCP (Transmission Control Protocol):",
+        "   * مثال عليه: تصفح المواقع أو إرسال الإيميلات.",
+        "2. UDP (User Datagram Protocol):",
+        "   * مثال عليه: البث المباشر ومكالمات الفيديو.",
+      ].join("\n"),
+    );
+  });
+
+  it("still reports an error box honestly instead of a blank or the status line", () => {
+    const after = [
+      rule,
+      `● ${sent}`,
+      "Initializing agent...",
+      rule,
+      "❌ custom rejected the request and retrying won't help: HTTP 429: Token quota exhausted.",
+      " ─  ☤ Hermes  ────────────────",
+      " Billing or credits exhausted: HTTP 429: Token quota exhausted.",
+      " ☤ Atria-Dawn │ 0/256K │ [░░░░░░░░░░] 0% │ 3m │ ⏲ 6s │ ✓ 0s",
+      rule,
+      "❯ Draft a reply to the last email in my inbox",
+      rule,
+    ];
+    const reply = extractReply(before, after, sent);
+    expect(reply).toContain("Token quota exhausted");
+    expect(reply).not.toContain("Initializing agent");
+    expect(reply).not.toContain("☤");
+  });
+});
+
 describe("isGrounded / turnRegion", () => {
   const raw = "✦ Run npm test then\n  commit the fix.";
   it("accepts re-flowed text made of the capture's own words", () => {

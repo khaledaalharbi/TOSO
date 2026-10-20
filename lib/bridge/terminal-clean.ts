@@ -34,6 +34,18 @@ const TOOL_STATUS = /^\s*[✓✔✗✖⊷]\s/;
  * "✻ Churned for 3m 20s · done 3:46 AM" (the verb varies per turn).
  */
 const STATUS_LINE = /^\s*(?:[─•·]?\s*Worked for \d|✻\s+\S+ for \d)/i;
+/**
+ * Hermes frames its reply: a transient "Initializing agent..." line, a rule,
+ * then `╭─ ☤ Hermes ──╮` … `╰──╯` around the answer (no side borders), and a
+ * "☤ model │ ctx │ …" status bar. Seen live — the rule between the status
+ * line and the box used to end the capture, losing the whole answer.
+ */
+const AGENT_NOISE = /^\s*Initializing agent\.{3}\s*$/;
+const AGENT_CHROME = [
+  AGENT_NOISE,
+  /^\s*[╭─]*\s*☤\s*Hermes\s*[─╮]*\s*$/,
+  /^\s*☤\s.*│/,
+];
 /** Reply bullets: Gemini ✦, Claude ⏺/●, Codex •. Only the FIRST line's. */
 const REPLY_MARK = /^(\s*)[✦⏺●•]/;
 const SPINNER = /^\s*[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/;
@@ -173,7 +185,11 @@ export function cleanReplyLines(lines: string[]): string {
       return true;
     })
     .filter(
-      (l) => !TOOL_STATUS.test(l) && !SPINNER.test(l) && !STATUS_LINE.test(l),
+      (l) =>
+        !TOOL_STATUS.test(l) &&
+        !SPINNER.test(l) &&
+        !STATUS_LINE.test(l) &&
+        !AGENT_CHROME.some((re) => re.test(l)),
     )
     .filter((l) => !(BOX_ONLY.test(l) && l.trim()))
     .map((l) => {
@@ -247,7 +263,9 @@ export function extractReply(
   }
   while (
     start < region.length &&
-    (!region[start].trim() || RULE.test(region[start]))
+    (!region[start].trim() ||
+      RULE.test(region[start]) ||
+      AGENT_NOISE.test(region[start]))
   ) {
     start++;
   }

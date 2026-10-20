@@ -12,6 +12,7 @@ import {
   type Ref,
 } from "react";
 import { agentLabel } from "@/lib/bridge/agents";
+import { createQuietTracker } from "@/lib/bridge/quiet-tracker";
 import {
   extractReply,
   isAgentBusy,
@@ -93,6 +94,26 @@ function viewport(term: Terminal): string {
   return rows.join("\n");
 }
 
+/**
+ * Resolves once xterm has PARSED everything written so far. term.write() is
+ * queued, so under load (five agents streaming at once) the buffer can lag
+ * the stream — reading it before the queue drains would capture a half-drawn
+ * screen.
+ */
+const drain = (term: Terminal) =>
+  new Promise<void>((resolve) => {
+    // The timeout keeps a disposed/stalled terminal from hanging the loop.
+    const timer = setTimeout(resolve, 500);
+    term.write("", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+
+/** What the user can see: the screen plus scrollback growth (not raw bytes). */
+const screenSignature = (term: Terminal, screen: string) =>
+  `${term.buffer.active.length}|${term.buffer.active.baseY}|${screen}`;
+
 const statusLabel: Record<TerminalStatus, string> = {
   idle: "غير مشغّلة",
   starting: "تبدأ…",
@@ -142,7 +163,7 @@ export function AgentTerminal({
   const fitRef = useRef<FitAddon | null>(null);
   const sessionRef = useRef<{ id: string; config: BridgeConfig } | null>(null);
   const streamAbort = useRef<AbortController | null>(null);
-  const lastOutput = useRef(0);
+  const quiet = useRef(createQuietTracker());
   const firstOutput = useRef(0);
   const inputBuffer = useRef("");
   const inputTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -194,7 +215,6 @@ export function AgentTerminal({
       (event) => {
         if (typeof event.d === "string" && event.d) {
           termRef.current?.write(event.d);
-          lastOutput.current = Date.now();
           firstOutput.current ||= Date.now();
         }
         if (typeof event.exit === "number") {
@@ -247,7 +267,9 @@ export function AgentTerminal({
               ? "توكن الجسر مرفوض — راجع الإعدادات."
               : result.state === "invalid_workspace"
                 ? `مجلد المشروع مرفوض${result.detail ? `: ${result.detail}` : ""}.`
-                : `تعذّر تشغيل الجلسة${"detail" in result && result.detail ? ` (${result.detail})` : ""}.`,
+                : result.state === "too_many_sessions"
+                  ? "الجسر وصل حدّه الأقصى (8 جلسات حيّة) — الجلسات مشتركة بين كل نوافذ المتصفح. أوقف جلسة لا تحتاجها من تبويب وكيلها (زر «إيقاف») ثم أعد المحاولة."
+                  : `تعذّر تشغيل الجلسة${"detail" in result && result.detail ? ` (${result.detail})` : ""}.`,
       );
       setStatus(result.state === "pty_unavailable" ? "unavailable" : "error");
       return;
@@ -298,8 +320,9 @@ export function AgentTerminal({
     const t0 = Date.now();
     while (Date.now() - t0 < READY_MAX_MS) {
       if (statusRef.current !== "live") break;
+      await drain(term);
       const screen = viewport(term);
-      const sinceOutput = Date.now() - lastOutput.current;
+      const sinceOutput = quiet.current.observe(screenSignature(term, screen));
       const decision = pendingDecision(screen);
       if (decision && sinceOutput > 1000) {
         throw new Error(
@@ -346,6 +369,7 @@ export function AgentTerminal({
           `${agentLabel(agent)} ينتظر قراراً منك في الطرفية أعلاه (${late}) — أجب عليه ثم أعد الإرسال.`,
         );
       }
+      await drain(term);
       const before = bufferLines(term);
       const payload = term.modes.bracketedPasteMode
         ? `\x1b[200~${text}\x1b[201~`
@@ -358,6 +382,7 @@ export function AgentTerminal({
       let timedOut = false;
       await sleep(1500);
       while (statusRef.current === "live" && !captureNow.current) {
+        await drain(term);
         const screen = viewport(term);
         const busy = isAgentBusy(screen);
         sawBusy ||= busy;
@@ -365,11 +390,12 @@ export function AgentTerminal({
         // the agent is waiting on the user, not finished. Keep waiting so an
         // answered prompt resumes the turn instead of capturing the dialog.
         const waitingOnUser = Boolean(pendingDecision(screen));
-        const quiet = Date.now() - lastOutput.current >= QUIET_MS;
+        const settled =
+          quiet.current.observe(screenSignature(term, screen)) >= QUIET_MS;
         if (
           !busy &&
           !waitingOnUser &&
-          quiet &&
+          settled &&
           (sawBusy || Date.now() - t0 > MIN_TURN_MS)
         )
           break;
@@ -379,6 +405,7 @@ export function AgentTerminal({
         }
         await sleep(250);
       }
+      await drain(term);
       const after = bufferLines(term);
       const reply = extractReply(before, after, text);
       // Still waiting on a permission/menu and nothing real was captured —
