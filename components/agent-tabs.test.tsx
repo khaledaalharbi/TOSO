@@ -65,6 +65,24 @@ describe("AgentTabStrip", () => {
     expect(html).toContain("يعمل الآن");
     expect(html).toContain("اكتمل");
   });
+
+  it("badges only the settings-chosen default agent's tab", () => {
+    const html = (defaultAgent?: string) =>
+      renderToStaticMarkup(
+        <AgentTabStrip
+          activeAgent="claude"
+          status={{}}
+          turns={{}}
+          defaultAgent={defaultAgent}
+          onSelect={() => {}}
+        />,
+      );
+    const tabs = html("hermes").split('role="tab"').slice(1);
+    expect(tabs).toHaveLength(5);
+    expect(tabs.filter((t) => t.includes("الافتراضي"))).toHaveLength(1);
+    expect(tabs.find((t) => t.includes("الافتراضي"))).toContain("Hermes");
+    expect(html()).not.toContain("الافتراضي");
+  });
 });
 
 describe("AgentWorkspacePanel", () => {

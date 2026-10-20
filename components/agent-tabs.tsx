@@ -41,12 +41,15 @@ export function AgentTabStrip({
   activeAgent,
   status,
   turns,
+  defaultAgent,
   onSelect,
 }: {
   activeAgent: string;
   status: Record<string, TabStatus>;
   /** Log turns per agent — a small count beside the label. */
   turns: Record<string, number>;
+  /** The agent chosen as default in settings — its tab carries a badge. */
+  defaultAgent?: string;
   onSelect: (agentId: string) => void;
 }) {
   return (
@@ -81,6 +84,19 @@ export function AgentTabStrip({
               aria-label={dotLabel[state]}
             />
             {opt.label}
+            {opt.id === defaultAgent ? (
+              <span
+                dir="rtl"
+                title="الوكيل الافتراضي — يُحدَّد من الإعدادات"
+                className={`border px-1.5 py-px text-[10px] leading-4 font-bold ${
+                  selected
+                    ? "border-white/40 text-white"
+                    : "border-emerald-400 text-emerald-700"
+                }`}
+              >
+                الافتراضي
+              </span>
+            ) : null}
             {turns[opt.id] ? (
               <span
                 className={`px-1 text-[10px] ${selected ? "bg-white/20" : "bg-violet-600 text-white"}`}
