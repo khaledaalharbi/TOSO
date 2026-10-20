@@ -6,6 +6,7 @@ import {
   isAgentBusy,
   isGrounded,
   pendingDecision,
+  promptStuckInInput,
   turnRegion,
 } from "./terminal-clean";
 
@@ -142,6 +143,78 @@ describe("Codex TUI conventions (live)", () => {
         "  Worked for 3s • 9:00 AM",
       ]),
     ).toBe("Steps:\n• install\n• run");
+  });
+});
+
+describe("promptStuckInInput (Claude swallowed the first Enter, live)", () => {
+  const rule = "─".repeat(120);
+  const sent =
+    "Provide a detailed SWOT analysis of this project, covering strengths, weaknesses, opportunities, and threats, strictly without executing any commands or modifying any files.";
+  const header = [
+    " ▐▛███▛█   Claude Code v2.1.304",
+    " ▝▜██████▀  Haiku 5.5 · API Usage Billing",
+  ];
+
+  it("detects a prompt that is still typed in the input box", () => {
+    const stuck = [
+      ...header,
+      "",
+      rule,
+      "❯ Provide a detailed SWOT analysis of this project, covering strengths, weaknesses, opportunities, and threats, strictly",
+      "  without executing any commands or modifying any files.",
+      rule,
+      "  ⏵⏵ auto mode on (shift+tab to cycle)",
+    ].join("\n");
+    expect(promptStuckInInput(stuck, sent)).toBe(true);
+  });
+
+  it("is false once the prompt was submitted and the box is empty again", () => {
+    const submitted = [
+      ...header,
+      "❯ Provide a detailed SWOT analysis of this project, covering strengths, weaknesses, opportunities, and threats, strictly",
+      "  without executing any commands or modifying any files.",
+      "",
+      "⏺ Strengths: a clear data model. Weaknesses: thin tests.",
+      "  Opportunities: more agents. Threats: provider changes.",
+      "",
+      "✻ Churned for 6s · done 8:21 PM",
+      rule,
+      "❯",
+      rule,
+      "  ⏵⏵ auto mode on (shift+tab to cycle)",
+    ].join("\n");
+    expect(promptStuckInInput(submitted, sent)).toBe(false);
+  });
+
+  it("ignores prompts too short to identify", () => {
+    expect(promptStuckInInput("❯ hi", "hi")).toBe(false);
+  });
+});
+
+describe("an agent that has not started yet yields no reply (Claude, live)", () => {
+  it("returns empty while the prompt just sits in the box above the footer", () => {
+    // The full-width rule soft-wraps, so the rule, the "❯ prompt" row and the
+    // footer arrive glued into logical lines — exactly as bufferLines builds them.
+    const rule = "─".repeat(127);
+    const sent =
+      "Analyze the provided project in detail using a SWOT analysis (Strengths, Weaknesses, Opportunities, and Threats). Do not execute any commands or modify any files.";
+    const before = [
+      " ▐▛███▛█   Claude Code v2.1.304",
+      " ▝▝   ▝▝   ~\\Temp\\probe",
+    ];
+    const after = [
+      ...before,
+      `${rule}❯ Analyze the provided project in detail using a SWOT analysis (Strengths, Weaknesses, Opportunities, and Threats). Do not`,
+      "  execute any commands or modify any files.",
+      `${rule}  ⏵⏵ auto mode on (shift+tab to cycle)`,
+    ];
+    expect(extractReply(before, after, sent)).toBe("");
+  });
+});
+
+describe("a bare rule is never an answer", () => {
+  it("drops a rule-only reply (it was reported as OUT live)", () => {
+    expect(cleanReplyLines(["─".repeat(110)])).toBe("");
   });
 });
 

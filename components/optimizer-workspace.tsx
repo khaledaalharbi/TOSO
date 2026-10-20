@@ -53,6 +53,7 @@ import {
   agentCommand,
   agentLabel,
   agentSendMode,
+  isAgentWireText,
 } from "@/lib/bridge/agents";
 import {
   abortAllRuns,
@@ -117,6 +118,8 @@ const USER_KEY_STORAGE = "toso.userGeminiKey";
 const BRIDGE_URL_STORAGE = "toso.bridgeUrl";
 const BRIDGE_TOKEN_STORAGE = "toso.bridgeToken";
 const AGENT_STORAGE = "toso.agent";
+const NO_ENGLISH_NOTE =
+  "لم يُرسَل شيء: الوكلاء يستقبلون الإنجليزية فقط (لتقليل التوكنز)، ولا تتوفر نسخة إنجليزية صالحة لهذا التحليل — الوضع المحلي أو حجبها فحص السلامة. أضف مفتاحاً وأعد التحليل.";
 const AUTO_SEND_STORAGE = "toso.autoSend";
 const AUTO_TRANSLATE_STORAGE = "toso.autoTranslate";
 const SMART_CLEAN_STORAGE = "toso.smartClean";
@@ -531,16 +534,19 @@ export function OptimizerWorkspace() {
       // Auto-dispatch: only when the picked agent IS the default — a
       // different pick means the user asked for manual control this run.
       if (config.autoSend && activeAgent === defaultAgent) {
-        const primaryText =
-          nextReport.direction === "en"
-            ? nextReport.english?.text
-            : nextReport.arabic?.text;
-        if (primaryText)
-          void sendToAgent(
-            primaryText,
-            defaultAgent,
-            nextReport.originalPrompt,
-          );
+        // Agents get the ENGLISH polish whatever the input language — the
+        // point of the tool is fewer tokens. No English (local mode, or the
+        // safety guard withheld it) means nothing is sent, with the reason.
+        const english = nextReport.english?.text;
+        if (english) {
+          void sendToAgent(english, defaultAgent, nextReport.originalPrompt);
+        } else {
+          setTerminalNote({
+            agent: defaultAgent,
+            ok: false,
+            text: NO_ENGLISH_NOTE,
+          });
+        }
       }
     } catch {
       setReport(null);
@@ -576,6 +582,13 @@ export function OptimizerWorkspace() {
    */
   async function sendToAgent(text: string, agentId: string, inputUser: string) {
     const agent = agentId || config.agent || AGENT_OPTIONS[0].id;
+    // Agents receive English only (fewer tokens) — refuse anything else
+    // here so no path (manual, auto, retry) can leak Arabic to an agent.
+    if (!isAgentWireText(text)) {
+      setPickedAgent(agent);
+      setTerminalNote({ agent, ok: false, text: NO_ENGLISH_NOTE });
+      return;
+    }
     // A run needs its own CHECKED project folder — without one the bridge
     // would silently operate on TOSO itself. The note lands in that agent's
     // tab (shown now), where the setup sequence lives.
@@ -1051,16 +1064,6 @@ export function OptimizerWorkspace() {
                     : "الترجمة العربية غير متاحة في الوضع المحلي أو عند تعذّر Gemini."
                 }
                 report={report?.arabic ?? null}
-                agent={activeAgent}
-                agentDisabled={autoSendActive}
-                onSelectAgent={selectAgent}
-                onSend={(value) =>
-                  void sendToAgent(
-                    value,
-                    activeAgent,
-                    report?.originalPrompt ?? prompt,
-                  )
-                }
               />
             );
             const englishCard = (
@@ -1121,6 +1124,7 @@ export function OptimizerWorkspace() {
           turns={Object.fromEntries(
             Object.entries(agentLog).map(([id, turns]) => [id, turns.length]),
           )}
+          defaultAgent={defaultAgent}
           onSelect={selectAgent}
         />
         <div

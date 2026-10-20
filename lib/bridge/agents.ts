@@ -4,6 +4,8 @@
  * fallback shell command and the default bridge address.
  */
 
+import { arabicRatio } from "@/lib/token-engine/token-engine";
+
 /**
  * What one trust step means for one agent — every agent states each step
  * explicitly, so the tab can name the situation instead of a vague "no":
@@ -75,6 +77,17 @@ export function agentSendMode(opts: {
     active,
     auto: Boolean(opts.autoSend) && active === opts.defaultAgent,
   };
+}
+
+/**
+ * The rule behind the whole tool: agents receive ENGLISH only — English costs
+ * far fewer tokens than Arabic. A few Arabic words inside English text
+ * (quoted names, entities kept verbatim) are fine; mostly-Arabic text is not.
+ */
+export const MAX_AGENT_ARABIC_RATIO = 0.3;
+
+export function isAgentWireText(text: string): boolean {
+  return arabicRatio(text) <= MAX_AGENT_ARABIC_RATIO;
 }
 
 export function agentLabel(id: string): string {

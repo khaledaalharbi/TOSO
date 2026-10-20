@@ -17,6 +17,7 @@ import {
   extractReply,
   isAgentBusy,
   pendingDecision,
+  promptStuckInInput,
   turnRegion,
 } from "@/lib/bridge/terminal-clean";
 import {
@@ -62,6 +63,7 @@ export interface AgentTerminalHandle {
 // Timings measured against the real Gemini CLI TUI (see terminal-clean.ts).
 const QUIET_MS = 1500;
 const MIN_TURN_MS = 8_000;
+const NO_REPLY_MAX_MS = 90_000;
 const TURN_MAX_MS = 15 * 60_000;
 const READY_MAX_MS = 90_000;
 const READY_FALLBACK_QUIET_MS = 6_000;
@@ -386,19 +388,31 @@ export function AgentTerminal({
         const screen = viewport(term);
         const busy = isAgentBusy(screen);
         sawBusy ||= busy;
+
         // A pending dialog (tool approval, menu) is neither busy nor done —
         // the agent is waiting on the user, not finished. Keep waiting so an
         // answered prompt resumes the turn instead of capturing the dialog.
         const waitingOnUser = Boolean(pendingDecision(screen));
         const settled =
           quiet.current.observe(screenSignature(term, screen)) >= QUIET_MS;
+        const elapsed = Date.now() - t0;
         if (
           !busy &&
           !waitingOnUser &&
           settled &&
-          (sawBusy || Date.now() - t0 > MIN_TURN_MS)
-        )
-          break;
+          (sawBusy || elapsed > MIN_TURN_MS)
+        ) {
+          // Quiet is not proof of an answer: a freshly started agent can sit
+          // silent for 10s+ before it begins (seen live with Claude — the
+          // prompt was still in its input box). A finished turn always has a
+          // reply, so keep waiting while there is none.
+          await drain(term);
+          if (
+            extractReply(before, bufferLines(term), text) ||
+            elapsed > NO_REPLY_MAX_MS
+          )
+            break;
+        }
         if (Date.now() - t0 > TURN_MAX_MS) {
           timedOut = true;
           break;
@@ -414,6 +428,13 @@ export function AgentTerminal({
       if (pending && !reply) {
         throw new Error(
           `${agentLabel(agent)} ينتظر قراراً منك في الطرفية أعلاه (${pending}) — أجب عليه ثم أعد الإرسال.`,
+        );
+      }
+      // The text never left the input box and nothing answered: say so
+      // instead of reporting a finished turn with an empty/noisy reply.
+      if (!reply && !sawBusy && promptStuckInInput(viewport(term), text)) {
+        throw new Error(
+          `${agentLabel(agent)} لم يستلم النص — بقي في خانة الإدخال دون إرسال. اضغط Enter في الطرفية أعلاه أو أعد الإرسال.`,
         );
       }
       return {

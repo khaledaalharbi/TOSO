@@ -45,6 +45,9 @@ const AGENT_CHROME = [
   AGENT_NOISE,
   /^\s*[╭─]*\s*☤\s*Hermes\s*[─╮]*\s*$/,
   /^\s*☤\s.*│/,
+  // Claude's footer ("⏵⏵ auto mode on …"), often glued to the rule above it
+  // when that rule fills the full terminal width and soft-wraps.
+  /^\s*[─━═]*\s*⏵⏵\s/,
 ];
 /** Reply bullets: Gemini ✦, Claude ⏺/●, Codex •. Only the FIRST line's. */
 const REPLY_MARK = /^(\s*)[✦⏺●•]/;
@@ -92,6 +95,23 @@ export function pendingDecision(viewport: string): string | null {
     if (pattern.test(viewport)) return label;
   }
   return null;
+}
+
+/**
+ * True when `sent` still sits unsubmitted in the agent's input box: its
+ * opening words are within the last few non-empty rows of the screen. A
+ * submitted prompt moves up into the history and the box is empty again.
+ * (Seen live: Claude, just started, swallowed the first Enter — the text
+ * stayed in the box and the turn was wrongly reported as done.)
+ */
+export function promptStuckInInput(viewport: string, sent: string): boolean {
+  const key = norm(sent).slice(0, 30);
+  if (key.length < 8) return false;
+  const rows = viewport
+    .split("\n")
+    .filter((line) => line.trim())
+    .slice(-5);
+  return norm(rows.join(" ")).includes(key);
 }
 
 /** True while the TUI shows it is working (spinner / "esc to cancel"). */
@@ -192,6 +212,8 @@ export function cleanReplyLines(lines: string[]): string {
         !AGENT_CHROME.some((re) => re.test(l)),
     )
     .filter((l) => !(BOX_ONLY.test(l) && l.trim()))
+    // A bare rule is chrome, never an answer (it was reported as one live).
+    .filter((l) => !/^\s*[▄▀─━═╌┄]{8,}\s*$/.test(l))
     .map((l) => {
       let line = l
         .replace(/^(\s*)│\s?/, "$1")
