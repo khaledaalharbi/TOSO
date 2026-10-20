@@ -1,193 +1,139 @@
-# مُحسّن البرومبت العربي — Prototype
+# TOSO
 
-واجهة Single Page عربية RTL لاستكشاف عدد الـTokens والتكلفة المتوقعة قبل وبعد تحسين prompt عربي. الفهم وإعادة الصياغة والترجمة تتم عبر Gemini (المفتاح محفوظ في الخادم فقط)، مع سقوط محلي إلى mock عند غياب المفتاح. لا قاعدة بيانات.
+**Write your prompt in your own language. TOSO measures it, turns it into concise
+English for free, sends it to your CLI coding agent, and translates the reply back.**
 
-## التشغيل
+[العربية](README.ar.md) · [Evidence](Docs/RESEARCH.md) · [Setup & usage (Arabic)](Docs/setup-and-usage.md) · [Architecture](Docs/ARCHITECTURE.md) · MIT License
 
-يتطلب Node.js 22.12 أو أحدث.
+---
+
+## The problem
+
+Developers who think in Arabic, Hindi, Russian or Chinese pay more to use AI
+coding agents than developers who write in English — for the same request.
+
+- **The language tax.** The same meaning costs more tokens in many languages:
+  ≈3× for Arabic on the GPT-4 tokenizer, up to 15× for some languages
+  ([Petrov et al., NeurIPS 2023](https://arxiv.org/abs/2305.15425)). Speakers of
+  many languages are charged more while getting worse results
+  ([Ahia et al., EMNLP 2023](https://arxiv.org/abs/2305.13707)).
+- **Translation is a proven fix.** Translating to an efficient language before
+  calling the model cut cost by up to 90% with comparable or better quality
+  ([Nag et al., 2024](https://arxiv.org/abs/2403.05434)).
+- **The channel matters too.** In a controlled study of 440 desktop tasks, CLI
+  agents finished faster than screen-driven GUI agents on the same model, and
+  reached 69.3% success (vs 59.1% for GUI) once their skill coverage was patched —
+  a diagnostic upper bound, per the authors
+  ([Zhou et al., 2026](https://arxiv.org/abs/2606.24551)).
+
+## What TOSO does
+
+```
+ your prompt            TOSO                               your CLI agent
+ (Arabic today)  ──▶  measure tokens (Gemini countTokens)
+                      clean up locally
+                      rewrite → concise Arabic + English
+                      guard entities, negation, coverage
+                                         English only ───▶  Gemini CLI · Claude Code
+                                                            Codex · Devin · Hermes
+ reply in your   ◀──  translate the reply  ◀── captured from the live terminal
+ language
+```
+
+Three savings stack up:
+
+|     | Layer                                                 | Evidence                                                                                                              |
+| --- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| ①   | English instead of your language at the agent         | [Petrov 2023](https://arxiv.org/abs/2305.15425), [Nag 2024](https://arxiv.org/abs/2403.05434), TOSO's own measurement |
+| ②   | A CLI agent instead of a GUI agent                    | [Zhou 2026](https://arxiv.org/abs/2606.24551), [Bechard 2026](https://arxiv.org/abs/2604.00073)                       |
+| ③   | The translation itself runs on Gemini's **free tier** | [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing)                                                       |
+
+**TOSO moves language work from your paid agent's budget to Gemini's free quota.**
+
+## Measured, not assumed
+
+TOSO counts tokens with Gemini's billing-exact `countTokens` and shows the real
+numbers for _your_ prompt — original, cleaned, and final English.
+
+On a 12-prompt Arabic/English parallel corpus, Arabic cost **1.36× the tokens of
+English for the same meaning** on Gemini's tokenizer, so the English version saved
+≈26% ([report](Docs/reports/token-benchmark.md)). Gemini's tokenizer is relatively
+kind to Arabic; English-centric tokenizers tax it far more, so the saving at your
+agent can be larger. Full method, limits and sources: **[Docs/RESEARCH.md](Docs/RESEARCH.md)**.
+
+## Features
+
+- **Real token measurement** of the original, the local cleanup and the final
+  English, plus a per-segment heat map.
+- **Meaning guards:** numbers, dates, URLs, `{variables}` and quotes must survive;
+  lost negation is flagged; a failing rewrite falls back to the local cleanup.
+- **English-only rule:** agents never receive the Arabic text — mostly-Arabic text
+  is refused on every send path.
+- **Five CLI agents** in live embedded terminals: Gemini CLI, Claude Code,
+  OpenAI Codex, Devin, Hermes. Sessions keep context across turns.
+- **Per-agent project folder** with a check → optional trust → start sequence;
+  no agent ever runs on an unchecked folder.
+- **IN / OUT transcript** per turn, with the reply translated back.
+- **Local bridge** bound to `127.0.0.1` with a session token and a fixed agent
+  allowlist — see [SECURITY.md](SECURITY.md).
+
+## Quick start
+
+Requires **Node.js 22.12+** and at least one CLI agent installed and logged in.
 
 ```bash
+git clone <this-repo>
+cd TOSO
 npm install
 npm run dev:all
 ```
 
-ثم افتح `http://localhost:3000` (يفتحه `dev:all` تلقائياً).
+`dev:all` starts the app (`http://localhost:3000`) and the local agent bridge
+together, pairs them automatically and opens your browser. Then:
 
-> **أول مرة؟** الدليل الكامل بالتسلسل — التثبيت، تسجيل دخول الوكلاء، الإعدادات الأولية، خطوات ①–④ لكل وكيل، وحل المشكلات — في [`Docs/setup-and-usage.md`](Docs/setup-and-usage.md).
+1. **Settings →** paste your free [Google AI Studio](https://aistudio.google.com/) key.
+2. **Agent tab →** enter your project folder → ① Check → ④ Start session.
+3. Write your prompt → **Run analysis** → send the English card to your agent.
 
-### كل الأوامر
+Step-by-step guide (Arabic): [Docs/setup-and-usage.md](Docs/setup-and-usage.md).
 
-| الأمر                                   | الوظيفة                                                                                                                              |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `npm run dev:all`                       | **الطريقة الموصى بها**: `next dev` + جسر الوكلاء `toso-bridge` معاً بأمر واحد، مع فتح المتصفح تلقائياً. `Ctrl+C` يوقف الاثنين.       |
-| `npm run dev`                           | التطبيق فقط (`next dev`) بدون الجسر — زر «إلى الوكيل» لن يعمل.                                                                       |
-| `npm run bridge`                        | الجسر وحده (`node bin/toso-bridge.mjs`) على المنفذ `8676` — مفيد إذا كان التطبيق يعمل مسبقاً.                                        |
-| `npm test`                              | اختبارات Vitest.                                                                                                                     |
-| `npm run lint`                          | ESLint على كامل المشروع.                                                                                                             |
-| `npx tsc --noEmit`                      | فحص أنواع TypeScript.                                                                                                                |
-| `npm run build`                         | بناء الإنتاج — أضِفه لفحوصك بعد تغييرات المسارات أو الخدمة.                                                                          |
-| `npm start`                             | تشغيل نسخة الإنتاج بعد `build`.                                                                                                      |
-| `node scripts/compare-instructions.mjs` | مقارنة مدفوعة لتعليمات Gemini (A/B) عبر Agent Platform — يقرأ `AGENT_PLATFORM_API_KEY` من `.env.local`، ويكتب التقرير في `outputs/`. |
+## Free tier: know the conditions
 
-للتحقق من نسخة الإنتاج:
+- `gemini-3.8-flash` (default) and `gemini-3.5-flash-lite` are free of charge on
+  the Gemini free tier; `gemini-3.1-pro-preview` is not.
+- **Privacy:** on the free tier Google states content may be _used to improve its
+  products_; on the paid tier it is not. Keep confidential code out of prompts on
+  the free tier.
+- Free-tier [rate limits](https://ai.google.dev/gemini-api/docs/rate-limits) apply.
+- The free path is **your own AI Studio key**. The optional server key uses
+  Google's billed Agent Platform.
 
-```bash
-npm run build
-npm start
-```
+## Status and limits
 
-## المتغيرات البيئية (`.env.local`)
+TOSO is a working prototype and the author's first open-source project.
 
-| المتغير                  | الاستخدام                                                                                                                                                                                                                  |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AGENT_PLATFORM_API_KEY` | مفتاح Agent Platform Express mode الافتراضي على الخادم للتحسين (`generateContent`) والقياس الحقيقي (`countTokens`). بدونه — وبدون مفتاح مستخدم — يسقط التطبيق إلى الوضع المحلي: العربية تعمل، والترجمة الإنجليزية لا تتاح. |
+- Input today is **Arabic** (English input passes through); the interface is Arabic.
+- Savings are measured on **Gemini's tokenizer**; your agent's tokenizer differs.
+- Reply capture reads each agent's terminal screen; a new agent UI may need a new
+  rule. Long replies from full-screen agents can be truncated.
+- Translation can lose nuance — the guards catch visible losses, not every shift
+  in meaning.
 
-> مفتاح الخادم يُقرأ فقط في Route Handlers ولا يصل للمتصفح أبدًا. مفتاح المستخدم (BYOK) يسكن في متصفحه هو — انظر القسم التالي.
+## Roadmap
 
-### BYOK — «أحضر مفتاحك»
+- Five languages for both input and interface: **Arabic, English, Chinese, Russian,
+  Hindi** — chosen because their token tax is measurable and varies widely.
+- A larger, reproducible multi-language benchmark using TOSO's measurement path.
 
-يمكن للمستخدم إدخال مفتاح Gemini الخاص به من نافذة الإعدادات (أنشئه مجاناً من `aistudio.google.com`):
+## Documentation
 
-- يُحفظ في `localStorage` بجهازه (`toso.userGeminiKey`) ويُرسل كترويسة `x-user-gemini-key` مع كل طلب إلى `/api/optimize` و`/api/tokens/count` — لا يُخزَّن ولا يُسجَّل في الخادم.
-- **مصدر المفتاح يحدد المضيف** (مُتحقق منه حياً — كل مضيف يرفض مفاتيح الآخر بـ403): مفتاح المستخدم ← `generativelanguage.googleapis.com` (AI Studio) بعقد `responseMimeType`+`responseSchema`؛ مفتاح الخادم ← `aiplatform.googleapis.com` (Agent Platform) بعقد `responseFormat`.
-- الأولوية: مفتاح المستخدم ثم مفتاح الخادم ثم السقوط المحلي. فشل مفتاح المستخدم لا يسقط على مفتاح الخادم أبداً — بل يُبلَّغ بأسباب `user_key_quota` / `user_key_invalid` / `user_key_*` لتقول الواجهة «مفتاحك» بصدق، ويظهر في الرد الناجح `viaUserKey: true`.
-- حدود النموذج الأولي: على localhost تُرسل الترويسة عبر HTTP صريح على الجهاز نفسه (مقبول محلياً؛ النشر العام يتطلب HTTPS)، و`localStorage` قابل للقراءة من أي سكربت على الصفحة.
+| Document                                           | Contents                                                                |
+| -------------------------------------------------- | ----------------------------------------------------------------------- |
+| [Docs/RESEARCH.md](Docs/RESEARCH.md)               | Every claim with its source, evidence level, and what we do not claim   |
+| [Docs/setup-and-usage.md](Docs/setup-and-usage.md) | Install, run, first settings, per-agent steps, troubleshooting (Arabic) |
+| [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md)       | Technical reference: pipeline, API routes, bridge, guards (Arabic)      |
+| [SECURITY.md](SECURITY.md)                         | Key handling and the local bridge threat model                          |
 
-## دورة وكيل CLI (الجسر المحلي)
+## License
 
-المتصفح لا يستطيع الكتابة في طرفية محلية — لذا يوفر `bin/toso-bridge.mjs` جسراً صغيراً يسدّ الفجوة (اعتماديته الوحيدة `node-pty` اختيارية، للطرفيات المدمجة):
-
-```bash
-npm run dev:all     # التطبيق والجسر معاً بأمر واحد
-# أو الجسر وحده:    npm run bridge
-```
-
-**الإقران تلقائي**: الجسر يكتب ملف جلسة عند تشغيله، و`/api/bridge/session` يتحقق منه حياً ويقدّمه للواجهة — لا نسخ للتوكن أبداً. (الإدخال اليدوي في الإعدادات يبقى متاحاً ويتقدّم على التلقائي.) وفي قسم «جسر وكيل CLI» تظهر القيم المكتشفة placeholder رمادياً في الحقلين (التوكن مُقنّع `••••`)، وزر «ما الجسر؟» يشرح الحقلين بإيجاز — القاعدة: كلما كان الجسر على جهازك بالإعدادات الافتراضية لا تلمس الحقلين، وكلما خرج عن الافتراضي تكتبهما بنفسك.
-
-الدورة الكاملة: تكتب البرومبت وتحلّله ← تختار تبويب الوكيل وتحدد مجلد مشروعه ← زر الوكيل على بطاقة المخرجات يكتب النص في **طرفيته المدمجة الحيّة** (الجلسة تبقى وتتذكر السياق) ← يُستخرج الرد من الشاشة ويظهر في تبويب OUT بجانب ترجمته العربية. إن لم تتوفر الطرفيات المدمجة يسقط الجسر إلى تشغيل **headless** أحادي (`gemini -p` / `devin -p --prompt-file` / `hermes --oneshot` / `claude -p` / `codex exec`).
-
-### متطلبات الوكلاء — لأي مستخدم
-
-**طريقة التثبيت لا تهم** (npm، مثبّت رسمي، winget…) بشرط واحد: **أن يكون أمر الوكيل في `PATH`**. الجسر يبحث عنه بالاسم (`gemini`، `claude`، `codex`، `devin`، `hermes`) ويشغّل shims npm (`.cmd`/`.ps1`) والملفات التنفيذية الأصلية (`.exe`) بالطريقة نفسها. ثبّت بالطريقة التي يوصي بها صاحب كل وكيل:
-
-| الوكيل      | التثبيت الموصى به اليوم                                                                                                                        | المصادقة                                                                                          |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Gemini CLI  | `npm i -g @google/gemini-cli`                                                                                                                  | **مفتاح API** (`gemini-api-key`) — تسجيل الدخول بحساب Google الشخصي لم يعد مدعوماً منذ يونيو 2026 |
-| Claude Code | المثبّت الرسمي: `irm https://claude.ai/install.ps1 \| iex` (أو `winget install Anthropic.ClaudeCode`) — **تثبيت npm أصبح مهملاً (deprecated)** | `claude` ثم تسجيل الدخول                                                                          |
-| Codex       | `npm i -g @openai/codex`                                                                                                                       | `codex login`                                                                                     |
-| Devin       | مثبّته الرسمي                                                                                                                                  | `devin auth login`                                                                                |
-| Hermes      | مثبّته الرسمي                                                                                                                                  | إعداد مزوّد النموذج                                                                               |
-
-ملاحظات عملية:
-
-- **أعد تشغيل الجسر بعد تثبيت وكيل جديد**: الجسر يأخذ نسخة من `PATH` لحظة تشغيله، فالوكيل المثبّت بعده لا يراه حتى تعيد `npm run dev:all`.
-- **المرة الأولى في كل مجلد**: بعض الوكلاء يسألون «هل تثق بهذا المجلد؟» أو أسئلة إعداد. أجب عليها **داخل الطرفية المدمجة** — TOSO لا يكتب برومبتاً فوق سؤال مفتوح ويطلب منك الإجابة أولاً.
-- وكيل مثبّت خارج `PATH`؟ `TOSO_AGENT_CMD_<ID>` يحدد مساره (مثل `TOSO_AGENT_CMD_CLAUDE`).
-- **npm 12** يمنع سكربتات التثبيت افتراضياً: `node-pty` يعمل مع ذلك على Windows وmacOS (ملفاته الجاهزة مضمّنة في الحزمة)؛ على Linux لا توجد ملفات جاهزة فيلزم `npm install-scripts approve node-pty` مع أدوات البناء، وإلا تسقط الواجهة صادقةً إلى التشغيل الأحادي.
-
-البرومبت في التشغيل الأحادي يصل للوكيل بإحدى ثلاث طرق حسب عقده الموثق: stdin، أو argv (بحارسة حد سطر الأوامر ~32K)، أو ملف مؤقت (`{file}` — مثل `--prompt-file` في Devin).
-
-- **الأمان**: يعمل على `127.0.0.1` فقط، وكل طلب يتطلب ترويسة `x-toso-token`، وقائمة الوكلاء ثابتة (لا أوامر عشوائية)، والبرومبت يمر عبر stdin بلا shell. التفاصيل في `SECURITY.md`.
-- **توسعة الوكلاء**: `TOSO_AGENTS_FILE` يشير إلى ملف JSON يضيف محوّلات جديدة، و`TOSO_AGENT_CMD_<ID>` يستبدل مسار ثنائي الوكيل.
-- **سقوط صادق**: إن لم يعمل الجسر يعرض الزر رسالة واضحة وزراً ينسخ أمر التشغيل الجاهز للصقه في الطرفية يدوياً — لا محاكاة.
-- **جسر على جهاز آخر (توسعة `host` لم تُنفَّذ بعد)**: اليوم `server.listen(PORT, "127.0.0.1")` في `bin/toso-bridge.mjs` مقصود أمنياً — لا سبيل للوصول إليه عبر الشبكة. لو احتجت لاحقاً جسراً على جهاز آخر (واجهة على محمول، وكلاء على جهاز مكتبي): أضف `const HOST = process.env.TOSO_BRIDGE_HOST ?? "127.0.0.1"` ومرّره مكان النص الصريح في `server.listen(PORT, HOST, ...)`، ثم شغّل الجسر بـ`TOSO_BRIDGE_HOST=0.0.0.0` على الجهاز الآخر واكتب `http://<IP>:8676` والتوكن يدوياً في الإعدادات. **تحذير**: `0.0.0.0` يكشف تشغيل الوكيل لكل من يعرف التوكن على الشبكة — البديل الأأمن نفق SSH (`ssh -L 8676:127.0.0.1:8676 user@host`) يبقي الربط كما هو ويجعل الجسر البعيد محلياً بالنسبة للواجهة.
-
-## ما يتضمنه النموذج
-
-- مدخل prompt عربي وزر تحليل، ثم شجرة معالجة ثابتة يمشي عليها ضوء مع كل مرحلة: تحليل الـTokens، الفهم وإعادة الصياغة عبر Gemini، حاويتا مخرجات (عربية منقّحة + إنجليزية مترجمة) بزر نسخ، وشريط تحليل التكلفة.
-- نافذة إعدادات لاختيار نموذج Gemini وإدخال مفتاح BYOK حقيقي (يُحفظ في متصفح المستخدم ويُرسل كترويسة لكل طلب — التفاصيل في قسم BYOK أدناه).
-- ضوء متنقّل على هيكل الشجرة يعكس تقدمًا حقيقيًا (أحداث من طبقة الخدمة، لا مؤقتات وهمية).
-- نماذج Gemini الأربعة المدعومة فعلياً، مع تكلفة إدخال تقديرية — لا مزوّدون وهميون في الواجهة.
-- شريط **نسبة العربية** في مرحلة القياس، ووسم `% عربي` في كل حاوية مخرجات — الإنجليزية تعرض 0% كدليل بصري على الترجمة.
-- **تنقية عربية حتمية** قبل استدعاء Gemini: إزالة التشكيل الزائد والتطويل والمسافات المكررة والحشو الافتتاحي من النثر، مع إبقاء مقاطع JSON المتداخلة والكود المسيّج/المضمّن والمقتبسات والروابط حرفيًا دون تعديل. المدخل المهيكل الخالص يبقى كما هو؛ لا يضيف هذا المرور استدعاء API.
-- **حارس الكيانات**: يقارن الأرقام والتواريخ والنسب والروابط والمتغيرات (`{x}`) والمعرّفات بين الأصل والمخرج. إذا فقد مخرج Gemini كيانًا، يُعرض بدلًا منه ناتج التنقية المحلية وتُحجب الترجمة بصراحة — الفحص يثبت حفظ الكيانات الظاهرة فقط، وليس المعنى كله.
-- **فحص الجودة الظاهرة**: يتحقق أن المخرج العربي عربي فعلاً، وأن أدوات النفي في المدخل لم تسقط، ويعرض نسبة تغطية كلمات المحتوى تقريباً — تحذيرات في الواجهة لا حكم على المعنى.
-- **صدقية القياس والتكلفة**: تُحسب التكلفة على النموذج الذي خدم الرد فعلاً بعد سقوط النماذج، وتُخفى نسبة التوفير عند اختلاف مصدر عدّ التوكنز (provider مقابل تقدير محلي)، وتعرض ملاحظة الوضع المحلي سبب السقوط الحقيقي (حصة/شبكة/رد غير صالح) لا «بدون مفتاح» دائماً.
-- **صون أسلوب العربية المحلية**: تُوجّه تعليمات Gemini النموذج إلى اتباع أسلوب المستخدم كما يظهر من النص نفسه دون تصنيف مسبق للهجة أو فرض فصحى؛ كاشف اللهجة المحلي القديم لم يعد موصولاً بمسار التشغيل.
-- بطاقتا نتائج بعد التحسين: **تفصيل التوفير** (الأصل → المنقّح محليًا → العربية النهائية، مع رفض المقارنة إذا اختلف مصدر العد) و**فحص الكيانات** لكل مخرج. تعرض الأولى معاينة قابلة للفتح للنص بعد التنقية المحلية دون شارة تخمّن اللهجة؛ وتظهر ملاحظة Gemini العربية في مرحلة المعالجة. بطاقة منفصلة تعرض `usage` الحقيقي لاستدعاء تحسين Gemini عند توفره، بعيدًا عن تقدير تكلفة استخدام البرومبت الناتج لاحقًا.
-- **خريطة حرارية محلية** بعد المخرجات: معاينة متجاوبة للأصل والعربية والإنجليزية عند توفرها، مع مفتاح ألوان وثلاثة مقاطع أثقل تقديراً في كل نسخة. الألوان والتقديرات المحلية لكل مقطع لا تمثل تفكيك Gemini الفعلي ولا تُجمع لتطابق عدّ البرومبت الرسمي.
-- اختبارات Vitest للدوال النقية ومسارات الـ API والواجهة (`npm test`): التنقية وتجزئة المقاطع، حارس الكيانات، ثبات تعليمات Gemini دون تلميح لهجة ووجود `note`، قياس countTokens وسقوط المفتاح، نقل `usage` الحقيقي مع التحقق من بياناته، الـheuristic والـBPE والخريطة الحرارية، حساب التكلفة، الـregistry، محلّل رد النموذج، وبطاقات التقرير. اختبارات كاشف اللهجة القديم باقية مرجعاً فقط؛ الكاشف غير مستخدم تشغيلياً.
-- تفاصيل إتاحة: `id`/`name` لكل حقول النماذج، `dir="ltr"` لحاوية الإنجليزية، وأيقونة `app/icon.svg`.
-
-## المعمارية
-
-```text
-components/                    واجهة المستخدم وحالة الجلسة فقط
-lib/services/optimization-service.ts
-  ├─ lib/token-engine/         عداد Tokens قابل للاستبدال (provider → BPE → heuristic)
-  ├─ lib/optimizer/            تنقية حتمية + حارس كيانات + مهايئ Gemini وسقوط Mock
-  ├─ lib/providers/            registry لمزوّدي النماذج وخصائص التكلفة
-  └─ lib/cost-engine/          حساب تكلفة الإدخال
-lib/services/agent-service.ts  عميل الجسر: صحّة، إرسال، استطلاع الوظيفة، ترجمة النتيجة
-lib/bridge/agents.ts           سجل الوكلاء في الواجهة + بناء أمر السقوط الجاهز
-lib/server/gemini.ts           مناداة Gemini المشتركة بين مساري API (مضيف + سلسلة نماذج)
-app/api/optimize/route.ts        نقطة التحسين الوحيدة التي تلمس مفتاح Agent Platform
-app/api/translate/route.ts       ترجمة مخرجات الوكيل الإنجليزية إلى العربية
-app/api/clean/route.ts           pass ثانية اختيارية (إعدادات): Gemini يوصل الأسطر المكسورة بعرض الطرفية
-app/api/tokens/count/route.ts    نقطة قياس الـTokens الوحيدة (countTokens)
-app/api/models/check/route.ts    فحص إتاحة النماذج حياً لكل مفتاح عبر countTokens المجاني
-app/api/bridge/session/route.ts  اكتشاف جلسة الجسر تلقائياً وتقديم {url, token} للواجهة
-bin/toso-bridge.mjs              الجسر المحلي: تشغيل CLI agents headless والتقاط النتيجة
-lib/mcp/contract.ts            عقد TypeScript لواجهة MCP المستقبلية
-```
-
-## مسار التحسين (`POST /api/optimize`)
-
-الطلب: `{ text, model? }` — والرد أحد شكلين:
-
-```jsonc
-// نجاح:
-{ "arabic": "…", "english": "…", "note": "…", "model": "gemini-3.5-flash", "fallback": false, "usage": { "total_input_tokens": 80, "total_output_tokens": 25, "total_thought_tokens": 12, "total_tokens": 117 } }
-// سقوط (دائمًا HTTP 200 حتى يتدبّر العميل أمره محليًا):
-{ "fallback": true, "reason": "no_api_key" | "http_429" | "bad_model_output" | … }
-```
-
-- الاستدعاء عبر **Vertex AI Agent Platform Express mode** (`POST /v1/publishers/google/models/{model}:generateContent?key=...`). الرد يُقرأ من `candidates[0].content.parts[].text`، وتُحوّل حقول `usageMetadata` إلى `usage` بعد التحقق من أنها أعداد صحيحة غير سالبة. كل حقل اختياري، و`usage: null` إذا لم يُرجع Gemini بيانات صالحة؛ لا نعوّض الحقول المفقودة بأصفار ولا نضيف طلب API. يلزم مفتاح Express mode؛ مفتاح AI Studio القديم لا يوجّه الطلبات إلى Agent Platform.
-- **تعليمات النظام (`systemInstruction`)** ثابتة ومنفصلة عن نص المستخدم في `contents`: الأولوية لحفظ المهمة والنفي والشروط والاستثناءات والشكل المطلوب قبل الاختصار، وعدم اختراع تفاصيل. لغة المخرجات ثابتة مهما كانت لغة المدخل (`arabic` عربية دائماً بأسلوب المستخدم وصوته مع إبقاء كلمات اللهجة كما وردت، `english` إنجليزية دائماً، `note` عربية دائماً) — مدخل غير عربي يُنقل مقصوده إلى العربية بأمانة. البرومبت الناتج لا يتجاوز طول المدخل ما أمكن دون إخلال بالدقة. تُطلب مراجعة داخلية في الاستدعاء نفسه دون ادعاء أنها فحص مستقل. يفرض `generationConfig.responseFormat` مخطط JSON للحقول الثلاثة؛ فحص الكيانات المحلي يبقى بعد الرد لأنه لا يكفي الوثوق بتعليمات النموذج وحدها.
-- `generationConfig.thinkingConfig.thinkingLevel: "LOW"` يحدّ التفكير لأن إعادة الصياغة ليست استدلالًا عميقًا. واجهة `generateContent` لا تعرض خيار Interactions `store: false`؛ تنطبق سياسة بيانات Agent Platform ومراقبة إساءة الاستخدام على الطلب. قد تُسجّل Google مطالبات مشتبهًا بها لمراجعة إساءة الاستخدام لمدة تصل إلى 90 يومًا، ولا تستخدم هذه السجلات لتدريب النماذج ([التفاصيل](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/abuse-monitoring)).
-- **سلسلة سقوط بين النماذج**: يجرّب النموذج المطلوب ثم بقية نماذج Gemini بالترتيب (`3.8-flash → 3.5-flash → 3.5-flash-lite → 3.1-pro-preview`); عند `429` ينتقل للتالي، و`5xx` يعيد المحاولة مرتين قبل الانتقال، وكل محاولة مربوطة بمهلة 15 ثانية. مفتاح العملية واحد لكل طلب — مفتاح المستخدم إن وُجد وإلا مفتاح الخادم؛ لا مفاتيح احتياطية ولا مزج بين المضيفين. حقل `model` يوضّح النموذج الفعلي الذي خدم الرد، و`viaUserKey` يوضّح أي مفتاح دفع التكلفة.
-
-## الطبقات الحتمية قبل/بعد النموذج
-
-في `lib/services/optimization-service.ts` تحمي ثلاث طبقات محلية حتمية النص قبل الاستدعاء وبعده (دوال نقية، دون استدعاء شبكة إضافي):
-
-1. **`arabic-normalizer.ts`** — يقسّم النص محافظًا إلى نثر قابل للتنقية ومقاطع محمية (JSON/أقواس متداخلة، كود داخل backticks أو سياج Markdown، **سطور كود حرّ تبدأ بكلمة مفتاحية معروفة**، روابط، مقتبسات). يُنقّى النثر المحيط فقط؛ وإذا كان المقطع المهيكل غير مغلق تُحمى بقية النص. إذا فشلت النتيجة في فحص الكيانات يُرسَل النص الأصلي بدلًا منها.
-2. **`entity-guard.ts`** — يقارن كل مخرج بالأصل: أرقام/تواريخ/نسب (موحَّدة الأرقام العربية والفارسية)، روابط، متغيرات `{x}`، معرّفات `snake_case`، ومقتبسات. مخرج Gemini الذي يفقد كيانًا يُستبدل بناتج التنقية المحلية، ويُسجَّل `rejectedByGuard` و`entityChecks` في `OptimizationReport` لتعرضهما الواجهة.
-3. **`quality-guard.ts`** — فحوص ظاهرة بعد رد النموذج: وجود حروف عربية في `arabic` ولاتينية في `english`، بقاء أدوات النفي، ونسبة تغطية كلمات المحتوى. خرق لغة `arabic` رفض صارم (يُستبدل بالتنقية المحلية)؛ خرق لغة `english` والنفي والتغطية تحذيرات في `report.quality` تعرضها الواجهة — مؤشرات لا إثبات معنى.
-
-قياس النص المنقّح يعمل بالتوازي مع استدعاء Gemini، وتُعاد استخدام نتيجة القياس إذا تطابق النص (`normalized === original` أو المخرج النهائي مطابق لأي منهما) — لا توجد نداءات عدّ مكررة. يحتفظ التقرير بـ `originalPrompt` كما كان وقت التشغيل، بحيث لا تتغير خريطة الأصل إذا حرّر المستخدم حقل الإدخال بعد التحليل.
-
-`OptimizationReport.optimizationUsage` يحفظ الاستهلاك الفعلي **لاستدعاء التحسين الناجح الذي أعاد النص** (مدخلات تشمل تعليمات النظام، مخرجات، تفكير، إجمالي، وحقل التخزين المؤقت/الأدوات إذا توفرا). يبقى ظاهرًا حتى لو رفض حارس الكيانات مخرج النموذج بعد الاستدعاء؛ ويكون `null` عند fallback محلي أو غياب حقول صالحة. لا يشمل هذا الرقم `countTokens` أو المحاولات الأخرى، ولا يُستخدم تلقائيًا لاحتساب فاتورة أو مقارنة تكلفة استخدام البرومبت الناتج مستقبلًا.
-
-خريطة الثقل تستعمل `countViaBpe` محليًا لتقدير كل مقطع مفصول بفراغ دون أي طلب شبكة إضافي؛ مبنية على طول المقطع ونوع حروفه، **وليست tokenizer فعلياً ولا يجوز جمع تقديرات المقاطع ومقارنتها بإجمالي Gemini**. تقتصر المعاينة على أول 120 مقطع أو 2000 حرف، وتعرض تنبيهاً عند الاقتطاع. المقاطع والمسافات تظهر بصيغتها الأصلية، والإنجليزية تُحجب بصدق إذا لم تتوفر.
-
-## ملاحظات تشغيلية (تجربة فعلية)
-
-- نماذج Gemini الحديثة **نماذج thinking**: تضبط واجهة Agent Platform مستوى التفكير عبر `generationConfig.thinkingConfig.thinkingLevel: "LOW"`. تُنقل بيانات الاستخدام من `usageMetadata` في رد `generateContent`، ولا تعتمد الواجهة على تقديرها.
-- **متغير بيئة نظام قديم يحجب `.env.local`:** Next.js لا يتجاوز `process.env` الموجود — مفتاح قديم على نطاق المستخدم في Windows أعاد `http_403` من كل النماذج وسقط التطبيق محلياً رغم صحة مفتاح الملف. العلامة: سقوط جماعي بـ403 مع نجاح الطلب المباشر بمفتاح الملف. الحل: حذف المتغير من نطاق المستخدم أو `Remove-Item Env:AGENT_PLATFORM_API_KEY` في جلسة الطرفية قبل `npm run dev`.
-- **عقد Agent Platform تحقق حياً**: `generateContent` قبل `systemInstruction` و`generationConfig.responseFormat` و`thinkingConfig` وأعاد JSON مهيكلاً بـ`arabic`/`english`/`note`، و`usageMetadata` رُبطت إلى `usage` (عينة فعلية: مدخلات 638، مخرجات 85، إجمالي 723)، و`countTokens` أعاد عددًا حقيقيًا، وسلسلة سقوط النماذج عملت حيًا (`3.8-flash` تعذّر فخدم `3.5-flash-lite` مع تقرير `model` الصادق). العينات الأقدم المسجلة من استدعاء Interactions قبل النقل ولا تمثل صيغة الرد الحالية؛ في المسار الحالي تأتي الحقول من `usageMetadata` مثل `promptTokenCount` و`candidatesTokenCount` و`thoughtsTokenCount` و`totalTokenCount`.
-- **المقارنة المدفوعة للتعليمات اكتملت بجولتين** (`Docs/reports/instruction-compare.md` و`instruction-compare-v3.md`، تقارير تاريخية من Interactions؛ سكربت `scripts/compare-instructions.mjs` يعمل الآن عبر Agent Platform ويستخدم مساحة كاش منفصلة): الجولة 1 قارنت الإنجليزية القديمة + تلميح لهجة مُعاد بناؤه بالعربية v2 — v2 حفظت الكيانات 3/3 (v1 غيّر شكل تاريخ ونسبة) لكنها أطالت المخرجات العربية في حالتين. الجولة 2 قارنت v2 بالنسخة الحالية v3 (إبقاء كلمات اللهجة حرفياً + قاعدة «لا يتجاوز طول الأصل») — **v3 أصلحت الإطالة** (العربية ≤ المدخل أو قريباً) مع بقاء سلامة الكيانات؛ لم تُعِد كلمات اللهجة الإطارية («أبي»/«عايز») لكن حذفها يُعد صحيحاً عملياً لأنه إطار طلب لا محتوى. مقياس العدالة المعتمد: countTokens على نص المدخل والنصوص المخرجة فقط؛ usage الاستدعاء (يشمل التعليمات) رقم تشغيلي منفصل. قيود: عينة واحدة لكل خلية، والتلميح القديم مُعاد بناؤه. لاحقاً وعلى النموذج الافتراضي `gemini-3.8-flash` حيّاً أبقت v3 كلمات اللهجة نفسها («أبي... بدون ما تذكر») — فانحراف الفصحى كان محدودية النموذج الصغير لا خلل التعليمة — كما أن قاعدة اللغة الثابتة أنتجت `arabic` عربياً من مدخل إنجليزي.
-- تخضع حدود الاستخدام لنوع مفتاح Agent Platform وقيود Express mode المنشورة؛ عند فشل النموذج أو استنزاف المحاولات يرجع الـroute `fallback` وتعمل الواجهة بالتنقية المحلية بصدق. عند رد `no_api_key` يثبّت العميل مزلاجًا جلسيًا (`providerUnavailable` في `lib/token-engine/token-engine.ts`) يتخطى طلبات العد اللاحقة في الجلسة نفسها.
-- يستخدم `/api/optimize` `generateContent`، ويستخدم `/api/tokens/count` واجهة Agent Platform `countTokens`.
-- `countTokens` يعيد نفس العدد لكل نماذج Gemini (tokenizer مشترك) — انظر `Docs/reports/token-benchmark.md`.
-
-## إعدادات Devin (`.devin/`)
-
-> كل محتوى `.devin/` مستبعد بـ`.gitignore` — بيئة الوكيل المحلية على جهاز المطوّر ولا تُستنسخ مع المستودع؛ مُوثَّقة هنا لأن `AGENTS.md` يشير إليها.
-
-- `skills/gemini-api-dev/` — مهارة تطوير Gemini API (Agent Platform وInteractions API، النماذج الحالية، SDK `@google/genai`، مرجع الترحيل) منقولة من مشروع JrsAlsoq_v2 — المصدر لأي عمل مستقبلي على Gemini هنا.
-- `skills/vercel-react-best-practices/` — مهارة أفضل ممارسات React و Next.js من Vercel Engineering لتحسين الأداء وتجنب شلالات الشبكة.
-- `config.local.json` — صلاحيات أوامر exec للوكيل (npm/npx/git/curl).
-
-## الانتقال إلى الإنتاج وMCP
-
-> البنود المشطوبة أدناه تصف ما أُنجز في النموذج الأولي، لا جاهزية إنتاجية. تبقى **بنود الإطلاق والإنتاج** (المصادقة والحدود والتسعير والفوترة والتدقيق ونشر MCP للعامة) توثيقية فقط حتى اكتمال المشروع وطلب الانتقال للإنتاج صراحةً.
-
-1. ~~أنشئ Route Handler على الخادم~~ — `app/api/optimize/route.ts` يعمل الآن عبر Gemini مع سقوط إلى mock.
-2. ~~استبدل tokenizer الوهمي بعدّاد حقيقي~~ — `/api/tokens/count` يقيس عبر `countTokens` الرسمي؛ يتبقى مهايئات tokenizer لمزوّدين غير Google.
-3. ~~استبدل `mock-optimizer.ts` بمهايئ LLM وحسّن تعليماته وقارنها مدفوعاً~~ — `llm-optimizer.ts` يستدعي `/api/optimize` بتعليمات v3 (تحفظ الأولويات والكيانات، تُبقي كلمات اللهجة و`note`، وتسقف طول المخرج بالأصل)، ويحرسه `entity-guard.ts` للكيانات الظاهرة؛ جولتا المقارنة في `Docs/reports/instruction-compare*.md`؛ **يتبقى** فحص المعنى والجودة الدلالية وحالة محتوى-باللهجة وإعادة على النموذج الافتراضي `gemini-3.8-flash`.
-4. ~~تنقية حتمية وخريطة حرارية محلية واستخراج `usage`~~ — التنقية وتقسيم المقاطع المحمية والتقدير الحراري يعملان، وتظهر `usage` الفعلية عند توفرها؛ **يتبقى** توسيع تصنيف المقاطع للكود الحرّ والصيغ غير المغطاة وفحص الجودة الدلالية.
-5. عرّض `runOptimization` من خلال أداة MCP باسم `optimize_arabic_prompt` وفق العقد في `lib/mcp/contract.ts`.
-6. عند طلب الانتقال للإنتاج فقط: أضف المصادقة وحدود الاستخدام وسجل التدقيق، ثم تحقق من التسعير والفوترة على بيانات usage الفعلية قبل تشغيل خدمة مدفوعة.
-
-> أسعار النماذج الحالية أمثلة واجهة فقط وليست مصدرًا للفوترة أو التسعير الرسمي.
+[MIT](LICENSE) © 2026 khaledaalharbi and TOSO contributors.
