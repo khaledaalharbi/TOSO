@@ -341,9 +341,9 @@ function AgentBlock({ compact = false }: { compact?: boolean }) {
 
 /* ---- Shared detail containers ------------------------------------------- */
 
-function StationResults() {
+function StationResults({ stacked = false }: { stacked?: boolean }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className={`grid gap-3 ${stacked ? "" : "sm:grid-cols-2"}`}>
       <Box
         name="ST-01 قياس الأصل"
         zone="detail"
@@ -596,8 +596,57 @@ function DesignConversation() {
 
 const DRAWER = ["نتائج المحطات", "التحليل", "التكلفة", "ملاحظات"] as const;
 
-function DesignDualDesk() {
+/**
+ * The tabbed details drawer. `rail` = the narrow sticky side column on very
+ * wide screens: same tabs, contents stacked to fit the width.
+ */
+function DetailsDrawer({ rail = false }: { rail?: boolean }) {
   const [tab, setTab] = useState<(typeof DRAWER)[number]>("التحليل");
+  return (
+    <section className="border border-dashed border-slate-400 bg-slate-50/80">
+      <div
+        role="tablist"
+        className="flex flex-wrap gap-1 border-b border-dashed border-slate-400 p-2"
+      >
+        <span className="me-2 self-center bg-slate-200 px-2 py-0.5 text-xs font-bold text-slate-700">
+          {rail ? "شريط التفاصيل الجانبي" : "درج التفاصيل"}
+        </span>
+        {DRAWER.map((d) => (
+          <button
+            key={d}
+            role="tab"
+            type="button"
+            aria-selected={tab === d}
+            onClick={() => setTab(d)}
+            className={`border px-3 py-1 text-xs font-bold outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
+              tab === d
+                ? "border-ink bg-ink text-white"
+                : "border-slate-300 bg-white text-slate-600"
+            }`}
+          >
+            {d}
+          </button>
+        ))}
+      </div>
+      <div className="space-y-3 p-3">
+        {tab === "نتائج المحطات" ? <StationResults stacked={rail} /> : null}
+        {tab === "التحليل" ? (
+          <>
+            <Heatmap />
+            <div className={`grid gap-3 ${rail ? "" : "md:grid-cols-2"}`}>
+              <Savings />
+              <Usage />
+            </div>
+          </>
+        ) : null}
+        {tab === "التكلفة" ? <Cost /> : null}
+        {tab === "ملاحظات" ? <Footer /> : null}
+      </div>
+    </section>
+  );
+}
+
+function DesignDualDesk() {
   return (
     <>
       <Header thin />
@@ -618,46 +667,196 @@ function DesignDualDesk() {
         <AgentBlock compact />
       </div>
       <ZoneLabel zone="detail" />
-      <section className="border border-dashed border-slate-400 bg-slate-50/80">
-        <div
-          role="tablist"
-          className="flex flex-wrap gap-1 border-b border-dashed border-slate-400 p-2"
-        >
-          <span className="me-2 self-center bg-slate-200 px-2 py-0.5 text-xs font-bold text-slate-700">
-            درج التفاصيل
+      <DetailsDrawer />
+    </>
+  );
+}
+
+/** Zone heading used INSIDE a wide-layout column (not a full-width divider). */
+function ColumnZone({ zone }: { zone: Zone }) {
+  return (
+    <div
+      className={`mb-2 flex items-center gap-2 text-xs font-black ${
+        zone === "work" ? "text-ink" : "text-slate-500"
+      }`}
+    >
+      {zone === "work" ? "منطقة العمل" : "منطقة التعليمات والتفاصيل"}
+      <span
+        className={`h-px flex-1 ${zone === "work" ? "bg-ink" : "border-t border-dashed border-slate-400"}`}
+      />
+    </div>
+  );
+}
+
+/** Sticky only where the column really sits beside the work (≥1600px). */
+const RAIL =
+  "min-[1600px]:sticky min-[1600px]:top-20 min-[1600px]:max-h-[calc(100vh-6rem)] min-[1600px]:overflow-y-auto";
+
+/* ---- Design 4 — Dual desk, widened ------------------------------------- */
+
+function DesignDualDeskWide() {
+  return (
+    <>
+      <Header thin />
+      <div className="mt-5 grid items-start gap-4 xl:grid-cols-[5fr_7fr] min-[1600px]:grid-cols-[4fr_6fr_3.5fr]">
+        <div className="space-y-3">
+          <ColumnZone zone="work" />
+          <PromptInput rows={4} />
+          <PipelineTrack />
+          <OutputCard lang="en" />
+          <Collapsible
+            name="بطاقة لغة المستخدم"
+            zone="work"
+            summary={<Chip>مرافقة — مطوية افتراضياً</Chip>}
+          >
+            <Lines n={3} />
+          </Collapsible>
+        </div>
+        <div>
+          <ColumnZone zone="work" />
+          <AgentBlock compact />
+        </div>
+        <aside className={`xl:col-span-2 min-[1600px]:col-span-1 ${RAIL}`}>
+          <ColumnZone zone="detail" />
+          <DetailsDrawer rail />
+        </aside>
+      </div>
+    </>
+  );
+}
+
+/* ---- Design 5 — Conversation, widened ---------------------------------- */
+
+function StagingOutputs() {
+  const [tab, setTab] = useState<"en" | "native">("en");
+  return (
+    <Box
+      name="منطقة التجهيز — المخرجات"
+      hint="بطاقتا المخرجات بتبويبين، والإرسال من الإنجليزية"
+    >
+      <div role="tablist" className="mb-2 flex flex-wrap gap-1">
+        {(
+          [
+            ["en", "English"],
+            ["native", "لغة المستخدم"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            role="tab"
+            type="button"
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
+            className={`border px-3 py-1 text-xs font-bold outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
+              tab === id
+                ? "border-ink bg-ink text-white"
+                : "border-slate-300 bg-white text-slate-600"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === "en" ? (
+        <div className="mb-2 flex gap-1.5">
+          <Chip>الوكيل ▾</Chip>
+          <Chip>إرسال</Chip>
+        </div>
+      ) : null}
+      <div dir={tab === "en" ? "ltr" : "rtl"}>
+        <Lines n={4} />
+      </div>
+    </Box>
+  );
+}
+
+function Composer() {
+  return (
+    <Box
+      name="المؤلِّف"
+      hint="حقل التلقينة تحت المحادثة، ومعه المسار وعدّاد التوكنز"
+    >
+      <div className="border border-slate-300 bg-slate-50 p-2">
+        <Lines n={2} />
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <span className="bg-brand-500 px-3 py-1.5 text-xs font-bold text-white">
+          تشغيل التحليل
+        </span>
+        {STEPS.map((s, i) => (
+          <span
+            key={s}
+            className={`px-1.5 py-0.5 text-[10px] font-bold ${
+              i < 2
+                ? "bg-brand-500/15 text-brand-600"
+                : "bg-slate-100 text-slate-500"
+            }`}
+          >
+            {s}
           </span>
-          {DRAWER.map((d) => (
-            <button
-              key={d}
-              role="tab"
-              type="button"
-              aria-selected={tab === d}
-              onClick={() => setTab(d)}
-              className={`border px-3 py-1 text-xs font-bold outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
-                tab === d
-                  ? "border-ink bg-ink text-white"
-                  : "border-slate-300 bg-white text-slate-600"
-              }`}
-            >
-              {d}
-            </button>
-          ))}
+        ))}
+        <span className="ms-auto">
+          <Chip>
+            <bdi dir="ltr">38 → 24</bdi> توكن
+          </Chip>
+        </span>
+      </div>
+    </Box>
+  );
+}
+
+function DesignConversationWide() {
+  return (
+    <>
+      <Header thin />
+      <div className="mt-5 grid items-start gap-4 xl:grid-cols-[7fr_4fr] min-[1600px]:grid-cols-[3.5fr_7fr_3.5fr]">
+        {/* RTL: on wide screens the staging column sits at the start (right). */}
+        <div className="order-2 space-y-3 min-[1600px]:order-1">
+          <ColumnZone zone="work" />
+          <StagingOutputs />
         </div>
-        <div className="space-y-3 p-3">
-          {tab === "نتائج المحطات" ? <StationResults /> : null}
-          {tab === "التحليل" ? (
-            <>
-              <Heatmap />
-              <div className="grid gap-3 md:grid-cols-2">
-                <Savings />
-                <Usage />
-              </div>
-            </>
-          ) : null}
-          {tab === "التكلفة" ? <Cost /> : null}
-          {tab === "ملاحظات" ? <Footer /> : null}
+        <div className="order-1 space-y-3 min-[1600px]:order-2">
+          <ColumnZone zone="work" />
+          <AgentBlock />
+          <Composer />
         </div>
-      </section>
+        <aside
+          className={`order-3 space-y-3 xl:col-span-2 min-[1600px]:col-span-1 ${RAIL}`}
+        >
+          <ColumnZone zone="detail" />
+          <Collapsible
+            name="نتائج المحطات"
+            summary={<Chip>38 توكن</Chip>}
+            defaultOpen
+          >
+            <StationResults stacked />
+          </Collapsible>
+          <Collapsible
+            name="التحليل"
+            summary={
+              <>
+                <Chip>−37%</Chip>
+                <Chip>كيانات ✓</Chip>
+              </>
+            }
+          >
+            <Heatmap />
+            <Savings />
+            <Usage />
+          </Collapsible>
+          <Collapsible
+            name="التكلفة"
+            summary={
+              <Chip>
+                <bdi dir="ltr">$0.00003 → $0.00002</bdi>
+              </Chip>
+            }
+          >
+            <Cost />
+          </Collapsible>
+          <Footer />
+        </aside>
+      </div>
     </>
   );
 }
@@ -686,19 +885,37 @@ const DESIGNS = [
     fits: "الشاشات العريضة والمستخدم المتمرس الذي يتابع الوكيل أثناء العمل.",
     View: DesignDualDesk,
   },
+  {
+    id: 4,
+    name: "المكتب المزدوج الموسّع",
+    idea: "التصميم 3 بعرض الشاشة كاملاً: على الشاشات الأوسع من 1600 بكسل يصبح ثلاثة أعمدة — التلقينة ومخرجاتها، ثم الوكيل، ثم شريط تفاصيل جانبي ثابت يبقى ظاهراً أثناء التمرير. بين 1280 و1600 عمودان والتفاصيل في الأسفل، وأصغر من ذلك تتكدس الحاويات.",
+    fits: "الشاشات العريضة جداً: لا مساحة جانبية مهدرة، والتفاصيل في متناول العين دون تمرير.",
+    View: DesignDualDeskWide,
+  },
+  {
+    id: 5,
+    name: "المحادثة الموسّعة",
+    idea: "التصميم 2 بعرض الشاشة: الوكيل والمؤلِّف في المنتصف كمحادثة، ومنطقة التجهيز (المخرجات) عمود على اليمين، والتفاصيل أقسام قابلة للطي في عمود ثابت على اليسار. بين 1280 و1600 تنتقل التفاصيل للأسفل، وأصغر من ذلك تتكدس.",
+    fits: "الاستخدام اليومي على شاشة عريضة: المحادثة في مركز النظر، وكل شيء آخر على الأطراف.",
+    View: DesignConversationWide,
+  },
 ] as const;
 
+/** Wide designs use the whole screen; the originals keep their 1024px frame. */
+const WIDE = new Set([4, 5]);
+
 export function LayoutsLab() {
-  const [active, setActive] = useState<1 | 2 | 3>(1);
+  const [active, setActive] = useState<1 | 2 | 3 | 4 | 5>(1);
   const design = DESIGNS.find((d) => d.id === active)!;
   const View = design.View;
+  const frame = WIDE.has(active) ? "max-w-[1840px]" : "max-w-5xl";
   return (
     <main className="blueprint-grid min-h-screen px-4 pb-16 sm:px-7">
       <nav
         aria-label="التنقل بين التصاميم"
         className="sticky top-0 z-20 -mx-4 mb-5 border-b border-ink bg-[#f6f6f2]/95 px-4 py-3 backdrop-blur sm:-mx-7 sm:px-7"
       >
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-2">
+        <div className={`mx-auto flex ${frame} flex-wrap items-center gap-2`}>
           <span className="me-3 text-sm font-black">مختبر التخطيطات</span>
           {DESIGNS.map((d) => (
             <button
@@ -719,9 +936,22 @@ export function LayoutsLab() {
               {d.name}
             </button>
           ))}
+          {WIDE.has(active) ? (
+            <span className="ms-auto text-[11px] font-bold text-slate-500">
+              <span className="xl:hidden">
+                العرض الحالي: أعمدة متكدسة (&lt;1280)
+              </span>
+              <span className="hidden xl:inline min-[1600px]:hidden">
+                العرض الحالي: عمودان (1280–1600)
+              </span>
+              <span className="hidden min-[1600px]:inline">
+                العرض الحالي: ثلاثة أعمدة (&gt;1600)
+              </span>
+            </span>
+          ) : null}
         </div>
       </nav>
-      <div className="mx-auto max-w-5xl">
+      <div className={`mx-auto ${frame}`}>
         <section className="mb-2 border border-ink bg-white p-4 shadow-hard">
           <h1 className="text-lg font-black">
             التصميم {design.id}: {design.name}
