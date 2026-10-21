@@ -63,6 +63,8 @@ export interface AgentTerminalHandle {
 // Timings measured against the real Gemini CLI TUI (see terminal-clean.ts).
 const QUIET_MS = 1500;
 const MIN_TURN_MS = 8_000;
+/** Text still in the input box this long after Enter → press Enter once more. */
+const RESUBMIT_AFTER_MS = 4_000;
 const NO_REPLY_MAX_MS = 90_000;
 const TURN_MAX_MS = 15 * 60_000;
 const READY_MAX_MS = 90_000;
@@ -382,12 +384,28 @@ export function AgentTerminal({
       const t0 = Date.now();
       let sawBusy = false;
       let timedOut = false;
+      let resubmitted = false;
       await sleep(1500);
       while (statusRef.current === "live" && !captureNow.current) {
         await drain(term);
         const screen = viewport(term);
         const busy = isAgentBusy(screen);
         sawBusy ||= busy;
+        // A freshly started agent can take the paste yet drop the Enter (seen
+        // live: Claude finishing a self-update). Text still in the input box
+        // and no work begun → press Enter once more. Safe: a consumed Enter
+        // empties the box, so this never fires twice for one prompt.
+        if (
+          !resubmitted &&
+          !sawBusy &&
+          Date.now() - t0 > RESUBMIT_AFTER_MS &&
+          promptStuckInInput(screen, text)
+        ) {
+          resubmitted = true;
+          await sendPtyInput(session.config, session.id, "\r");
+          await sleep(1000);
+          continue;
+        }
 
         // A pending dialog (tool approval, menu) is neither busy nor done —
         // the agent is waiting on the user, not finished. Keep waiting so an
@@ -612,7 +630,7 @@ export function AgentTerminal({
             className="pointer-events-none absolute inset-0 grid place-items-center px-6 text-center text-sm text-white/40"
           >
             {ready
-              ? "الجلسة غير مشغّلة — اضغط «④ تشغيل الجلسة» أعلاه، أو أرسل نصاً من بطاقة المخرجات فتبدأ تلقائياً."
+              ? "الجلسة غير مشغّلة — اضغط «④ تشغيل الجلسة» أعلاه، أو أرسل نصاً من مدخل الوكيل أدناه فتبدأ تلقائياً."
               : "الجلسة غير مشغّلة — ابدأ بالخطوة ① «فحص» أعلاه."}
           </p>
         )}

@@ -94,11 +94,13 @@ describe("SettingsModal key status", () => {
     expect(markup).not.toContain("••••");
   });
 
-  it("exposes a models check button and the auto-send toggle", () => {
+  it("exposes a models check button; auto-send lives in each agent's box, not here", () => {
     const html = render(config());
     expect(html).toContain("تحقق من النماذج");
-    expect(html).toContain("إرسال تلقائي إلى الوكيل الافتراضي");
     expect(html).toContain("الوكيل الافتراضي");
+    expect(html).toContain("تبويبه يُفتح أولاً");
+    expect(html).not.toContain("إرسال تلقائي إلى الوكيل الافتراضي");
+    expect(html).not.toContain('id="auto-send"');
   });
 
   it("mentions the AQ. prefix hint inside the guide", () => {

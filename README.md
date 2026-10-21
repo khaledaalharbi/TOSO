@@ -93,7 +93,11 @@ together, pairs them automatically and opens your browser. Then:
 
 1. **Settings →** paste your free [Google AI Studio](https://aistudio.google.com/) key.
 2. **Agent tab →** enter your project folder → ① Check → ④ Start session.
-3. Write your prompt → **Run analysis** → send the English card to your agent.
+3. Write your prompt in that agent's own box → **Process** (your draft is replaced
+   in place by the concise English version) → **Send**. Each agent has its own box,
+   so a prompt can't go to the wrong agent; a per-agent switch makes it one click.
+   Past prompts can be re-sent to another agent from the IN/OUT log («إرسال أيضاً»),
+   with no new processing.
 
 Step-by-step guide (Arabic): [Docs/setup-and-usage.md](Docs/setup-and-usage.md).
 

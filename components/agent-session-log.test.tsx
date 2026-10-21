@@ -122,6 +122,17 @@ describe("AgentTranscript", () => {
     expect(html).not.toContain("اطوِ إلى عرض العمودين");
   });
 
+  it("offers «إرسال أيضاً» only with other agents to send to — no checkboxes until pressed", () => {
+    expect(render()).not.toContain("إرسال أيضاً");
+    const html = render({ sendTargets: ["codex"], onSendAlso: () => {} });
+    expect(html).toContain("إرسال أيضاً");
+    expect(html).toContain('aria-pressed="false"');
+    expect(html).not.toContain('type="checkbox"');
+    expect(
+      render({ turns: [], sendTargets: ["codex"], onSendAlso: () => {} }),
+    ).not.toContain("إرسال أيضاً");
+  });
+
   it("offers per-agent clear, and clear-all only when asked", () => {
     expect(render()).toContain("مسح Gemini CLI");
     expect(render()).not.toContain("مسح الكل");

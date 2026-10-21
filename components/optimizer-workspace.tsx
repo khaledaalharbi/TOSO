@@ -2,24 +2,24 @@
 
 import {
   Check,
+  ChevronDown,
   Coins,
   Copy,
   Gauge,
   Info,
   Languages,
-  Play,
   RotateCcw,
-  Send,
   Settings2,
   Sparkles,
   Wand2,
 } from "lucide-react";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   AgentCard,
   type AgentRunState,
   type AgentTranslation,
 } from "@/components/agent-card";
+import { AgentComposer } from "@/components/agent-composer";
 import {
   AgentTabStrip,
   AgentWorkspacePanel,
@@ -40,7 +40,6 @@ import {
   type AgentTerminalHandle,
   type TerminalStatus,
 } from "@/components/agent-terminal";
-import { PipelineTrack } from "@/components/pipeline-track";
 import {
   SettingsModal,
   dotClass,
@@ -52,7 +51,6 @@ import {
   DEFAULT_BRIDGE_URL,
   agentCommand,
   agentLabel,
-  agentSendMode,
   isAgentWireText,
 } from "@/lib/bridge/agents";
 import {
@@ -106,8 +104,6 @@ import type {
   VariantReport,
 } from "@/lib/types";
 
-const sample =
-  "من فضلك أريد منك أن تحلل لي أداء الشركة خلال آخر ستة أشهر بشكل مفصل جدا، مع ذكر أهم الاتجاهات والمخاطر والتوصيات.";
 const initialConfig: ProviderConfig = {
   provider: DEFAULT_PROVIDER,
   model: DEFAULT_MODEL,
@@ -119,8 +115,11 @@ const BRIDGE_URL_STORAGE = "toso.bridgeUrl";
 const BRIDGE_TOKEN_STORAGE = "toso.bridgeToken";
 const AGENT_STORAGE = "toso.agent";
 const NO_ENGLISH_NOTE =
-  "لم يُرسَل شيء: الوكلاء يستقبلون الإنجليزية فقط (لتقليل التوكنز)، ولا تتوفر نسخة إنجليزية صالحة لهذا التحليل — الوضع المحلي أو حجبها فحص السلامة. أضف مفتاحاً وأعد التحليل.";
-const AUTO_SEND_STORAGE = "toso.autoSend";
+  "لم يُرسَل شيء: الوكلاء يستقبلون الإنجليزية فقط (لتقليل التوكنز)، وهذا النص ليس إنجليزياً — عالجه أولاً من مدخل الوكيل.";
+/** Per-agent «إرسال مباشرة بعد المعالجة» switches. */
+const AUTO_SEND_AGENTS_STORAGE = "toso.autoSendAgents";
+/** The old single global auto-send (default agent only) — migrated once. */
+const LEGACY_AUTO_SEND_STORAGE = "toso.autoSend";
 const AUTO_TRANSLATE_STORAGE = "toso.autoTranslate";
 const SMART_CLEAN_STORAGE = "toso.smartClean";
 
@@ -253,7 +252,6 @@ const runLabel: Record<Exclude<Phase, "idle" | "done">, string> = {
 };
 
 export function OptimizerWorkspace() {
-  const [prompt, setPrompt] = useState(sample);
   const [running, setRunning] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   const [original, setOriginal] = useState<TokenMeasurement | null>(null);
@@ -313,16 +311,12 @@ export function OptimizerWorkspace() {
       ...session,
       run: typeof next === "function" ? next(session.run) : next,
     }));
-  // The card-level agent pick — null means "the configured default". With
-  // autoSend on, the send button is disabled exactly while the pick equals
-  // the default (switching to another agent → manual mode).
+  // The open agent tab — null means "the default from settings" (the tab
+  // that opens first). Every agent has its own prompt box, so the open tab
+  // is only what you look at, never a send target to get wrong.
   const [pickedAgent, setPickedAgent] = useState<string | null>(null);
   const defaultAgent = config.agent ?? AGENT_OPTIONS[0].id;
-  const { active: activeAgent, auto: autoSendActive } = agentSendMode({
-    autoSend: config.autoSend,
-    picked: pickedAgent,
-    defaultAgent,
-  });
+  const activeAgent = pickedAgent ?? defaultAgent;
 
   const terminalUi: TerminalUi = {
     setBusy: setTerminalBusy,
@@ -348,7 +342,15 @@ export function OptimizerWorkspace() {
       const bridgeUrl = window.localStorage.getItem(BRIDGE_URL_STORAGE);
       const bridgeToken = window.localStorage.getItem(BRIDGE_TOKEN_STORAGE);
       const agent = window.localStorage.getItem(AGENT_STORAGE);
-      const autoSend = window.localStorage.getItem(AUTO_SEND_STORAGE);
+      const autoSendAgents = parseAgentFlags(
+        window.localStorage.getItem(AUTO_SEND_AGENTS_STORAGE),
+      );
+      // The old global auto-send applied to the default agent only — carry
+      // it over to that agent's own switch, once.
+      if (window.localStorage.getItem(LEGACY_AUTO_SEND_STORAGE) === "1") {
+        autoSendAgents[agent ?? AGENT_OPTIONS[0].id] = true;
+      }
+      window.localStorage.removeItem(LEGACY_AUTO_SEND_STORAGE);
       const workspaces = parseWorkspaces(
         window.localStorage.getItem(WORKSPACES_STORAGE),
       );
@@ -378,7 +380,7 @@ export function OptimizerWorkspace() {
         ...(bridgeUrl ? { bridgeUrl } : {}),
         ...(bridgeToken ? { bridgeToken } : {}),
         ...(agent ? { agent } : {}),
-        ...(autoSend ? { autoSend: autoSend === "1" } : {}),
+        ...(Object.keys(autoSendAgents).length ? { autoSendAgents } : {}),
         ...(Object.keys(workspaces).length ? { workspaces } : {}),
         ...(Object.keys(autoTrustAgents).length ? { autoTrustAgents } : {}),
         ...(autoTranslate ? { autoTranslate } : {}),
@@ -424,10 +426,11 @@ export function OptimizerWorkspace() {
       } else {
         window.localStorage.removeItem(AGENT_STORAGE);
       }
-      if (config.autoSend) {
-        window.localStorage.setItem(AUTO_SEND_STORAGE, "1");
+      const autoSendJson = serializeAgentFlags(config.autoSendAgents);
+      if (autoSendJson) {
+        window.localStorage.setItem(AUTO_SEND_AGENTS_STORAGE, autoSendJson);
       } else {
-        window.localStorage.removeItem(AUTO_SEND_STORAGE);
+        window.localStorage.removeItem(AUTO_SEND_AGENTS_STORAGE);
       }
       const workspacesJson = serializeWorkspaces(config.workspaces);
       if (workspacesJson) {
@@ -455,7 +458,7 @@ export function OptimizerWorkspace() {
     config.bridgeUrl,
     config.bridgeToken,
     config.agent,
-    config.autoSend,
+    config.autoSendAgents,
     config.workspaces,
     config.autoTrustAgents,
     config.autoTranslate,
@@ -494,12 +497,16 @@ export function OptimizerWorkspace() {
       /* no storage — the steps still hold for this page view */
     }
   }, [agentSetup, keyHydrated]);
-  // A new default in settings clears any per-card override — the pick
-  // returns to "the default" so auto-dispatch resumes its meaning.
+  // A new default in settings opens that agent's tab.
   useEffect(() => setPickedAgent(null), [config.agent]);
 
-  async function handleRun() {
-    if (!keyHydrated || !prompt.trim() || running) return;
+  /**
+   * Analyses one agent's draft (measure → local cleanup → Gemini rewrite →
+   * measure) and returns the report, or null on failure. One analysis at a
+   * time; the details zone always shows the latest one.
+   */
+  async function handleRun(prompt: string): Promise<OptimizationReport | null> {
+    if (!keyHydrated || !prompt.trim() || running) return null;
     setRunning(true);
     setRunError(null);
     setReport(null);
@@ -531,23 +538,7 @@ export function OptimizerWorkspace() {
       setReport(nextReport);
       setOriginal(nextReport.originalMeasurement ?? null);
       setPhase("done");
-      // Auto-dispatch: only when the picked agent IS the default — a
-      // different pick means the user asked for manual control this run.
-      if (config.autoSend && activeAgent === defaultAgent) {
-        // Agents get the ENGLISH polish whatever the input language — the
-        // point of the tool is fewer tokens. No English (local mode, or the
-        // safety guard withheld it) means nothing is sent, with the reason.
-        const english = nextReport.english?.text;
-        if (english) {
-          void sendToAgent(english, defaultAgent, nextReport.originalPrompt);
-        } else {
-          setTerminalNote({
-            agent: defaultAgent,
-            ok: false,
-            text: NO_ENGLISH_NOTE,
-          });
-        }
-      }
+      return nextReport;
     } catch {
       setReport(null);
       setDual(null);
@@ -555,8 +546,9 @@ export function OptimizerWorkspace() {
       setOriginalRatio(null);
       setPhase("idle");
       setRunError(
-        "تعذّر إكمال التحليل. النص محفوظ في حقل الإدخال؛ أعد المحاولة.",
+        "تعذّر إكمال التحليل. نصك ما زال في مدخل الوكيل؛ أعد المحاولة.",
       );
+      return null;
     } finally {
       setRunning(false);
     }
@@ -568,7 +560,6 @@ export function OptimizerWorkspace() {
     setOriginal(null);
     setOriginalRatio(null);
     setPhase("idle");
-    setPrompt("");
     abortAllRuns(agentAbort.current);
     setSessions({});
     setPickedAgent(null);
@@ -580,27 +571,68 @@ export function OptimizerWorkspace() {
    * agent crash — and a fresh send to the SAME agent aborts only that
    * agent's previous run; other agents' tabs keep running untouched.
    */
-  async function sendToAgent(text: string, agentId: string, inputUser: string) {
-    const agent = agentId || config.agent || AGENT_OPTIONS[0].id;
-    // Agents receive English only (fewer tokens) — refuse anything else
-    // here so no path (manual, auto, retry) can leak Arabic to an agent.
-    if (!isAgentWireText(text)) {
-      setPickedAgent(agent);
-      setTerminalNote({ agent, ok: false, text: NO_ENGLISH_NOTE });
+  /**
+   * Why a send to this agent must not happen, or null. Agents receive
+   * English only (fewer tokens) — so no path can leak Arabic to an agent —
+   * and a run needs its own CHECKED project folder, without which the
+   * bridge would silently operate on TOSO itself.
+   */
+  function sendBlocker(text: string, agent: string): string | null {
+    if (!isAgentWireText(text)) return NO_ENGLISH_NOTE;
+    if (!folderChecked(agent)) {
+      return workspaceFor(config.workspaces, agent)
+        ? `لم يُرسَل النص: افحص مجلد مشروع ${agentLabel(agent)} أولاً — الخطوة ① «فحص المجلد».`
+        : `لم يُرسَل النص: حدّد مجلد مشروع ${agentLabel(agent)} ثم افحصه — الخطوة ①.`;
+    }
+    return null;
+  }
+
+  /** Shows a refused send in that agent's tab, where the setup lives. */
+  function refuseSend(agent: string, text: string) {
+    setPickedAgent(agent);
+    setTerminalNote({ agent, ok: false, text });
+  }
+
+  /**
+   * The prompt box's send: checks synchronously (so a refused text stays in
+   * the box), then fires the turn without waiting for the reply.
+   */
+  function dispatchToAgent(text: string, agent: string, inputUser: string) {
+    const blocked = sendBlocker(text, agent);
+    if (blocked) {
+      refuseSend(agent, blocked);
+      return false;
+    }
+    setTerminalNote(null);
+    void sendToAgent(text, agent, inputUser);
+    return true;
+  }
+
+  /**
+   * «إرسال أيضاً» from the IN/OUT log: re-sends already-processed English
+   * texts to another agent, one turn after another (an agent takes one turn
+   * at a time) — no new processing, no new cost.
+   */
+  async function sendAlso(jobIds: string[], target: string) {
+    const turns = (agentLog[activeAgent] ?? []).filter((t) =>
+      jobIds.includes(t.jobId),
+    );
+    if (!turns.length) return;
+    const blocked = sendBlocker(turns[0].inputWire, target);
+    if (blocked) {
+      refuseSend(target, blocked);
       return;
     }
-    // A run needs its own CHECKED project folder — without one the bridge
-    // would silently operate on TOSO itself. The note lands in that agent's
-    // tab (shown now), where the setup sequence lives.
-    if (!folderChecked(agent)) {
-      setPickedAgent(agent);
-      setTerminalNote({
-        agent,
-        ok: false,
-        text: workspaceFor(config.workspaces, agent)
-          ? `لم يُرسَل النص: افحص مجلد مشروع ${agentLabel(agent)} أولاً — الخطوة ① «فحص المجلد».`
-          : `لم يُرسَل النص: حدّد مجلد مشروع ${agentLabel(agent)} ثم افحصه — الخطوة ①.`,
-      });
+    setPickedAgent(target);
+    for (const turn of turns) {
+      await sendToAgent(turn.inputWire, target, turn.inputUser);
+    }
+  }
+
+  async function sendToAgent(text: string, agent: string, inputUser: string) {
+    const blocked = sendBlocker(text, agent);
+    if (blocked) {
+      refuseSend(agent, blocked);
       return;
     }
     // The live embedded session is the primary path; the one-shot run is
@@ -811,15 +843,6 @@ export function OptimizerWorkspace() {
     }
   }
 
-  /**
-   * A tab (or an output card's agent menu) picks the agent: it becomes the
-   * send target and its tab. Its session starts only from the tab's setup
-   * sequence (step ④) or the first send — never on show.
-   */
-  function selectAgent(agentId: string) {
-    setPickedAgent(agentId);
-  }
-
   /** Bridge unreachable → hand the user a ready shell command instead. */
   async function copyAgentCommand() {
     if (!activeRun) return;
@@ -847,15 +870,22 @@ export function OptimizerWorkspace() {
     phase === "optimizing" ? "active" : dual ? "done" : "idle";
   const s3: NodeStatus =
     phase === "measuring" ? "active" : report ? "done" : "idle";
-  const englishUnavailable = dual !== null && dual.english === null;
   const arabicUnavailable = dual !== null && dual.arabic === null;
-  // "en" reverses the output cards when the input carried zero Arabic script.
-  const direction = report?.direction ?? "ar";
-  const inputIsEnglish = prompt.trim() !== "" && arabicRatio(prompt) === 0;
+  const isMock = report?.source === "mock" || dual?.source === "mock";
+  const nativeText = report?.arabic?.text ?? dual?.arabic ?? null;
+  const progress = running
+    ? (runLabel[phase as keyof typeof runLabel] ?? "يعالج…")
+    : null;
+  const agentStatus = (id: string) =>
+    tabStatus(sessions[id]?.run ?? null, agentLog[id], terminalStatus[id]);
+  const bridge = {
+    url: config.bridgeUrl ?? DEFAULT_BRIDGE_URL,
+    token: config.bridgeToken ?? "",
+  };
 
   return (
     <main className="blueprint-grid min-h-screen px-4 py-8 sm:px-7">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-[1840px]">
         <header className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
             {savedKeyStatus ? <KeyStatusHint status={savedKeyStatus} /> : null}
@@ -865,6 +895,9 @@ export function OptimizerWorkspace() {
             >
               <Settings2 size={17} /> الإعدادات
             </button>
+            <span className="hidden border border-slate-300 bg-white px-2.5 py-1 font-mono text-[11px] text-slate-600 sm:inline">
+              {modelLabel}
+            </span>
           </div>
           <div className="text-right">
             <div className="flex items-center gap-2 text-xl font-black">
@@ -893,409 +926,387 @@ export function OptimizerWorkspace() {
           </p>
         )}
 
-        {/* 01 — INPUT + LIVE PROCESS TRACK */}
-        <SpecHead num="01" title="المدخلات" note="التلقينة الأصلية" />
-        <section className="border border-ink bg-white p-5 sm:p-7">
-          <div className="mb-4 flex items-center gap-2 border-b border-slate-200 pb-3">
-            <span className="text-[11px] font-medium text-slate-500">
-              نموذج المعالجة والترجمة:
-            </span>
-            <span className="border border-slate-300 px-2.5 py-1 font-mono text-[11px] text-slate-600">
-              {modelLabel}
-            </span>
-          </div>
-          <textarea
-            id="prompt"
-            name="prompt"
-            aria-label="التلقينة"
-            dir="auto"
-            disabled={!keyHydrated}
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            placeholder="التلقينة الأصلية تُكتب هنا"
-            className="min-h-32 w-full resize-y border border-slate-300 bg-slate-50/60 p-4 leading-8 outline-none transition placeholder:text-slate-400 focus:border-brand-500"
-          />
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <button
-              disabled={!keyHydrated || !prompt.trim() || running}
-              onClick={handleRun}
-              className="flex shrink-0 items-center justify-center gap-2 border border-ink bg-brand-500 px-5 py-3 font-bold text-white transition hover:bg-brand-600 active:translate-x-[2px] active:translate-y-[2px] disabled:cursor-not-allowed disabled:opacity-50"
+        <div className="grid items-start gap-x-6 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+          {/* WORK — the agent, its own prompt box, the native companion */}
+          <div className="min-w-0">
+            <SpecHead
+              title="وكيل CLI"
+              note="اكتب في تبويب الوكيل، عالج، ثم أرسل — الوكيل يستلم الإنجليزية فقط"
+            />
+            <AgentTabStrip
+              activeAgent={activeAgent}
+              status={Object.fromEntries(
+                AGENT_OPTIONS.map((opt) => [opt.id, agentStatus(opt.id)]),
+              )}
+              turns={Object.fromEntries(
+                Object.entries(agentLog).map(([id, turns]) => [
+                  id,
+                  turns.length,
+                ]),
+              )}
+              defaultAgent={defaultAgent}
+              onSelect={setPickedAgent}
+            />
+            <div
+              id="agent-tabpanel"
+              role="tabpanel"
+              aria-labelledby={`agent-tab-${activeAgent}`}
             >
-              {running
-                ? (runLabel[phase as keyof typeof runLabel] ?? "جارٍ المعالجة…")
-                : "تشغيل التحليل"}
-              <Play size={17} fill="currentColor" />
-            </button>
-            <div className="min-w-0 flex-1">
-              <PipelineTrack
-                phase={phase}
-                running={running}
-                hasOriginal={original !== null}
-                hasDual={dual !== null}
-                hasReport={report !== null}
-              />
-            </div>
-          </div>
-        </section>
-
-        {/* 02 — STATION RESULTS */}
-        <SpecHead
-          num="02"
-          title="نتائج المحطات"
-          note="تفاصيل كل محطة من مسار المعالجة"
-        />
-        <div className="grid gap-4 md:grid-cols-2">
-          <SpecCard
-            tag="ST-01"
-            title="قياس الأصل"
-            subtitle="Token Analysis — قياس النص الأصلي"
-            status={s1}
-            action={
-              original ? (
-                <SourceBadge
-                  compact
-                  source={original.source}
-                  providerLabel={
-                    original.model
-                      ? getModel("google", original.model).label
-                      : undefined
-                  }
-                />
-              ) : null
-            }
-          >
-            {original ? (
-              <div>
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <Metric
-                    label={
-                      original.source === "provider"
-                        ? "Tokens حقيقية"
-                        : "Tokens تقديرية"
-                    }
-                    value={original.tokens}
-                  />
-                  <Metric label="كلمة" value={original.words} />
-                  <Metric label="حرف" value={original.characters} />
-                </div>
-                {originalRatio !== null && (
-                  <div className="mt-3 flex items-center gap-2 border border-slate-300 bg-slate-50 px-3 py-2 text-xs">
-                    <span className="font-bold text-slate-500">
-                      نسبة العربية
-                    </span>
-                    <div className="h-2 flex-1 overflow-hidden bg-slate-200">
-                      <div
-                        className="h-full bg-brand-500 transition-all"
-                        style={{
-                          width: `${Math.round(originalRatio * 100)}%`,
-                        }}
-                      />
-                    </div>
-                    <span className="font-mono font-black text-ink">
-                      {Math.round(originalRatio * 100)}%
-                    </span>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <Placeholder
-                active={s1 === "active"}
-                text="ستظهر قياسات النص الأصلي هنا"
-              />
-            )}
-          </SpecCard>
-
-          <SpecCard
-            tag="ST-02"
-            title="المعالجة"
-            subtitle="تنقية محلية ثم إعادة صياغة عبر Gemini عند توفره"
-            status={s2}
-          >
-            {dual ? (
-              <div className="flex items-center gap-3 border border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
-                <Wand2 className="shrink-0 text-brand-500" />
-                <span className="flex-1">{dual.note}</span>
-                <span
-                  className={`px-2.5 py-1 text-[11px] font-bold ${dual.source === "gemini" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}
-                >
-                  {dual.source === "gemini"
-                    ? `${dual.model ?? "Gemini"}${dual.viaUserKey ? " · مفتاحك" : ""}`
-                    : "محلي"}
-                </span>
-              </div>
-            ) : (
-              <Placeholder
-                active={s2 === "active"}
-                text={
-                  inputIsEnglish
-                    ? "يُنقّى النص محلياً، وتُنتج Gemini النسخة العربية عند توفره"
-                    : "تُنقّى العربية محلياً، ويُنشئ Gemini الترجمة عند توفره"
-                }
-              />
-            )}
-          </SpecCard>
-        </div>
-
-        {/* 03 — OUTPUTS */}
-        <SpecHead
-          num="03"
-          title="المخرجات"
-          note="النسختان العربية والإنجليزية"
-        />
-        <div className="grid gap-4 md:grid-cols-2">
-          {(() => {
-            const isMock = report?.source === "mock" || dual?.source === "mock";
-            const arabicCard = (
-              <OutputCard
-                key="ar"
-                lang="ar"
-                title="Optimized Output"
-                chip={
-                  isMock && (report?.arabic?.text ?? dual?.arabic ?? null)
-                    ? "تنقية محلية"
-                    : "العربية"
-                }
-                status={s3}
-                text={report?.arabic?.text ?? dual?.arabic ?? null}
-                unavailable={arabicUnavailable}
-                unavailableReason={
-                  report?.rejectedByGuard
-                    ? "حُجبت النسخة العربية لأن مخرج Gemini لم يجتز فحوص السلامة؛ عُرض النص المنقّى محلياً."
-                    : "الترجمة العربية غير متاحة في الوضع المحلي أو عند تعذّر Gemini."
-                }
-                report={report?.arabic ?? null}
-              />
-            );
-            const englishCard = (
-              <OutputCard
-                key="en"
-                lang="en"
-                title="Optimized Output"
-                chip={
-                  isMock && (report?.english?.text ?? dual?.english ?? null)
-                    ? "تنقية محلية"
-                    : "English"
-                }
-                status={s3}
-                text={report?.english?.text ?? dual?.english ?? null}
-                unavailable={englishUnavailable}
-                unavailableReason={
-                  report?.rejectedByGuard
-                    ? "حُجبت الترجمة لأن مخرج Gemini لم يحفظ بعض الكيانات؛ عُرضت النسخة المحلية بدلاً منه."
-                    : "الترجمة الإنجليزية غير متاحة في الوضع المحلي أو عند تعذّر Gemini."
-                }
-                report={report?.english ?? null}
+              {/* 1 — project path & permissions */}
+              <AgentWorkspacePanel
+                key={activeAgent}
                 agent={activeAgent}
-                agentDisabled={autoSendActive}
-                onSelectAgent={selectAgent}
-                onSend={(value) =>
-                  void sendToAgent(
-                    value,
+                workspace={config.workspaces?.[activeAgent]}
+                bridge={bridge}
+                checked={folderChecked(activeAgent)}
+                trusted={setupDone(
+                  agentSetup,
+                  config.workspaces,
+                  activeAgent,
+                  "trusted",
+                )}
+                sessionStatus={terminalStatus[activeAgent]}
+                openedCount={terminalOpened[activeAgent] ?? 0}
+                terminalBusy={terminalBusy === activeAgent}
+                terminalNote={terminalNote}
+                onWorkspaceChange={(path) =>
+                  setConfig((c) => ({
+                    ...c,
+                    workspaces: withWorkspace(c.workspaces, activeAgent, path),
+                  }))
+                }
+                onStepDone={(step, path) =>
+                  setAgentSetup((all) => ({
+                    ...all,
+                    [activeAgent]: { ...all[activeAgent], [step]: path },
+                  }))
+                }
+                onStart={() => {
+                  setTerminalNote(null);
+                  void terminals.current[activeAgent]?.start();
+                }}
+                autoTrust={Boolean(config.autoTrustAgents?.[activeAgent])}
+                onAutoTrustChange={(on) =>
+                  setConfig((c) => ({
+                    ...c,
+                    autoTrustAgents: withAgentFlag(
+                      c.autoTrustAgents,
+                      activeAgent,
+                      on,
+                    ),
+                  }))
+                }
+                onOpenTerminal={() =>
+                  void launchTerminal(
                     activeAgent,
-                    report?.originalPrompt ?? prompt,
+                    terminalSettings(
+                      config,
+                      activeAgent,
+                      folderChecked(activeAgent),
+                    ),
                   )
                 }
               />
-            );
-            return direction === "en"
-              ? [englishCard, arabicCard]
-              : [arabicCard, englishCard];
-          })()}
-        </div>
-
-        {/* 04 — CLI AGENT */}
-        <SpecHead
-          num="04"
-          title="وكيل CLI"
-          note="إرسال النص المنقّح إلى الوكيل واستقبال نتيجته"
-        />
-        <AgentTabStrip
-          activeAgent={activeAgent}
-          status={Object.fromEntries(
-            AGENT_OPTIONS.map((opt) => [
-              opt.id,
-              tabStatus(
-                sessions[opt.id]?.run ?? null,
-                agentLog[opt.id],
-                terminalStatus[opt.id],
-              ),
-            ]),
-          )}
-          turns={Object.fromEntries(
-            Object.entries(agentLog).map(([id, turns]) => [id, turns.length]),
-          )}
-          defaultAgent={defaultAgent}
-          onSelect={selectAgent}
-        />
-        <div
-          id="agent-tabpanel"
-          role="tabpanel"
-          aria-labelledby={`agent-tab-${activeAgent}`}
-        >
-          {/* 1 — project path & permissions */}
-          <AgentWorkspacePanel
-            key={activeAgent}
-            agent={activeAgent}
-            workspace={config.workspaces?.[activeAgent]}
-            bridge={{
-              url: config.bridgeUrl ?? DEFAULT_BRIDGE_URL,
-              token: config.bridgeToken ?? "",
-            }}
-            checked={folderChecked(activeAgent)}
-            trusted={setupDone(
-              agentSetup,
-              config.workspaces,
-              activeAgent,
-              "trusted",
-            )}
-            sessionStatus={terminalStatus[activeAgent]}
-            openedCount={terminalOpened[activeAgent] ?? 0}
-            terminalBusy={terminalBusy === activeAgent}
-            terminalNote={terminalNote}
-            onWorkspaceChange={(path) =>
-              setConfig((c) => ({
-                ...c,
-                workspaces: withWorkspace(c.workspaces, activeAgent, path),
-              }))
-            }
-            onStepDone={(step, path) =>
-              setAgentSetup((all) => ({
-                ...all,
-                [activeAgent]: { ...all[activeAgent], [step]: path },
-              }))
-            }
-            onStart={() => {
-              setTerminalNote(null);
-              void terminals.current[activeAgent]?.start();
-            }}
-            autoTrust={Boolean(config.autoTrustAgents?.[activeAgent])}
-            onAutoTrustChange={(on) =>
-              setConfig((c) => ({
-                ...c,
-                autoTrustAgents: withAgentFlag(
-                  c.autoTrustAgents,
-                  activeAgent,
-                  on,
-                ),
-              }))
-            }
-            onOpenTerminal={() =>
-              void launchTerminal(
-                activeAgent,
-                terminalSettings(
-                  config,
-                  activeAgent,
-                  folderChecked(activeAgent),
-                ),
-              )
-            }
-          />
-          {/* 2 — the live agent terminal. Every agent keeps its own pane
-              mounted (hidden when not shown) so its session keeps running
-              and a turn can finish while you look at another tab. */}
-          {AGENT_OPTIONS.map((opt) => (
-            <div key={opt.id} hidden={opt.id !== activeAgent}>
-              <AgentTerminal
-                ref={(handle) => {
-                  terminals.current[opt.id] = handle;
-                }}
-                agent={opt.id}
-                bridge={{
-                  url: config.bridgeUrl ?? DEFAULT_BRIDGE_URL,
-                  token: config.bridgeToken ?? "",
-                }}
-                workspace={workspaceFor(config.workspaces, opt.id)}
-                trust={config.autoTrustAgents?.[opt.id]}
-                ready={folderChecked(opt.id)}
-                visible={opt.id === activeAgent && keyHydrated}
-                onStatus={(status) =>
-                  setTerminalStatus((all) =>
-                    all[opt.id] === status ? all : { ...all, [opt.id]: status },
-                  )
-                }
-              />
+              {/* 2 — the live terminal and, under it, the agent's own prompt
+                  box. Every agent keeps both mounted (hidden when not shown)
+                  so its session keeps running and its draft survives. */}
+              {AGENT_OPTIONS.map((opt) => (
+                <div key={opt.id} hidden={opt.id !== activeAgent}>
+                  <AgentTerminal
+                    ref={(handle) => {
+                      terminals.current[opt.id] = handle;
+                    }}
+                    agent={opt.id}
+                    bridge={bridge}
+                    workspace={workspaceFor(config.workspaces, opt.id)}
+                    trust={config.autoTrustAgents?.[opt.id]}
+                    ready={folderChecked(opt.id)}
+                    visible={opt.id === activeAgent && keyHydrated}
+                    onStatus={(status) =>
+                      setTerminalStatus((all) =>
+                        all[opt.id] === status
+                          ? all
+                          : { ...all, [opt.id]: status },
+                      )
+                    }
+                  />
+                  <AgentComposer
+                    agent={opt.id}
+                    disabled={!keyHydrated}
+                    busy={running}
+                    agentBusy={agentStatus(opt.id) === "running"}
+                    progress={progress}
+                    autoSend={Boolean(config.autoSendAgents?.[opt.id])}
+                    onAutoSendChange={(on) =>
+                      setConfig((c) => ({
+                        ...c,
+                        autoSendAgents: withAgentFlag(
+                          c.autoSendAgents,
+                          opt.id,
+                          on,
+                        ),
+                      }))
+                    }
+                    onProcess={handleRun}
+                    onSend={(english, inputUser) =>
+                      dispatchToAgent(english, opt.id, inputUser)
+                    }
+                  />
+                </div>
+              ))}
+              {/* One-shot fallback (bridge without PTY): show that run's card. */}
+              {terminalStatus[activeAgent] === "unavailable" && activeRun && (
+                <div className="mt-4">
+                  <AgentCard
+                    run={activeRun}
+                    translation={activeSession.translation}
+                    translating={
+                      activeRun.job
+                        ? translatingJobs.has(activeRun.job.id)
+                        : false
+                    }
+                    onTranslate={() =>
+                      activeRun.job &&
+                      void translateJob(
+                        activeRun.agent,
+                        activeRun.job.id,
+                        activeRun.job.output,
+                      )
+                    }
+                    onCopyFallback={copyAgentCommand}
+                  />
+                </div>
+              )}
             </div>
-          ))}
-          {/* One-shot fallback (bridge without PTY): show that run's card. */}
-          {terminalStatus[activeAgent] === "unavailable" && activeRun && (
-            <div className="mt-4">
-              <AgentCard
-                run={activeRun}
-                translation={activeSession.translation}
-                translating={
-                  activeRun.job ? translatingJobs.has(activeRun.job.id) : false
-                }
-                onTranslate={() =>
-                  activeRun.job &&
-                  void translateJob(
-                    activeRun.agent,
-                    activeRun.job.id,
-                    activeRun.job.output,
-                  )
-                }
-                onCopyFallback={copyAgentCommand}
-              />
-            </div>
-          )}
-          {/* 3 — IN / OUT, Arabic beside English, numbered per turn */}
-          <AgentTranscript
-            agent={activeAgent}
-            turns={agentLog[activeAgent] ?? []}
-            translatingJobs={translatingJobs}
-            autoTranslate={config.autoTranslate}
-            onTranslate={(jobId) => {
-              const turn = agentLog[activeAgent]?.find(
-                (t) => t.jobId === jobId,
-              );
-              if (turn) void translateJob(activeAgent, jobId, turn.outputWire);
-            }}
-            onClear={() =>
-              setAgentLog(({ [activeAgent]: _cleared, ...rest }) => rest)
-            }
-            onClearAll={
-              Object.keys(agentLog).some(
-                (id) => id !== activeAgent && agentLog[id].length > 0,
-              )
-                ? () => setAgentLog({})
-                : undefined
-            }
-          />
-        </div>
-
-        {/* 05 — ANALYSIS */}
-        <SpecHead
-          num="05"
-          title="التحليل"
-          note="خريطة الثقل وتفصيل التوفير واستهلاك الاستدعاء"
-        />
-        {report ? (
-          <div className="space-y-4">
-            <TokenHeatmap report={report} />
-            <OptimizationInsights report={report} />
-            <OptimizationUsagePanel report={report} />
+            {/* The polished text in the user's language — read and copy. */}
+            <details className="group mt-4 border border-ink bg-white">
+              <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 [&::-webkit-details-marker]:hidden">
+                <span className="flex items-center gap-1.5 bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">
+                  <Languages size={14} /> بطاقة لغة المستخدم
+                </span>
+                <span className="text-xs text-slate-500">
+                  {nativeText
+                    ? "النسخة المنقّحة بلغتك من آخر معالجة — للقراءة والنسخ"
+                    : "تظهر هنا النسخة المنقّحة بلغتك بعد المعالجة"}
+                </span>
+                <ChevronDown
+                  size={16}
+                  className="ms-auto text-slate-500 transition group-open:rotate-180"
+                />
+              </summary>
+              <div className="border-t border-slate-200 p-4">
+                <OutputCard
+                  lang="ar"
+                  title="Optimized Output"
+                  chip={isMock && nativeText ? "تنقية محلية" : "العربية"}
+                  status={s3}
+                  text={nativeText}
+                  unavailable={arabicUnavailable}
+                  unavailableReason={
+                    report?.rejectedByGuard
+                      ? "حُجبت النسخة العربية لأن مخرج Gemini لم يجتز فحوص السلامة؛ عُرض النص المنقّى محلياً."
+                      : "الترجمة العربية غير متاحة في الوضع المحلي أو عند تعذّر Gemini."
+                  }
+                  report={report?.arabic ?? null}
+                />
+              </div>
+            </details>
           </div>
-        ) : (
-          <Placeholder
-            active={phase === "measuring"}
-            text="تظهر التحليلات هنا بعد اكتمال الدورة"
-          />
-        )}
 
-        {/* 06 — COST */}
-        <SpecHead num="06" title="التكلفة" note="تقدير تكلفة الإدخال" />
-        <CostBar
-          report={report}
-          active={phase === "measuring"}
-          modelLabel={
-            report?.model ? getModel("google", report.model).label : modelLabel
-          }
-          onReset={reset}
-        />
+          {/* SIDE — the conversation log, then instructions and details */}
+          <aside className="min-w-0">
+            <SpecHead
+              title="سجل IN / OUT"
+              note="ما أُرسل وما ردّ به الوكيل — بلغتك وبالإنجليزية"
+            />
+            <AgentTranscript
+              agent={activeAgent}
+              turns={agentLog[activeAgent] ?? []}
+              translatingJobs={translatingJobs}
+              autoTranslate={config.autoTranslate}
+              onTranslate={(jobId) => {
+                const turn = agentLog[activeAgent]?.find(
+                  (t) => t.jobId === jobId,
+                );
+                if (turn)
+                  void translateJob(activeAgent, jobId, turn.outputWire);
+              }}
+              onClear={() =>
+                setAgentLog(({ [activeAgent]: _cleared, ...rest }) => rest)
+              }
+              onClearAll={
+                Object.keys(agentLog).some(
+                  (id) => id !== activeAgent && agentLog[id].length > 0,
+                )
+                  ? () => setAgentLog({})
+                  : undefined
+              }
+              sendTargets={AGENT_OPTIONS.map((opt) => opt.id).filter(
+                (id) => id !== activeAgent,
+              )}
+              onSendAlso={(jobIds, target) => void sendAlso(jobIds, target)}
+            />
+            <SpecHead
+              title="التعليمات والتفاصيل"
+              note="نتائج المحطات والتحليل والتكلفة لآخر معالجة"
+            />
+            <DetailsDrawer
+              tabs={[
+                {
+                  id: "stations",
+                  label: "نتائج المحطات",
+                  body: (
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <SpecCard
+                        tag="ST-01"
+                        title="قياس الأصل"
+                        subtitle="Token Analysis — قياس النص الأصلي"
+                        status={s1}
+                        action={
+                          original ? (
+                            <SourceBadge
+                              compact
+                              source={original.source}
+                              providerLabel={
+                                original.model
+                                  ? getModel("google", original.model).label
+                                  : undefined
+                              }
+                            />
+                          ) : null
+                        }
+                      >
+                        {original ? (
+                          <div>
+                            <div className="grid grid-cols-3 gap-2 text-center">
+                              <Metric
+                                label={
+                                  original.source === "provider"
+                                    ? "Tokens حقيقية"
+                                    : "Tokens تقديرية"
+                                }
+                                value={original.tokens}
+                              />
+                              <Metric label="كلمة" value={original.words} />
+                              <Metric label="حرف" value={original.characters} />
+                            </div>
+                            {originalRatio !== null && (
+                              <div className="mt-3 flex items-center gap-2 border border-slate-300 bg-slate-50 px-3 py-2 text-xs">
+                                <span className="font-bold text-slate-500">
+                                  نسبة العربية
+                                </span>
+                                <div className="h-2 flex-1 overflow-hidden bg-slate-200">
+                                  <div
+                                    className="h-full bg-brand-500 transition-all"
+                                    style={{
+                                      width: `${Math.round(originalRatio * 100)}%`,
+                                    }}
+                                  />
+                                </div>
+                                <span className="font-mono font-black text-ink">
+                                  {Math.round(originalRatio * 100)}%
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <Placeholder
+                            active={s1 === "active"}
+                            text="ستظهر قياسات النص الأصلي هنا"
+                          />
+                        )}
+                      </SpecCard>
+                      <SpecCard
+                        tag="ST-02"
+                        title="المعالجة"
+                        subtitle="تنقية محلية ثم إعادة صياغة عبر Gemini عند توفره"
+                        status={s2}
+                      >
+                        {dual ? (
+                          <div className="flex items-center gap-3 border border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
+                            <Wand2 className="shrink-0 text-brand-500" />
+                            <span className="flex-1">{dual.note}</span>
+                            <span
+                              className={`px-2.5 py-1 text-[11px] font-bold ${dual.source === "gemini" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}
+                            >
+                              {dual.source === "gemini"
+                                ? `${dual.model ?? "Gemini"}${dual.viaUserKey ? " · مفتاحك" : ""}`
+                                : "محلي"}
+                            </span>
+                          </div>
+                        ) : (
+                          <Placeholder
+                            active={s2 === "active"}
+                            text="يُنقّى النص محلياً، ويُنشئ Gemini النسخة الإنجليزية المختصرة عند توفره"
+                          />
+                        )}
+                      </SpecCard>
+                    </div>
+                  ),
+                },
+                {
+                  id: "analysis",
+                  label: "التحليل",
+                  body: report ? (
+                    <div className="space-y-4">
+                      <TokenHeatmap report={report} />
+                      <OptimizationInsights report={report} />
+                      <OptimizationUsagePanel report={report} />
+                    </div>
+                  ) : (
+                    <Placeholder
+                      active={phase === "measuring"}
+                      text="تظهر خريطة الثقل وتفصيل التوفير هنا بعد أول معالجة"
+                    />
+                  ),
+                },
+                {
+                  id: "cost",
+                  label: "التكلفة",
+                  body: (
+                    <CostBar
+                      report={report}
+                      active={phase === "measuring"}
+                      modelLabel={
+                        report?.model
+                          ? getModel("google", report.model).label
+                          : modelLabel
+                      }
+                      onReset={reset}
+                    />
+                  ),
+                },
+                {
+                  id: "notes",
+                  label: "ملاحظات",
+                  body: (
+                    <ul className="space-y-2 border border-slate-300 bg-white p-4 text-xs leading-6 text-slate-600">
+                      <li>
+                        لكل وكيل مدخله: ما تكتبه في تبويب وكيل يُرسل إليه هو.
+                        «معالجة» تستبدل مسودتك بالإنجليزية المختصرة، و«عرض
+                        الأصل» و«تراجع» يعيدانها حتى الإرسال.
+                      </li>
+                      <li>
+                        الوكلاء يستلمون الإنجليزية فقط لتقليل التوكنز؛ نصك بلغتك
+                        يُحفظ في عمود لغتك من سجل IN / OUT.
+                      </li>
+                      <li>
+                        «إرسال أيضاً» في السجل يعيد إرسال نصوص عولجت سابقاً إلى
+                        وكيل آخر — بلا معالجة جديدة ولا تكلفة إضافية.
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Gauge size={14} className="shrink-0" /> القياس عبر
+                        Gemini countTokens عند توفره، وإلا بتقدير محلي · مفتاحك
+                        يبقى في متصفحك.
+                      </li>
+                    </ul>
+                  ),
+                },
+              ]}
+            />
+          </aside>
+        </div>
 
-        <footer className="mt-10 flex items-center justify-center gap-2 border-t border-slate-300 pt-4 text-xs text-slate-500">
-          <Gauge size={15} /> القياس عبر Gemini countTokens عند توفره، وإلا
-          بتقدير محلي · الترجمة تتطلب Gemini · مفتاحك يبقى في متصفحك.
-        </footer>
         <SettingsModal
           open={settingsOpen}
           onClose={() => setSettingsOpen(false)}
@@ -1311,20 +1322,10 @@ export function OptimizerWorkspace() {
 
 /* ---- spec-sheet chrome -------------------------------------------------- */
 
-function SpecHead({
-  num,
-  title,
-  note,
-}: {
-  num: string;
-  title: string;
-  note: string;
-}) {
+function SpecHead({ title, note }: { title: string; note: string }) {
   return (
     <div className="mt-8 mb-3 flex items-baseline gap-3">
-      <span className="font-mono text-sm font-medium text-brand-600">
-        {num}
-      </span>
+      <span className="h-2 w-2 shrink-0 self-center bg-brand-500" aria-hidden />
       <h2 className="text-base font-bold">{title}</h2>
       <span className="hidden text-[11px] text-slate-500 sm:inline">
         {note}
@@ -1387,6 +1388,52 @@ function SpecCard({
         )}
       </div>
       {children}
+    </section>
+  );
+}
+
+/** One tabbed drawer for everything that explains the latest processing. */
+function DetailsDrawer({
+  tabs,
+}: {
+  tabs: { id: string; label: string; body: ReactNode }[];
+}) {
+  const [open, setOpen] = useState(tabs[0].id);
+  const current = tabs.find((tab) => tab.id === open) ?? tabs[0];
+  return (
+    <section className="border border-dashed border-slate-400 bg-white/70">
+      <div
+        role="tablist"
+        aria-label="التعليمات والتفاصيل"
+        className="flex flex-wrap gap-1.5 border-b border-dashed border-slate-300 p-2"
+      >
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            id={`details-tab-${tab.id}`}
+            type="button"
+            role="tab"
+            aria-selected={tab.id === current.id}
+            aria-controls="details-panel"
+            onClick={() => setOpen(tab.id)}
+            className={`border px-3 py-1.5 text-xs font-bold transition ${
+              tab.id === current.id
+                ? "border-ink bg-ink text-white"
+                : "border-slate-300 bg-white text-slate-600 hover:border-ink"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      <div
+        id="details-panel"
+        role="tabpanel"
+        aria-labelledby={`details-tab-${current.id}`}
+        className="p-3"
+      >
+        {current.body}
+      </div>
     </section>
   );
 }
@@ -1454,10 +1501,6 @@ function OutputCard({
   unavailableReason,
   report,
   status,
-  agent,
-  agentDisabled,
-  onSelectAgent,
-  onSend,
 }: {
   lang: "ar" | "en";
   title: string;
@@ -1467,14 +1510,6 @@ function OutputCard({
   unavailableReason?: string;
   report: VariantReport | null;
   status: NodeStatus;
-  /** Agent id currently picked for this workspace's sends. */
-  agent?: string;
-  /** True while auto-dispatch owns the send (picked agent == default). */
-  agentDisabled?: boolean;
-  /** The selector only picks WHICH agent — it never sends. */
-  onSelectAgent?: (agentId: string) => void;
-  /** The named button sends this variant's text to the picked agent. */
-  onSend?: (text: string) => void;
 }) {
   const emerald = lang === "ar";
   const bar = emerald ? "bg-emerald-500" : "bg-blue-500";
@@ -1497,60 +1532,6 @@ function OutputCard({
           </span>
           <h3 className="font-bold">{title}</h3>
           <div className="ms-auto flex items-center gap-1.5">
-            {text && onSelectAgent && (
-              <details className="group relative">
-                <summary
-                  title="اختيار وكيل CLI لاستقبال هذا النص"
-                  className="flex cursor-pointer list-none items-center gap-1.5 border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-600 transition hover:border-ink [&::-webkit-details-marker]:hidden"
-                >
-                  <Settings2 size={14} />
-                  الوكيل ▾
-                </summary>
-                <div className="absolute left-0 top-8 z-40 w-44 border border-ink bg-white py-1 shadow-hard-sm">
-                  {AGENT_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={(event) => {
-                        event.currentTarget
-                          .closest("details")
-                          ?.removeAttribute("open");
-                        onSelectAgent(opt.id);
-                      }}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-start text-xs font-bold text-slate-700 transition hover:bg-violet-50 hover:text-violet-800"
-                    >
-                      {opt.id === agent ? (
-                        <Check size={12} className="shrink-0 text-violet-600" />
-                      ) : (
-                        <span className="w-3 shrink-0" />
-                      )}
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </details>
-            )}
-            {text && onSend && agent && (
-              <button
-                type="button"
-                disabled={agentDisabled}
-                onClick={() => onSend(text)}
-                title={
-                  agentDisabled
-                    ? "الإرسال التلقائي مفعّل — يُرسل تلقائياً؛ اختر وكيلاً آخر للإرسال اليدوي"
-                    : `إرسال هذا النص إلى ${agentLabel(agent)} عبر الجسر المحلي`
-                }
-                className="flex items-center gap-1.5 border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-violet-700 transition hover:border-violet-600 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Send size={14} />
-                {agentLabel(agent)}
-                {agentDisabled ? (
-                  <span className="text-[10px] font-semibold text-slate-400">
-                    تلقائي
-                  </span>
-                ) : null}
-              </button>
-            )}
             {text && <CopyButton text={text} />}
           </div>
         </div>

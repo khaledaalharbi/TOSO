@@ -218,6 +218,30 @@ describe("a bare rule is never an answer", () => {
   });
 });
 
+describe("Gemini system notices are not the reply (live)", () => {
+  it("drops the ℹ self-update notice that landed in a captured reply", () => {
+    expect(
+      cleanReplyLines([
+        "✦ Red",
+        "  Blue",
+        "  Yellow",
+        "",
+        "ℹ Update successful! The new version will be used on your next run.",
+      ]),
+    ).toBe("Red\nBlue\nYellow");
+  });
+
+  it("drops Claude's right-aligned effort indicator too", () => {
+    expect(
+      cleanReplyLines([
+        "⏺ Red, blue, yellow",
+        "",
+        `${" ".repeat(97)}◐ medium · /effort`,
+      ]),
+    ).toBe("Red, blue, yellow");
+  });
+});
+
 describe("Hermes TUI conventions (live)", () => {
   const rule = "─".repeat(120);
   const sent =

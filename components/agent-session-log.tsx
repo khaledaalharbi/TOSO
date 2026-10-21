@@ -7,6 +7,7 @@ import {
   ChevronsLeftRight,
   ChevronsRightLeft,
   Languages,
+  Send,
   Trash2,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -111,11 +112,14 @@ function Entry({
   n,
   lang,
   muted,
+  select,
   children,
 }: {
   n: number;
   lang: "en" | "ar";
   muted?: boolean;
+  /** «إرسال أيضاً» mode: a checkbox beside the text. */
+  select?: { checked: boolean; onToggle: () => void };
   children: ReactNode;
 }) {
   return (
@@ -125,8 +129,17 @@ function Entry({
         lang === "en"
           ? "border-[#9673a6]/50 bg-[#e1d5e7] text-left font-mono text-[12.5px]"
           : "border-[#82b366]/60 bg-[#d5e8d4] text-right text-sm"
-      } ${muted ? "opacity-60" : ""}`}
+      } ${muted ? "opacity-60" : ""} ${select?.checked ? "ring-2 ring-brand-500" : ""}`}
     >
+      {select ? (
+        <input
+          type="checkbox"
+          checked={select.checked}
+          onChange={select.onToggle}
+          aria-label={`حدّد الدورة ${n} لإعادة إرسالها`}
+          className="mt-1.5 h-4 w-4 shrink-0 accent-brand-600"
+        />
+      ) : null}
       <span className="shrink-0 font-bold tabular-nums text-slate-600">
         {n}.
       </span>
@@ -224,6 +237,8 @@ export function AgentTranscript({
   onTranslate,
   onClear,
   onClearAll,
+  sendTargets = [],
+  onSendAlso,
 }: {
   agent: string;
   turns: AgentTurn[];
@@ -234,16 +249,42 @@ export function AgentTranscript({
   onClear: () => void;
   /** Offered only when other agents also have turns to clear. */
   onClearAll?: () => void;
+  /** Agents the selected texts can be re-sent to (all but this one). */
+  sendTargets?: string[];
+  /** Re-send already-processed English texts — no new processing needed. */
+  onSendAlso?: (jobIds: string[], target: string) => void;
 }) {
   const [side, setSide] = useState<"in" | "out">("in");
   /** Which language box currently covers its sibling (null = split view). */
   const [expanded, setExpanded] = useState<"en" | "ar" | null>(null);
-  const isIn = side === "in";
+  /** «إرسال أيضاً» mode: null = off, else the picked turns. */
+  const [picked, setPicked] = useState<ReadonlySet<string> | null>(null);
+  const [target, setTarget] = useState(sendTargets[0] ?? "");
+  const selecting = picked !== null;
+  const isIn = side === "in" || selecting;
   const empty = turns.length === 0;
+  const canSendAlso = Boolean(onSendAlso) && sendTargets.length > 0 && !empty;
+  const toggle = (jobId: string) =>
+    setPicked((current) => {
+      const next = new Set(current);
+      if (next.has(jobId)) next.delete(jobId);
+      else next.add(jobId);
+      return next;
+    });
+  const sendTarget = sendTargets.includes(target) ? target : sendTargets[0];
 
   const enEntries = turns.map((t) =>
     isIn ? (
-      <Entry key={t.jobId} n={t.n} lang="en">
+      <Entry
+        key={t.jobId}
+        n={t.n}
+        lang="en"
+        select={
+          selecting && t.inputWire.trim()
+            ? { checked: picked.has(t.jobId), onToggle: () => toggle(t.jobId) }
+            : undefined
+        }
+      >
         {t.inputWire}
       </Entry>
     ) : t.status === "running" ? (
@@ -334,11 +375,12 @@ export function AgentTranscript({
             key={key}
             type="button"
             role="tab"
-            aria-selected={side === key}
+            aria-selected={(isIn ? "in" : "out") === key}
+            disabled={selecting && key === "out"}
             onClick={() => setSide(key)}
             title={key === "in" ? "ما أرسلته إلى الوكيل" : "ما ردّ به الوكيل"}
-            className={`rounded-t-lg border border-b-0 px-6 py-2 text-xs font-bold ${
-              side === key
+            className={`rounded-t-lg border border-b-0 px-6 py-2 text-xs font-bold disabled:opacity-40 ${
+              (isIn ? "in" : "out") === key
                 ? "border-amber-300 bg-amber-100 text-amber-900"
                 : "border-slate-300 bg-slate-100 text-slate-500 hover:text-slate-800"
             }`}
@@ -353,6 +395,21 @@ export function AgentTranscript({
         </span>
         {!empty && (
           <div dir="rtl" className="ms-auto flex gap-1.5 pb-1.5">
+            {canSendAlso ? (
+              <button
+                type="button"
+                aria-pressed={selecting}
+                onClick={() => setPicked(selecting ? null : new Set())}
+                title="أعد إرسال نصوص سبق إرسالها إلى وكيل آخر — بلا معالجة جديدة"
+                className={`flex items-center gap-1 rounded border px-2 py-1 text-[11px] font-bold ${
+                  selecting
+                    ? "border-brand-600 bg-brand-500 text-white"
+                    : "border-slate-300 bg-white text-slate-700 hover:border-ink"
+                }`}
+              >
+                <Send size={12} /> {selecting ? "إلغاء الإرسال" : "إرسال أيضاً"}
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={onClear}
@@ -372,6 +429,50 @@ export function AgentTranscript({
           </div>
         )}
       </div>
+      {selecting ? (
+        <div
+          dir="rtl"
+          role="region"
+          aria-label="إرسال أيضاً"
+          className="flex flex-wrap items-center gap-2 border border-b-0 border-brand-500 bg-brand-500/10 px-3 py-2 text-xs font-bold text-slate-700"
+        >
+          {picked.size === 0 ? (
+            <span>حدّد النصوص الإنجليزية التي تريد إرسالها إلى وكيل آخر.</span>
+          ) : (
+            <>
+              <span>
+                {picked.size} {picked.size === 1 ? "نص محدد" : "نصوص محددة"} —
+                إلى
+              </span>
+              <select
+                aria-label="الوكيل المستلم"
+                value={sendTarget}
+                onChange={(event) => setTarget(event.target.value)}
+                className="border border-slate-300 bg-white px-2 py-1 font-mono text-xs"
+              >
+                {sendTargets.map((id) => (
+                  <option key={id} value={id}>
+                    {agentLabel(id)}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => {
+                  const ids = turns
+                    .filter((t) => picked.has(t.jobId))
+                    .map((t) => t.jobId);
+                  setPicked(null);
+                  onSendAlso?.(ids, sendTarget);
+                }}
+                className="flex items-center gap-1 border border-ink bg-brand-500 px-3 py-1 text-white hover:bg-brand-600"
+              >
+                <Send size={12} /> إرسال إلى {agentLabel(sendTarget)}
+              </button>
+            </>
+          )}
+        </div>
+      ) : null}
       <div className="relative flex flex-col gap-3 rounded-b-lg rounded-tr-lg border border-amber-300 bg-amber-50 p-4 md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
         <LangBox
           lang="en"

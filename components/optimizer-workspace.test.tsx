@@ -58,7 +58,25 @@ describe("OptimizerWorkspace hydration", () => {
   it("prevents input and runs until the browser key has been hydrated", () => {
     const markup = renderToStaticMarkup(<OptimizerWorkspace />);
     expect(markup).toMatch(/<textarea[^>]*disabled=""/);
-    expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>تشغيل التحليل/);
+    expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>[^]*?معالجة/);
+  });
+
+  it("gives every agent its own prompt box and drops the shared input and picker", () => {
+    const markup = renderToStaticMarkup(<OptimizerWorkspace />);
+    for (const label of [
+      "Gemini CLI",
+      "Devin",
+      "Hermes",
+      "Claude Code",
+      "OpenAI Codex",
+    ]) {
+      expect(markup).toContain(`مدخل ${label}`);
+    }
+    expect(markup).not.toContain("تشغيل التحليل");
+    expect(markup).not.toContain("الوكيل ▾");
+    expect(markup).toContain("بطاقة لغة المستخدم");
+    expect(markup).toContain("سجل IN / OUT");
+    expect(markup).toContain("التعليمات والتفاصيل");
   });
 });
 

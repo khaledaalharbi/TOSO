@@ -48,6 +48,13 @@ const AGENT_CHROME = [
   // Claude's footer ("⏵⏵ auto mode on …"), often glued to the rule above it
   // when that rule fills the full terminal width and soft-wraps.
   /^\s*[─━═]*\s*⏵⏵\s/,
+  // Gemini CLI system notices ("ℹ Update successful! …") — its replies
+  // start with ✦, so an ℹ line is never the model's answer. Seen live: the
+  // self-update notice landed inside a captured reply.
+  /^\s*ℹ\s/,
+  // Claude's right-aligned effort indicator ("◐ medium · /effort"), seen
+  // live under a captured reply.
+  /^\s*[◐◑◒◓○◔◕●]?\s*\w+\s+·\s+\/effort\s*$/,
 ];
 /** Reply bullets: Gemini ✦, Claude ⏺/●, Codex •. Only the FIRST line's. */
 const REPLY_MARK = /^(\s*)[✦⏺●•]/;

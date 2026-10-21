@@ -23,14 +23,13 @@ export interface ProviderConfig {
   bridgeUrl?: string;
   /** Session token the bridge printed on start — required on every call. */
   bridgeToken?: string;
-  /** Chosen CLI agent id from the bridge allowlist (claude | codex | gemini | …). */
+  /** The agent whose tab opens first (claude | codex | gemini | …). */
   agent?: string;
   /**
-   * Auto-dispatch: when on, every completed run hands the primary polished
-   * output to `agent` automatically — the per-card send button stays
-   * disabled while the picked agent equals this default.
+   * Per-agent «إرسال مباشرة بعد المعالجة» switch in that agent's own prompt
+   * box: on = processing sends the English polish straight to that agent.
    */
-  autoSend?: boolean;
+  autoSendAgents?: Record<string, boolean>;
   /**
    * Absolute project folder per agent id (each agent tab has its own) —
    * sent as that agent's run `cwd` so agents never work implicitly inside

@@ -87,7 +87,7 @@ export function AgentTabStrip({
             {opt.id === defaultAgent ? (
               <span
                 dir="rtl"
-                title="الوكيل الافتراضي — يُحدَّد من الإعدادات"
+                title="الوكيل الافتراضي — تبويبه يُفتح أولاً، ويُحدَّد من الإعدادات"
                 className={`border px-1.5 py-px text-[10px] leading-4 font-bold ${
                   selected
                     ? "border-white/40 text-white"
