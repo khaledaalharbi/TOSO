@@ -241,12 +241,15 @@ function AgentBlock({
   compact = false,
   transcript = true,
   tall = false,
+  composer,
 }: {
   compact?: boolean;
   /** false = the IN/OUT log lives in its own panel elsewhere on the page. */
   transcript?: boolean;
   /** A taller terminal — the agent column has the height to spare. */
   tall?: boolean;
+  /** A per-agent prompt box rendered inside the block, under the terminal. */
+  composer?: ReactNode;
 }) {
   return (
     <div className="border-2 border-ink">
@@ -342,6 +345,7 @@ function AgentBlock({
           ))}
         </div>
       </div>
+      {composer}
       {/* transcript */}
       {transcript ? (
         <div className="grid grid-cols-2 gap-px border-t border-ink bg-slate-300">
@@ -990,6 +994,211 @@ function DesignAgentCentre() {
   );
 }
 
+/* ---- Design 7 — The prompt lives inside the agent ---------------------- */
+
+const SAMPLE_DRAFT =
+  "من فضلك اشرح لي بإيجاز الفرق بين TCP و UDP مع مثال لكل منهما.";
+const SAMPLE_READY =
+  "Briefly explain the difference between TCP and UDP, with one example of each.";
+
+type ComposerPhase = "draft" | "processing" | "ready";
+
+/**
+ * One agent's own prompt box. Processing replaces the draft with the English
+ * polish in place; the original stays reachable until the text is sent, and
+ * both go into the IN/OUT log on send. "Send right after processing" is a
+ * per-agent switch here — where the action happens — not a global setting.
+ */
+function AgentComposer({
+  agent,
+  onSent,
+}: {
+  agent: string;
+  onSent: () => void;
+}) {
+  const [phase, setPhase] = useState<ComposerPhase>("draft");
+  const [text, setText] = useState(SAMPLE_DRAFT);
+  const [original, setOriginal] = useState("");
+  const [auto, setAuto] = useState(false);
+  const [showOriginal, setShowOriginal] = useState(false);
+  const [status, setStatus] = useState("اكتب بلغتك ثم اضغط «معالجة».");
+
+  function send() {
+    onSent();
+    setPhase("draft");
+    setText("");
+    setOriginal("");
+    setShowOriginal(false);
+    setStatus(`أُرسل إلى ${agent} — الأصل والإنجليزية دخلا سجل IN / OUT.`);
+  }
+
+  function process() {
+    if (!text.trim()) return;
+    setOriginal(text);
+    setPhase("processing");
+    setStatus("يعالج… (المعالجة الفعلية تأخذ 7–37 ثانية)");
+    setTimeout(() => {
+      if (auto) {
+        onSent();
+        setPhase("draft");
+        setText("");
+        setOriginal("");
+        setStatus(`عولج وأُرسل مباشرة إلى ${agent} — 38 → 24 توكن.`);
+        return;
+      }
+      setText(SAMPLE_READY);
+      setPhase("ready");
+      setStatus("جاهز: 38 → 24 توكن. راجع الإنجليزية أو عدّلها ثم أرسل.");
+    }, 1200);
+  }
+
+  function undo() {
+    setText(original);
+    setOriginal("");
+    setShowOriginal(false);
+    setPhase("draft");
+    setStatus("عاد النص الأصلي — عدّله ثم عالجه من جديد.");
+  }
+
+  const ready = phase === "ready";
+  return (
+    <div className="border-t-2 border-ink bg-white p-3">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="bg-ink px-2 py-0.5 text-xs font-bold text-white">
+          مدخل {agent}
+        </span>
+        <span
+          className={`border px-2 py-0.5 text-[11px] font-bold ${
+            ready
+              ? "border-emerald-500 bg-emerald-50 text-emerald-800"
+              : "border-amber-400 bg-amber-50 text-amber-800"
+          }`}
+        >
+          {ready ? "جاهز — English" : "مسودة — العربية"}
+        </span>
+        <label className="ms-auto flex cursor-pointer items-center gap-1.5 text-[11px] font-bold text-slate-700">
+          <input
+            type="checkbox"
+            checked={auto}
+            disabled={phase !== "draft"}
+            onChange={(e) => setAuto(e.target.checked)}
+            className="h-3.5 w-3.5 accent-brand-600"
+          />
+          إرسال مباشرة بعد المعالجة
+        </label>
+      </div>
+      <textarea
+        aria-label={`مدخل ${agent}`}
+        dir={ready ? "ltr" : "rtl"}
+        value={text}
+        disabled={phase === "processing"}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="اكتب تلقينتك بلغتك هنا"
+        className="min-h-24 w-full resize-y border border-slate-300 bg-slate-50 p-2.5 text-sm leading-7 outline-none focus:border-ink disabled:opacity-60"
+      />
+      {showOriginal && original ? (
+        <p className="mt-1.5 border border-dashed border-slate-300 bg-slate-50 p-2 text-xs text-slate-600">
+          <b>الأصل:</b> {original}
+        </p>
+      ) : null}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {ready ? (
+          <>
+            <button
+              type="button"
+              onClick={send}
+              className="bg-brand-500 px-3 py-1.5 text-xs font-bold text-white outline-none hover:bg-brand-600 focus-visible:ring-2 focus-visible:ring-ink"
+            >
+              إرسال إلى {agent}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowOriginal((v) => !v)}
+              className="border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:border-ink"
+            >
+              {showOriginal ? "إخفاء الأصل" : "عرض الأصل"}
+            </button>
+            <button
+              type="button"
+              onClick={undo}
+              className="border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:border-ink"
+            >
+              تراجع
+            </button>
+            <span className="border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-500">
+              إرسال أيضاً إلى… ▾
+            </span>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={process}
+            disabled={phase === "processing" || !text.trim()}
+            className="bg-brand-500 px-3 py-1.5 text-xs font-bold text-white outline-none hover:bg-brand-600 focus-visible:ring-2 focus-visible:ring-ink disabled:opacity-50"
+          >
+            {phase === "processing"
+              ? "يعالج…"
+              : auto
+                ? `معالجة وإرسال إلى ${agent}`
+                : "معالجة"}
+          </button>
+        )}
+      </div>
+      <p
+        role="status"
+        className="mt-2 border-t border-slate-200 pt-1.5 text-[11px] text-slate-600"
+      >
+        {status}
+      </p>
+    </div>
+  );
+}
+
+function DesignAgentComposer() {
+  const [sent, setSent] = useState(0);
+  return (
+    <>
+      <Header thin />
+      <div className="mt-5 grid items-start gap-4 xl:grid-cols-[7fr_5fr]">
+        <div className="space-y-3">
+          <ColumnZone zone="work" />
+          <AgentBlock
+            transcript={false}
+            composer={
+              <AgentComposer
+                agent={AGENTS[0]}
+                onSent={() => setSent((n) => n + 1)}
+              />
+            }
+          />
+          <Collapsible
+            name="بطاقة لغة المستخدم"
+            zone="work"
+            summary={<Chip>النسخة العربية المنقّحة — للقراءة والنسخ</Chip>}
+          >
+            <Lines n={3} />
+          </Collapsible>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <ColumnZone zone="work" />
+            <TranscriptPanel />
+            {sent ? (
+              <p className="mt-1.5 text-[11px] font-bold text-emerald-700">
+                دورات مرسلة في هذه التجربة: {sent}
+              </p>
+            ) : null}
+          </div>
+          <div>
+            <ColumnZone zone="detail" />
+            <DetailsDrawer />
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 /* ---- The lab ------------------------------------------------------------ */
 
 const DESIGNS = [
@@ -1035,13 +1244,20 @@ const DESIGNS = [
     fits: "متابعة حوار الوكيل: الطرفية بارتفاع مريح، والسجل المترجم أمامك دون تمرير.",
     View: DesignAgentCentre,
   },
+  {
+    id: 7,
+    name: "المدخل داخل الوكيل",
+    idea: "لكل وكيل مدخله الخاص تحت طرفيته، فما تكتبه في تبويب وكيل يذهب إليه هو — بلا قائمة «الوكيل ▾» ولا بطاقة English منفصلة. «معالجة» تستبدل مسودتك بالإنجليزية المختصرة في المكان نفسه، والأصل يبقى متاحاً بـ«عرض الأصل» و«تراجع» حتى الإرسال. عمودان: الوكيل بمدخله وبطاقة لغة المستخدم تحته، وسجل IN/OUT والتفاصيل بجانبه. جرّب المدخل فهو تفاعلي.",
+    fits: "تقليل أخطاء الإرسال إلى أدنى حد: الهدف واضح من التبويب نفسه، وكل وكيل بمسودته وجلسته.",
+    View: DesignAgentComposer,
+  },
 ] as const;
 
 /** Wide designs use the whole screen; the originals keep their 1024px frame. */
-const WIDE = new Set([4, 5, 6]);
+const WIDE = new Set([4, 5, 6, 7]);
 
 export function LayoutsLab() {
-  const [active, setActive] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
+  const [active, setActive] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7>(1);
   const design = DESIGNS.find((d) => d.id === active)!;
   const View = design.View;
   const frame = WIDE.has(active) ? "max-w-[1840px]" : "max-w-5xl";
