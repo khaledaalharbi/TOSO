@@ -9,7 +9,6 @@
  */
 
 import { DEFAULT_BRIDGE_URL } from "@/lib/bridge/agents";
-import type { GeminiUsage } from "@/lib/types";
 
 export interface BridgeConfig {
   url: string;

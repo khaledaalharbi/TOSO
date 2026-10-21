@@ -273,7 +273,6 @@ function LangBox({
   empty,
   expanded,
   onToggleExpand,
-  fill,
   children,
 }: {
   lang: "en" | "ar";
@@ -283,8 +282,6 @@ function LangBox({
   expanded?: boolean;
   /** Expand/fold toggle — its button sits at the corner facing the sibling. */
   onToggleExpand?: () => void;
-  /** Fill the overlay's height instead of the fixed column height. */
-  fill?: boolean;
   children: ReactNode;
 }) {
   const en = lang === "en";
@@ -663,7 +660,6 @@ export function AgentTranscript({
               empty={empty}
               orderClass=""
               expanded
-              fill
               onToggleExpand={() => setExpanded(null)}
             >
               {expanded === "en" ? enEntries : arEntries}

@@ -3,7 +3,7 @@
 import "@xterm/xterm/css/xterm.css";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { Terminal } from "@xterm/xterm";
-import { Play, RotateCcw, ScanText, Square } from "lucide-react";
+import { RotateCcw, ScanText, Square } from "lucide-react";
 import {
   useEffect,
   useImperativeHandle,
