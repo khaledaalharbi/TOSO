@@ -770,6 +770,26 @@ describe("toso-bridge", () => {
     expect((await api(`/pty/${session.id}`)).status).toBe(404);
   }, 60_000);
 
+  it("PTY: lists every session it holds, so a new tab can find and end them", async () => {
+    expect((await api("/pty", {}, null)).status).toBe(401);
+    const { session } = await (
+      await ptyStart({ agent: "repl", cwd: targetDir })
+    ).json();
+    const list = (await (await api("/pty")).json()) as {
+      max: number;
+      sessions: { id: string; agent: string; cwd: string; alive: boolean }[];
+    };
+    expect(list.max).toBe(8);
+    const listed = list.sessions.find((s) => s.id === session.id);
+    expect(listed).toMatchObject({ agent: "repl", alive: true });
+    samePath(listed!.cwd, targetDir);
+    await api(`/pty/${session.id}`, { method: "DELETE" });
+    const after = (await (await api("/pty")).json()) as {
+      sessions: { id: string }[];
+    };
+    expect(after.sessions.some((s) => s.id === session.id)).toBe(false);
+  }, 30_000);
+
   it("PTY: validates agent, workspace and input before touching a terminal", async () => {
     expect((await (await ptyStart({ agent: "evil" })).json()).error).toBe(
       "unknown_agent",

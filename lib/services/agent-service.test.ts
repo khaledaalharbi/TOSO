@@ -8,6 +8,7 @@ import {
 import {
   checkBridge,
   checkWorkspace,
+  listPtySessions,
   openAgentTerminal,
   sendPromptToAgent,
   translateToArabic,
@@ -25,6 +26,37 @@ const jsonResponse = (status: number, body: unknown) =>
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("listPtySessions", () => {
+  it("returns the bridge's sessions and cap", async () => {
+    const session = { id: "s1", agent: "hermes", cwd: "C:\\A", alive: true };
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(200, { ok: true, max: 8, sessions: [session] }),
+        ),
+    );
+    expect(await listPtySessions(BRIDGE)).toMatchObject({
+      state: "ok",
+      max: 8,
+      sessions: [session],
+    });
+  });
+
+  it("names an old bridge (no GET /pty) instead of reporting zero sessions", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse(404, { error: "not_found" })),
+    );
+    expect(await listPtySessions(BRIDGE)).toEqual({ state: "outdated" });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(401, {})));
+    expect(await listPtySessions(BRIDGE)).toEqual({ state: "bad_token" });
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("down")));
+    expect(await listPtySessions(BRIDGE)).toEqual({ state: "offline" });
+  });
 });
 
 describe("checkBridge", () => {

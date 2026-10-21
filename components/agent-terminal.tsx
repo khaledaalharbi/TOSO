@@ -60,6 +60,17 @@ export interface AgentTerminalHandle {
   status: () => TerminalStatus;
   /** True while a turn is in flight — a new send would be refused. */
   busy: () => boolean;
+  /** The bridge session this pane shows, if any. */
+  sessionId: () => string | null;
+  /**
+   * Shows an existing live session in this pane (one found on the bridge).
+   * False when it is gone/exited, or a turn is in flight here.
+   */
+  connect: (id: string) => Promise<boolean>;
+  /** Lets go of the session WITHOUT ending it — it keeps running. */
+  detach: () => boolean;
+  /** Ends this pane's session (closes the agent) — same as «إنهاء الجلسة». */
+  end: () => Promise<void>;
 }
 
 // Timings measured against the real Gemini CLI TUI (see terminal-clean.ts).
@@ -274,7 +285,7 @@ export function AgentTerminal({
               : result.state === "invalid_workspace"
                 ? `مجلد المشروع مرفوض${result.detail ? `: ${result.detail}` : ""}.`
                 : result.state === "too_many_sessions"
-                  ? "الجسر وصل حدّه الأقصى (8 جلسات حيّة) — الجلسات مشتركة بين كل نوافذ المتصفح. أوقف جلسة لا تحتاجها من تبويب وكيلها (زر «إيقاف») ثم أعد المحاولة."
+                  ? "الجسر وصل حدّه الأقصى (8 جلسات حيّة) — الجلسات تبقى بعد إغلاق الصفحة. أنهِ جلسة لا تحتاجها من قسم «جلسات الجسر» أعلاه ثم أعد المحاولة."
                   : `تعذّر تشغيل الجلسة${"detail" in result && result.detail ? ` (${result.detail})` : ""}.`,
       );
       setStatus(result.state === "pty_unavailable" ? "unavailable" : "error");
@@ -298,8 +309,40 @@ export function AgentTerminal({
       /* ignore */
     }
     if (session) await stopPtySession(session.config, session.id);
+    setSessionCwd(null);
     setMessage(null);
     setStatus("idle");
+  }
+
+  function detach(): boolean {
+    if (turnActive.current) return false;
+    streamAbort.current?.abort();
+    sessionRef.current = null;
+    try {
+      window.sessionStorage.removeItem(sessionKey(agent));
+    } catch {
+      /* ignore */
+    }
+    termRef.current?.reset();
+    setSessionCwd(null);
+    setMessage(null);
+    setStatus("idle");
+    return true;
+  }
+
+  async function connect(id: string): Promise<boolean> {
+    if (turnActive.current) return false;
+    if (sessionRef.current?.id === id) return true;
+    const config = await resolveBridgeConfig(props.current.bridge);
+    const session = await getPtySession(config, id);
+    if (!session?.alive) return false;
+    try {
+      window.sessionStorage.setItem(sessionKey(agent), id);
+    } catch {
+      /* reattach after reload just won't be available */
+    }
+    attach(session, config);
+    return true;
   }
 
   function queueInput(data: string) {
@@ -473,6 +516,10 @@ export function AgentTerminal({
     start,
     status: () => statusRef.current,
     busy: () => turnActive.current,
+    sessionId: () => sessionRef.current?.id ?? null,
+    connect,
+    detach,
+    end: stop,
   }));
 
   // Mount: create xterm (client-only modules), then re-attach a session that
@@ -604,9 +651,10 @@ export function AgentTerminal({
               <button
                 type="button"
                 onClick={() => void stop()}
+                title="ينهي جلسة هذا التبويب فقط (يُغلق الوكيل) — الجلسات الأخرى لا تتأثر"
                 className="flex items-center gap-1 border border-white/20 px-2 py-1 font-bold text-white/70 transition hover:border-rose-400 hover:text-rose-300"
               >
-                <Square size={12} /> إيقاف
+                <Square size={12} /> إنهاء الجلسة
               </button>
             </>
           ) : null}

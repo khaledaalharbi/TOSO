@@ -21,6 +21,10 @@ import {
 } from "@/components/agent-card";
 import { AgentComposer } from "@/components/agent-composer";
 import {
+  BridgeSessions,
+  type SessionsState,
+} from "@/components/bridge-sessions";
+import {
   AgentTabStrip,
   AgentWorkspacePanel,
   type TabStatus,
@@ -70,6 +74,7 @@ import {
   WORKSPACES_STORAGE,
   parseAgentFlags,
   parseWorkspaces,
+  samePath,
   serializeAgentFlags,
   serializeWorkspaces,
   withAgentFlag,
@@ -86,10 +91,23 @@ import {
   providers,
 } from "@/lib/providers/registry";
 import {
+  SESSION_HISTORY_STORAGE,
+  newlyClosed,
+  parseHistory,
+  recordClosed,
+  sessionPanels,
+  type BridgeSessionView,
+  type ClosedSession,
+} from "@/lib/bridge/session-history";
+import {
+  checkWorkspace,
   cleanAgentOutput,
   describeBridgeAction,
+  listPtySessions,
   openAgentTerminal,
+  resolveBridgeConfig,
   sendPromptToAgent,
+  stopPtySession,
   translateToArabic,
 } from "@/lib/services/agent-service";
 import { runOptimization } from "@/lib/services/optimization-service";
@@ -333,6 +351,21 @@ export function OptimizerWorkspace() {
   const [terminalStatus, setTerminalStatus] = useState<
     Record<string, TerminalStatus>
   >({});
+  // «جلسات الجسر»: what the bridge holds (sessions outlive the page), the
+  // browser's memory of closed ones, and which ids the tabs are showing.
+  const [bridgeSessions, setBridgeSessions] = useState<{
+    state: SessionsState;
+    sessions: BridgeSessionView[];
+    max: number;
+  }>({ state: "loading", sessions: [], max: 8 });
+  const [sessionHistory, setSessionHistory] = useState<ClosedSession[]>([]);
+  const [attachedIds, setAttachedIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const [sessionPending, setSessionPending] = useState<string | null>(null);
+  const lastLive = useRef<BridgeSessionView[] | null>(null);
+  /** «فتح الجلسة»: start once the tab shows the reopened, checked folder. */
+  const pendingStart = useRef<{ agent: string; cwd: string } | null>(null);
 
   // Hydrate the BYOK key and bridge settings once on mount, then mirror
   // every change to storage.
@@ -386,6 +419,9 @@ export function OptimizerWorkspace() {
         ...(autoTranslate ? { autoTranslate } : {}),
         ...(smartClean ? { smartClean } : {}),
       }));
+      setSessionHistory(
+        parseHistory(window.localStorage.getItem(SESSION_HISTORY_STORAGE)),
+      );
       setAgentLog(restoreLog(window.sessionStorage.getItem(AGENT_LOG_SESSION)));
       setAgentSetup(
         parseAgentSetup(window.sessionStorage.getItem(AGENT_SETUP_SESSION)),
@@ -499,6 +535,193 @@ export function OptimizerWorkspace() {
   }, [agentSetup, keyHydrated]);
   // A new default in settings opens that agent's tab.
   useEffect(() => setPickedAgent(null), [config.agent]);
+
+  // Closed sessions are remembered across browser restarts — the bridge
+  // forgets an ended session within minutes.
+  useEffect(() => {
+    if (!keyHydrated) return;
+    try {
+      if (sessionHistory.length) {
+        window.localStorage.setItem(
+          SESSION_HISTORY_STORAGE,
+          JSON.stringify(sessionHistory),
+        );
+      } else {
+        window.localStorage.removeItem(SESSION_HISTORY_STORAGE);
+      }
+    } catch {
+      /* no storage — the panel still works for this page view */
+    }
+  }, [sessionHistory, keyHydrated]);
+
+  // «جلسات الجسر»: re-read the bridge's sessions (cheap, local) so a new
+  // tab sees sessions started before it, and notice the ones that closed.
+  const refreshSessions = useRef<() => Promise<void>>(async () => {});
+  useEffect(() => {
+    refreshSessions.current = async () => {
+      const result = await listPtySessions({
+        url: config.bridgeUrl ?? DEFAULT_BRIDGE_URL,
+        token: config.bridgeToken ?? "",
+      });
+      if (result.state !== "ok") {
+        setBridgeSessions((s) => ({ ...s, state: result.state }));
+        return;
+      }
+      if (lastLive.current) {
+        const closed = newlyClosed(
+          lastLive.current,
+          result.sessions,
+          Date.now(),
+        );
+        if (closed.length) setSessionHistory((h) => recordClosed(h, closed));
+      }
+      lastLive.current = result.sessions.filter((s) => s.alive);
+      setBridgeSessions({
+        state: "ok",
+        sessions: result.sessions,
+        max: result.max,
+      });
+      // A tab still re-attaching after a reload counts as showing its
+      // session — else the panel would flag it as detached for a moment.
+      const reattaching = (agent: string) => {
+        try {
+          return window.sessionStorage.getItem(`toso.pty.${agent}`);
+        } catch {
+          return null;
+        }
+      };
+      setAttachedIds(
+        new Set(
+          AGENT_OPTIONS.map(
+            (o) => terminals.current[o.id]?.sessionId() ?? reattaching(o.id),
+          ).filter((id): id is string => Boolean(id)),
+        ),
+      );
+    };
+  });
+  useEffect(() => {
+    if (!keyHydrated) return;
+    void refreshSessions.current();
+    const timer = setInterval(() => void refreshSessions.current(), 5_000);
+    return () => clearInterval(timer);
+  }, [keyHydrated]);
+  // «فتح الجلسة» starts the session only once the tab shows the reopened
+  // folder as checked (the pane reads its props after this render).
+  useEffect(() => {
+    const target = pendingStart.current;
+    if (
+      !target ||
+      !folderChecked(target.agent) ||
+      !samePath(workspaceFor(config.workspaces, target.agent), target.cwd)
+    )
+      return;
+    pendingStart.current = null;
+    void terminals.current[target.agent]
+      ?.start()
+      .then(() => refreshSessions.current());
+  });
+
+  /** Shows a live bridge session in its agent's tab. */
+  async function connectSession(session: BridgeSessionView) {
+    setSessionPending(session.id);
+    try {
+      const terminal = terminals.current[session.agent];
+      setPickedAgent(session.agent);
+      if (!terminal || !(await terminal.connect(session.id))) {
+        setTerminalNote({
+          agent: session.agent,
+          ok: false,
+          text: terminal?.busy()
+            ? `${agentLabel(session.agent)} يعمل على دورة في هذا التبويب — انتظر انتهاءها ثم اتصل بالجلسة.`
+            : "الجلسة لم تعد حيّة على الجسر.",
+        });
+        return;
+      }
+      // The bridge validated this folder when it started the session.
+      setConfig((c) => ({
+        ...c,
+        workspaces: withWorkspace(c.workspaces, session.agent, session.cwd),
+      }));
+      setAgentSetup((all) => ({
+        ...all,
+        [session.agent]: { ...all[session.agent], checked: session.cwd },
+      }));
+      setTerminalNote(null);
+    } finally {
+      setSessionPending(null);
+      void refreshSessions.current();
+    }
+  }
+
+  /** Ends a bridge session (closes the agent) — shown in a tab or not. */
+  async function endSession(session: BridgeSessionView) {
+    setSessionPending(session.id);
+    try {
+      const terminal = terminals.current[session.agent];
+      if (terminal?.sessionId() === session.id) await terminal.end();
+      else {
+        await stopPtySession(
+          await resolveBridgeConfig({
+            url: config.bridgeUrl ?? DEFAULT_BRIDGE_URL,
+            token: config.bridgeToken ?? "",
+          }),
+          session.id,
+        );
+      }
+    } finally {
+      setSessionPending(null);
+      void refreshSessions.current();
+    }
+  }
+
+  /**
+   * Reopens a closed session: a NEW session of that agent in that folder
+   * (the old conversation is gone with its process). A session the tab is
+   * showing is let go, not ended — it stays in the live list.
+   */
+  async function openClosedSession(closed: ClosedSession) {
+    setSessionPending(`${closed.agent}:${closed.cwd}`);
+    try {
+      setPickedAgent(closed.agent);
+      const check = await checkWorkspace(
+        {
+          url: config.bridgeUrl ?? DEFAULT_BRIDGE_URL,
+          token: config.bridgeToken ?? "",
+        },
+        closed.cwd,
+      );
+      if (check.state !== "ok") {
+        setTerminalNote({
+          agent: closed.agent,
+          ok: false,
+          text: `تعذّر فتح الجلسة: ${describeBridgeAction(check)}`,
+        });
+        return;
+      }
+      const terminal = terminals.current[closed.agent];
+      if (terminal?.sessionId() && !terminal.detach()) {
+        setTerminalNote({
+          agent: closed.agent,
+          ok: false,
+          text: `${agentLabel(closed.agent)} يعمل على دورة في هذا التبويب — انتظر انتهاءها ثم افتح الجلسة.`,
+        });
+        return;
+      }
+      const cwd = check.path ?? closed.cwd;
+      pendingStart.current = { agent: closed.agent, cwd };
+      setConfig((c) => ({
+        ...c,
+        workspaces: withWorkspace(c.workspaces, closed.agent, cwd),
+      }));
+      setAgentSetup((all) => ({
+        ...all,
+        [closed.agent]: { ...all[closed.agent], checked: cwd },
+      }));
+      setTerminalNote(null);
+    } finally {
+      setSessionPending(null);
+    }
+  }
 
   /**
    * Analyses one agent's draft (measure → local cleanup → Gemini rewrite →
@@ -943,6 +1166,16 @@ export function OptimizerWorkspace() {
               title="وكيل CLI"
               note="اكتب في تبويب الوكيل، عالج، ثم أرسل — الوكيل يستلم الإنجليزية فقط"
             />
+            <BridgeSessions
+              state={bridgeSessions.state}
+              panels={sessionPanels(bridgeSessions.sessions, sessionHistory)}
+              max={bridgeSessions.max}
+              attached={attachedIds}
+              pending={sessionPending}
+              onConnect={(session) => void connectSession(session)}
+              onEnd={(session) => void endSession(session)}
+              onOpen={(closed) => void openClosedSession(closed)}
+            />
             <AgentTabStrip
               activeAgent={activeAgent}
               status={Object.fromEntries(
@@ -1032,13 +1265,15 @@ export function OptimizerWorkspace() {
                     trust={config.autoTrustAgents?.[opt.id]}
                     ready={folderChecked(opt.id)}
                     visible={opt.id === activeAgent && keyHydrated}
-                    onStatus={(status) =>
+                    onStatus={(status) => {
                       setTerminalStatus((all) =>
                         all[opt.id] === status
                           ? all
                           : { ...all, [opt.id]: status },
-                      )
-                    }
+                      );
+                      // Started/ended here → the sessions panel follows now.
+                      void refreshSessions.current();
+                    }}
                   />
                   <AgentComposer
                     agent={opt.id}

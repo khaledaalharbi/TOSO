@@ -610,6 +610,7 @@ function ptyView(session) {
     alive: session.exitCode === null,
     exitCode: session.exitCode,
     startedAt: session.startedAt,
+    endedAt: session.endedAt,
     size: session.base + session.buffer.length,
   };
 }
@@ -1089,6 +1090,20 @@ async function handle(req, res) {
       trust: body.trust === true,
     });
     sendJson(req, res, 202, { jobId: job.id, job: jobView(job) });
+    return;
+  }
+
+  // Every session the bridge holds, newest first. Sessions outlive the page
+  // and the app (dev:all reuses a running bridge) — without this list a new
+  // browser tab cannot see, reattach or end them, and they pile up to the cap.
+  if (req.method === "GET" && url.pathname === "/pty") {
+    sendJson(req, res, 200, {
+      ok: true,
+      max: MAX_PTY_SESSIONS,
+      sessions: [...ptySessions.values()]
+        .sort((a, b) => b.startedAt - a.startedAt)
+        .map(ptyView),
+    });
     return;
   }
 

@@ -347,6 +347,41 @@ export interface PtySession {
   alive: boolean;
   exitCode: number | null;
   size: number;
+  startedAt?: number;
+  endedAt?: number | null;
+}
+
+export type PtyListResult =
+  | { state: "ok"; sessions: PtySession[]; max: number; config: BridgeConfig }
+  /** A bridge from before GET /pty — it must be restarted to list sessions. */
+  | { state: "outdated" }
+  | { state: "offline" | "bad_token" };
+
+/** Every session the bridge holds (newest first) — they outlive the page. */
+export async function listPtySessions(
+  config: BridgeConfig,
+): Promise<PtyListResult> {
+  try {
+    const resolved = await resolveBridgeConfig(config);
+    const response = await bridgeFetch(resolved, "/pty", {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (response.status === 401) return { state: "bad_token" };
+    if (response.status === 404) return { state: "outdated" };
+    if (!response.ok) return { state: "offline" };
+    const payload = (await response.json().catch(() => null)) as {
+      sessions?: PtySession[];
+      max?: number;
+    } | null;
+    return {
+      state: "ok",
+      sessions: Array.isArray(payload?.sessions) ? payload.sessions : [],
+      max: payload?.max ?? 8,
+      config: resolved,
+    };
+  } catch {
+    return { state: "offline" };
+  }
 }
 
 export type PtyStartResult =
