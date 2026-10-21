@@ -613,7 +613,7 @@ export function AgentTerminal({
     !samePath(sessionCwd, workspace!.trim());
 
   return (
-    <div className="overflow-hidden border-x border-b border-ink bg-[#14121f]">
+    <div className="flex h-full flex-col overflow-hidden border-x border-b border-ink bg-[#14121f]">
       <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2 text-[11px]">
         <span className={`px-2 py-0.5 font-bold ${statusTone[status]}`}>
           {statusLabel[status]}
@@ -673,7 +673,7 @@ export function AgentTerminal({
       )}
       {/* overflow-hidden: xterm parks its helper textarea at left:-9999em,
           which on an RTL page becomes horizontal page scroll. */}
-      <div className="relative h-[26rem] overflow-hidden p-2" dir="ltr">
+      <div className="relative min-h-0 flex-1 overflow-hidden p-2" dir="ltr">
         <div ref={hostRef} className="h-full w-full" />
         {status === "idle" && (
           <p

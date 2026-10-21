@@ -165,7 +165,7 @@ export function AgentComposer({
         className="min-h-28 w-full resize-y border border-slate-300 bg-slate-50/60 p-3 text-sm leading-7 outline-none transition placeholder:text-slate-400 focus:border-brand-500 disabled:opacity-60"
       />
       {showOriginal && original ? (
-        <p className="mt-1.5 border border-dashed border-slate-300 bg-slate-50 p-2 text-xs leading-6 text-slate-600">
+        <p className="mt-1.5 border border-slate-300 bg-slate-50 p-2 text-xs leading-6 text-slate-600">
           <b>الأصل:</b> {original}
         </p>
       ) : null}

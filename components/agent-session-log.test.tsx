@@ -76,6 +76,7 @@ const render = (props: Partial<Parameters<typeof AgentTranscript>[0]> = {}) =>
   renderToStaticMarkup(
     <AgentTranscript
       agent="gemini"
+      side="in"
       turns={turns}
       translatingJobs={new Set()}
       onTranslate={() => {}}
@@ -87,7 +88,6 @@ const render = (props: Partial<Parameters<typeof AgentTranscript>[0]> = {}) =>
 describe("AgentTranscript", () => {
   it("opens on IN: each turn its own numbered rectangle, Arabic RTL and English LTR", () => {
     const html = render();
-    expect(html).toContain('aria-selected="true"');
     expect(html).toMatch(/<li dir="rtl"[^>]*>[^]*?1\.[^]*?اذكر ثلاثة ألوان/);
     expect(html).toMatch(/<li dir="rtl"[^>]*>[^]*?2\.[^]*?والرابع؟/);
     expect(html).toMatch(/<li dir="ltr"[^>]*>[^]*?1\.[^]*?List three colors/);
@@ -106,6 +106,18 @@ describe("AgentTranscript", () => {
     expect(arrow).toBeLessThan(arabic);
     expect(html).toContain("lucide-arrow-left");
     expect(html).not.toContain("lucide-arrow-right");
+  });
+
+  it("shows OUT when told to: replies, the arrow reversed, and no IN/OUT tabs of its own", () => {
+    const html = render({ side: "out" });
+    expect(html).toContain("waiting for the agent…");
+    expect(html).toContain("lucide-arrow-right");
+    expect(html).not.toContain("lucide-arrow-left");
+    expect(html).not.toContain('role="tab"');
+    // «إرسال أيضاً» belongs to IN only.
+    expect(
+      render({ side: "out", sendTargets: ["codex"], onSendAlso: () => {} }),
+    ).not.toContain("إرسال أيضاً");
   });
 
   it("states an empty tab honestly", () => {
@@ -150,7 +162,15 @@ describe("AgentTranscript", () => {
 
 describe("turnsProject — which project the selected texts belong to", () => {
   const turn = (cwd?: string) =>
-    ({ n: 1, jobId: "j", inputUser: "", inputWire: "", outputWire: "", status: "done", cwd }) as AgentTurn;
+    ({
+      n: 1,
+      jobId: "j",
+      inputUser: "",
+      inputWire: "",
+      outputWire: "",
+      status: "done",
+      cwd,
+    }) as AgentTurn;
 
   it("is the shared folder (case/slash-insensitive on Windows)", () => {
     expect(turnsProject([turn("C:/A"), turn("c:/a/")])).toBe("C:/A");

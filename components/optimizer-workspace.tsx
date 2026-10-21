@@ -20,6 +20,13 @@ import {
   type AgentTranslation,
 } from "@/components/agent-card";
 import { AgentComposer } from "@/components/agent-composer";
+import { AgentViewTabs, type AgentView } from "@/components/agent-view-tabs";
+import { BridgeBadge } from "@/components/bridge-badge";
+import {
+  MeasureGauges,
+  formatCost,
+  gaugeData,
+} from "@/components/measure-gauges";
 import {
   BridgeSessions,
   type SessionsState,
@@ -174,6 +181,10 @@ function terminalSettings(
   };
 }
 
+/** Turns whose reply (or failure) is in — the ones OUT has something to show for. */
+const finishedCount = (turns: AgentTurn[] | undefined) =>
+  (turns ?? []).filter((t) => t.status !== "running").length;
+
 /**
  * Tab dot: a turn or one-shot run in flight beats everything; then the last
  * turn's outcome; a live idle session reads as ready.
@@ -256,11 +267,6 @@ async function launchAgentTerminal(
     ui.setBusy(null);
   }
 }
-
-const formatCost = (value: number) =>
-  value === 0
-    ? "مجاني"
-    : `$\u00A0${value < 0.001 ? value.toFixed(5) : value.toFixed(3)}`;
 
 export type Phase = "idle" | "analyzing" | "optimizing" | "measuring" | "done";
 type NodeStatus = "idle" | "active" | "done";
@@ -359,12 +365,24 @@ export function OptimizerWorkspace() {
     state: SessionsState;
     sessions: BridgeSessionView[];
     max: number;
-  }>({ state: "loading", sessions: [], max: 8 });
+    /** The bridge the page is paired with (settings or auto-pairing). */
+    url: string;
+  }>({ state: "loading", sessions: [], max: 8, url: DEFAULT_BRIDGE_URL });
   const [sessionHistory, setSessionHistory] = useState<ClosedSession[]>([]);
   const [attachedIds, setAttachedIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
   const [sessionPending, setSessionPending] = useState<string | null>(null);
+  // Which of the three views each agent shows: its terminal, IN or OUT.
+  const [views, setViews] = useState<Record<string, AgentView>>({});
+  // Finished turns the user has already looked at, per agent — the OUT dot
+  // appears only for replies that landed after the last look.
+  const [seenTurns, setSeenTurns] = useState<Record<string, number>>({});
+  // Which agent's processing the gauges describe, and when it finished.
+  const [lastRun, setLastRun] = useState<{ agent: string; at: number } | null>(
+    null,
+  );
+  const [sessionsOpenSignal, setSessionsOpenSignal] = useState(0);
   const lastLive = useRef<BridgeSessionView[] | null>(null);
   /** «فتح الجلسة»: start once the tab shows the reopened, checked folder. */
   const pendingStart = useRef<{ agent: string; cwd: string } | null>(null);
@@ -424,7 +442,18 @@ export function OptimizerWorkspace() {
       setSessionHistory(
         parseHistory(window.localStorage.getItem(SESSION_HISTORY_STORAGE)),
       );
-      setAgentLog(restoreLog(window.sessionStorage.getItem(AGENT_LOG_SESSION)));
+      const restoredLog = restoreLog(
+        window.sessionStorage.getItem(AGENT_LOG_SESSION),
+      );
+      setAgentLog(restoredLog);
+      setSeenTurns(
+        Object.fromEntries(
+          Object.entries(restoredLog).map(([id, turns]) => [
+            id,
+            finishedCount(turns),
+          ]),
+        ),
+      );
       setAgentSetup(
         parseAgentSetup(window.sessionStorage.getItem(AGENT_SETUP_SESSION)),
       );
@@ -604,6 +633,7 @@ export function OptimizerWorkspace() {
         state: "ok",
         sessions: result.sessions,
         max: result.max,
+        url: result.config.url,
       });
       // A tab still re-attaching after a reload counts as showing its
       // session — else the panel would flag it as detached for a moment.
@@ -752,7 +782,10 @@ export function OptimizerWorkspace() {
    * measure) and returns the report, or null on failure. One analysis at a
    * time; the details zone always shows the latest one.
    */
-  async function handleRun(prompt: string): Promise<OptimizationReport | null> {
+  async function handleRun(
+    prompt: string,
+    agent: string,
+  ): Promise<OptimizationReport | null> {
     if (!keyHydrated || !prompt.trim() || running) return null;
     setRunning(true);
     setRunError(null);
@@ -785,6 +818,7 @@ export function OptimizerWorkspace() {
       setReport(nextReport);
       setOriginal(nextReport.originalMeasurement ?? null);
       setPhase("done");
+      setLastRun({ agent, at: Date.now() });
       return nextReport;
     } catch {
       setReport(null);
@@ -1133,6 +1167,13 @@ export function OptimizerWorkspace() {
   const progress = running
     ? (runLabel[phase as keyof typeof runLabel] ?? "يعالج…")
     : null;
+  const viewOf = (id: string): AgentView => views[id] ?? "terminal";
+  const changeView = (id: string, next: AgentView) => {
+    if (viewOf(id) === "out" || next === "out") {
+      setSeenTurns((all) => ({ ...all, [id]: finishedCount(agentLog[id]) }));
+    }
+    setViews((all) => ({ ...all, [id]: next }));
+  };
   const agentStatus = (id: string) =>
     tabStatus(sessions[id]?.run ?? null, agentLog[id], terminalStatus[id]);
   const bridge = {
@@ -1155,6 +1196,11 @@ export function OptimizerWorkspace() {
             <span className="hidden border border-slate-300 bg-white px-2.5 py-1 font-mono text-[11px] text-slate-600 sm:inline">
               {modelLabel}
             </span>
+            <BridgeBadge
+              state={bridgeSessions.state}
+              url={bridgeSessions.url}
+              onClick={() => setSessionsOpenSignal((n) => n + 1)}
+            />
           </div>
           <div className="text-right">
             <div className="flex items-center gap-2 text-xl font-black">
@@ -1183,7 +1229,7 @@ export function OptimizerWorkspace() {
           </p>
         )}
 
-        <div className="grid items-start gap-x-6 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+        <div className="grid items-start gap-x-6 xl:grid-cols-[minmax(0,8fr)_minmax(0,4fr)]">
           {/* WORK — the agent, its own prompt box, the native companion */}
           <div className="min-w-0">
             <SpecHead
@@ -1199,6 +1245,7 @@ export function OptimizerWorkspace() {
               onConnect={(session) => void connectSession(session)}
               onEnd={(session) => void endSession(session)}
               onOpen={(closed) => void openClosedSession(closed)}
+              openSignal={sessionsOpenSignal}
             />
             <AgentTabStrip
               activeAgent={activeAgent}
@@ -1277,52 +1324,125 @@ export function OptimizerWorkspace() {
               {/* 2 — the live terminal and, under it, the agent's own prompt
                   box. Every agent keeps both mounted (hidden when not shown)
                   so its session keeps running and its draft survives. */}
-              {AGENT_OPTIONS.map((opt) => (
-                <div key={opt.id} hidden={opt.id !== activeAgent}>
-                  <AgentTerminal
-                    ref={(handle) => {
-                      terminals.current[opt.id] = handle;
-                    }}
-                    agent={opt.id}
-                    bridge={bridge}
-                    workspace={workspaceFor(config.workspaces, opt.id)}
-                    trust={config.autoTrustAgents?.[opt.id]}
-                    ready={folderChecked(opt.id)}
-                    visible={opt.id === activeAgent && keyHydrated}
-                    onStatus={(status) => {
-                      setTerminalStatus((all) =>
-                        all[opt.id] === status
-                          ? all
-                          : { ...all, [opt.id]: status },
-                      );
-                      // Started/ended here → the sessions panel follows now.
-                      void refreshSessions.current();
-                    }}
-                  />
-                  <AgentComposer
-                    agent={opt.id}
-                    disabled={!keyHydrated}
-                    busy={running}
-                    agentBusy={agentStatus(opt.id) === "running"}
-                    progress={progress}
-                    autoSend={Boolean(config.autoSendAgents?.[opt.id])}
-                    onAutoSendChange={(on) =>
-                      setConfig((c) => ({
-                        ...c,
-                        autoSendAgents: withAgentFlag(
-                          c.autoSendAgents,
-                          opt.id,
-                          on,
-                        ),
-                      }))
-                    }
-                    onProcess={handleRun}
-                    onSend={(english, inputUser) =>
-                      dispatchToAgent(english, opt.id, inputUser)
-                    }
-                  />
-                </div>
-              ))}
+              {AGENT_OPTIONS.map((opt) => {
+                const view = viewOf(opt.id);
+                const turns = agentLog[opt.id] ?? [];
+                return (
+                  <div key={opt.id} hidden={opt.id !== activeAgent}>
+                    <AgentViewTabs
+                      agent={opt.id}
+                      view={view}
+                      turns={turns.length}
+                      unseenReply={
+                        finishedCount(turns) > (seenTurns[opt.id] ?? 0)
+                      }
+                      onChange={(next) => changeView(opt.id, next)}
+                    />
+                    <div className="h-[30rem]">
+                      {/* The terminal stays mounted under IN/OUT so its
+                          session and any turn in flight carry on. */}
+                      <div hidden={view !== "terminal"} className="h-full">
+                        <AgentTerminal
+                          ref={(handle) => {
+                            terminals.current[opt.id] = handle;
+                          }}
+                          agent={opt.id}
+                          bridge={bridge}
+                          workspace={workspaceFor(config.workspaces, opt.id)}
+                          trust={config.autoTrustAgents?.[opt.id]}
+                          ready={folderChecked(opt.id)}
+                          visible={
+                            opt.id === activeAgent &&
+                            view === "terminal" &&
+                            keyHydrated
+                          }
+                          onStatus={(status) => {
+                            setTerminalStatus((all) =>
+                              all[opt.id] === status
+                                ? all
+                                : { ...all, [opt.id]: status },
+                            );
+                            // Started/ended here → the sessions panel follows now.
+                            void refreshSessions.current();
+                          }}
+                        />
+                      </div>
+                      {opt.id === activeAgent && view !== "terminal" ? (
+                        <div className="h-full border-x border-b border-ink bg-white p-3">
+                          <AgentTranscript
+                            agent={opt.id}
+                            side={view}
+                            turns={turns}
+                            translatingJobs={translatingJobs}
+                            autoTranslate={config.autoTranslate}
+                            onTranslate={(jobId) => {
+                              const turn = turns.find((t) => t.jobId === jobId);
+                              if (turn)
+                                void translateJob(
+                                  opt.id,
+                                  jobId,
+                                  turn.outputWire,
+                                );
+                            }}
+                            onClear={() =>
+                              setAgentLog(
+                                ({ [opt.id]: _cleared, ...rest }) => rest,
+                              )
+                            }
+                            onClearAll={
+                              Object.keys(agentLog).some(
+                                (id) =>
+                                  id !== opt.id && agentLog[id].length > 0,
+                              )
+                                ? () => setAgentLog({})
+                                : undefined
+                            }
+                            sendTargets={AGENT_OPTIONS.map((o) => o.id).filter(
+                              (id) => id !== opt.id,
+                            )}
+                            onSendAlso={(jobIds, target) =>
+                              void sendAlso(jobIds, target)
+                            }
+                            sourceFolder={workspaceFor(
+                              config.workspaces,
+                              opt.id,
+                            )}
+                            targetState={(id) => ({
+                              folder: workspaceFor(config.workspaces, id),
+                              checked: folderChecked(id),
+                              live: terminalStatus[id] === "live",
+                              busy: agentStatus(id) === "running",
+                            })}
+                            onOpenTab={setPickedAgent}
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+                    <AgentComposer
+                      agent={opt.id}
+                      disabled={!keyHydrated}
+                      busy={running}
+                      agentBusy={agentStatus(opt.id) === "running"}
+                      progress={progress}
+                      autoSend={Boolean(config.autoSendAgents?.[opt.id])}
+                      onAutoSendChange={(on) =>
+                        setConfig((c) => ({
+                          ...c,
+                          autoSendAgents: withAgentFlag(
+                            c.autoSendAgents,
+                            opt.id,
+                            on,
+                          ),
+                        }))
+                      }
+                      onProcess={(text) => handleRun(text, opt.id)}
+                      onSend={(english, inputUser) =>
+                        dispatchToAgent(english, opt.id, inputUser)
+                      }
+                    />
+                  </div>
+                );
+              })}
               {/* One-shot fallback (bridge without PTY): show that run's card. */}
               {terminalStatus[activeAgent] === "unavailable" && activeRun && (
                 <div className="mt-4">
@@ -1347,242 +1467,225 @@ export function OptimizerWorkspace() {
                 </div>
               )}
             </div>
-            {/* The polished text in the user's language — read and copy. */}
-            <details className="group mt-4 border border-ink bg-white">
-              <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 [&::-webkit-details-marker]:hidden">
-                <span className="flex items-center gap-1.5 bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">
-                  <Languages size={14} /> بطاقة لغة المستخدم
-                </span>
-                <span className="text-xs text-slate-500">
-                  {nativeText
-                    ? "النسخة المنقّحة بلغتك من آخر معالجة — للقراءة والنسخ"
-                    : "تظهر هنا النسخة المنقّحة بلغتك بعد المعالجة"}
-                </span>
-                <ChevronDown
-                  size={16}
-                  className="ms-auto text-slate-500 transition group-open:rotate-180"
-                />
-              </summary>
-              <div className="border-t border-slate-200 p-4">
-                <OutputCard
-                  lang="ar"
-                  title="Optimized Output"
-                  chip={isMock && nativeText ? "تنقية محلية" : "العربية"}
-                  status={s3}
-                  text={nativeText}
-                  unavailable={arabicUnavailable}
-                  unavailableReason={
-                    report?.rejectedByGuard
-                      ? "حُجبت النسخة العربية لأن مخرج Gemini لم يجتز فحوص السلامة؛ عُرض النص المنقّى محلياً."
-                      : "الترجمة العربية غير متاحة في الوضع المحلي أو عند تعذّر Gemini."
-                  }
-                  report={report?.arabic ?? null}
-                />
-              </div>
-            </details>
           </div>
 
-          {/* SIDE — the conversation log, then instructions and details */}
-          <aside className="min-w-0">
-            <SpecHead
-              title="سجل IN / OUT"
-              note="ما أُرسل وما ردّ به الوكيل — بلغتك وبالإنجليزية"
-            />
-            <AgentTranscript
-              key={activeAgent}
-              agent={activeAgent}
-              turns={agentLog[activeAgent] ?? []}
-              translatingJobs={translatingJobs}
-              autoTranslate={config.autoTranslate}
-              onTranslate={(jobId) => {
-                const turn = agentLog[activeAgent]?.find(
-                  (t) => t.jobId === jobId,
-                );
-                if (turn)
-                  void translateJob(activeAgent, jobId, turn.outputWire);
-              }}
-              onClear={() =>
-                setAgentLog(({ [activeAgent]: _cleared, ...rest }) => rest)
-              }
-              onClearAll={
-                Object.keys(agentLog).some(
-                  (id) => id !== activeAgent && agentLog[id].length > 0,
-                )
-                  ? () => setAgentLog({})
-                  : undefined
-              }
-              sendTargets={AGENT_OPTIONS.map((opt) => opt.id).filter(
-                (id) => id !== activeAgent,
-              )}
-              onSendAlso={(jobIds, target) => void sendAlso(jobIds, target)}
-              sourceFolder={workspaceFor(config.workspaces, activeAgent)}
-              targetState={(id) => ({
-                folder: workspaceFor(config.workspaces, id),
-                checked: folderChecked(id),
-                live: terminalStatus[id] === "live",
-                busy: agentStatus(id) === "running",
-              })}
-              onOpenTab={setPickedAgent}
-            />
-            <SpecHead
-              title="التعليمات والتفاصيل"
-              note="نتائج المحطات والتحليل والتكلفة لآخر معالجة"
-            />
-            <DetailsDrawer
-              tabs={[
-                {
-                  id: "stations",
-                  label: "نتائج المحطات",
-                  body: (
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <SpecCard
-                        tag="ST-01"
-                        title="قياس الأصل"
-                        subtitle="Token Analysis — قياس النص الأصلي"
-                        status={s1}
-                        action={
-                          original ? (
-                            <SourceBadge
-                              compact
-                              source={original.source}
-                              providerLabel={
-                                original.model
-                                  ? getModel("google", original.model).label
-                                  : undefined
-                              }
-                            />
-                          ) : null
-                        }
-                      >
-                        {original ? (
-                          <div>
-                            <div className="grid grid-cols-3 gap-2 text-center">
-                              <Metric
-                                label={
-                                  original.source === "provider"
-                                    ? "Tokens حقيقية"
-                                    : "Tokens تقديرية"
-                                }
-                                value={original.tokens}
-                              />
-                              <Metric label="كلمة" value={original.words} />
-                              <Metric label="حرف" value={original.characters} />
-                            </div>
-                            {originalRatio !== null && (
-                              <div className="mt-3 flex items-center gap-2 border border-slate-300 bg-slate-50 px-3 py-2 text-xs">
-                                <span className="font-bold text-slate-500">
-                                  نسبة العربية
-                                </span>
-                                <div className="h-2 flex-1 overflow-hidden bg-slate-200">
-                                  <div
-                                    className="h-full bg-brand-500 transition-all"
-                                    style={{
-                                      width: `${Math.round(originalRatio * 100)}%`,
-                                    }}
-                                  />
-                                </div>
-                                <span className="font-mono font-black text-ink">
-                                  {Math.round(originalRatio * 100)}%
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <Placeholder
-                            active={s1 === "active"}
-                            text="ستظهر قياسات النص الأصلي هنا"
-                          />
-                        )}
-                      </SpecCard>
-                      <SpecCard
-                        tag="ST-02"
-                        title="المعالجة"
-                        subtitle="تنقية محلية ثم إعادة صياغة عبر Gemini عند توفره"
-                        status={s2}
-                      >
-                        {dual ? (
-                          <div className="flex items-center gap-3 border border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
-                            <Wand2 className="shrink-0 text-brand-500" />
-                            <span className="flex-1">{dual.note}</span>
-                            <span
-                              className={`px-2.5 py-1 text-[11px] font-bold ${dual.source === "gemini" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}
-                            >
-                              {dual.source === "gemini"
-                                ? `${dual.model ?? "Gemini"}${dual.viaUserKey ? " · مفتاحك" : ""}`
-                                : "محلي"}
-                            </span>
-                          </div>
-                        ) : (
-                          <Placeholder
-                            active={s2 === "active"}
-                            text="يُنقّى النص محلياً، ويُنشئ Gemini النسخة الإنجليزية المختصرة عند توفره"
-                          />
-                        )}
-                      </SpecCard>
-                    </div>
-                  ),
-                },
-                {
-                  id: "analysis",
-                  label: "التحليل",
-                  body: report ? (
-                    <div className="space-y-4">
-                      <TokenHeatmap report={report} />
-                      <OptimizationInsights report={report} />
-                      <OptimizationUsagePanel report={report} />
-                    </div>
-                  ) : (
-                    <Placeholder
-                      active={phase === "measuring"}
-                      text="تظهر خريطة الثقل وتفصيل التوفير هنا بعد أول معالجة"
-                    />
-                  ),
-                },
-                {
-                  id: "cost",
-                  label: "التكلفة",
-                  body: (
-                    <CostBar
-                      report={report}
-                      active={phase === "measuring"}
-                      modelLabel={
-                        report?.model
-                          ? getModel("google", report.model).label
-                          : modelLabel
-                      }
-                      onReset={reset}
-                    />
-                  ),
-                },
-                {
-                  id: "notes",
-                  label: "ملاحظات",
-                  body: (
-                    <ul className="space-y-2 border border-slate-300 bg-white p-4 text-xs leading-6 text-slate-600">
-                      <li>
-                        لكل وكيل مدخله: ما تكتبه في تبويب وكيل يُرسل إليه هو.
-                        «معالجة» تستبدل مسودتك بالإنجليزية المختصرة، و«عرض
-                        الأصل» و«تراجع» يعيدانها حتى الإرسال.
-                      </li>
-                      <li>
-                        الوكلاء يستلمون الإنجليزية فقط لتقليل التوكنز؛ نصك بلغتك
-                        يُحفظ في عمود لغتك من سجل IN / OUT.
-                      </li>
-                      <li>
-                        «إرسال أيضاً» في السجل يعيد إرسال نصوص عولجت سابقاً إلى
-                        وكيل آخر — بلا معالجة جديدة ولا تكلفة إضافية.
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <Gauge size={14} className="shrink-0" /> القياس عبر
-                        Gemini countTokens عند توفره، وإلا بتقدير محلي · مفتاحك
-                        يبقى في متصفحك.
-                      </li>
-                    </ul>
-                  ),
-                },
-              ]}
-            />
+          {/* SIDE — the measurement dials, then the native-language card */}
+          <aside className="min-w-0 xl:self-stretch">
+            <div className="xl:sticky xl:top-4">
+              <SpecHead title="العدّاد" note="قبل المعالجة وبعدها — الخلاصة" />
+              <MeasureGauges
+                data={report ? gaugeData(report) : null}
+                running={running}
+                progress={progress}
+                source={
+                  dual
+                    ? dual.source === "gemini"
+                      ? `${dual.model ? getModel("google", dual.model).label : "Gemini"}${dual.viaUserKey ? " · مفتاحك" : ""}`
+                      : "محلي"
+                    : undefined
+                }
+                caption={
+                  lastRun
+                    ? `${agentLabel(lastRun.agent)} · ${new Date(lastRun.at).toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" })}`
+                    : undefined
+                }
+              />
+              {/* The polished text in the user's language — read and copy. */}
+              <details className="group mt-4 border border-ink bg-white">
+                <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 [&::-webkit-details-marker]:hidden">
+                  <span className="flex items-center gap-1.5 bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">
+                    <Languages size={14} /> بطاقة لغة المستخدم
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    {nativeText
+                      ? "النسخة المنقّحة بلغتك من آخر معالجة — للقراءة والنسخ"
+                      : "تظهر هنا النسخة المنقّحة بلغتك بعد المعالجة"}
+                  </span>
+                  <ChevronDown
+                    size={16}
+                    className="ms-auto text-slate-500 transition group-open:rotate-180"
+                  />
+                </summary>
+                <div className="border-t border-slate-200 p-4">
+                  <OutputCard
+                    lang="ar"
+                    title="Optimized Output"
+                    chip={isMock && nativeText ? "تنقية محلية" : "العربية"}
+                    status={s3}
+                    text={nativeText}
+                    unavailable={arabicUnavailable}
+                    unavailableReason={
+                      report?.rejectedByGuard
+                        ? "حُجبت النسخة العربية لأن مخرج Gemini لم يجتز فحوص السلامة؛ عُرض النص المنقّى محلياً."
+                        : "الترجمة العربية غير متاحة في الوضع المحلي أو عند تعذّر Gemini."
+                    }
+                    report={report?.arabic ?? null}
+                  />
+                </div>
+              </details>
+            </div>
           </aside>
+        </div>
+
+        <div className="mt-2">
+          <SpecHead
+            title="التعليمات والتفاصيل"
+            note="نتائج المحطات والتحليل والتكلفة لآخر معالجة"
+          />
+          <DetailsDrawer
+            tabs={[
+              {
+                id: "stations",
+                label: "نتائج المحطات",
+                body: (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <SpecCard
+                      tag="ST-01"
+                      title="قياس الأصل"
+                      subtitle="Token Analysis — قياس النص الأصلي"
+                      status={s1}
+                      action={
+                        original ? (
+                          <SourceBadge
+                            compact
+                            source={original.source}
+                            providerLabel={
+                              original.model
+                                ? getModel("google", original.model).label
+                                : undefined
+                            }
+                          />
+                        ) : null
+                      }
+                    >
+                      {original ? (
+                        <div>
+                          <div className="grid grid-cols-3 gap-2 text-center">
+                            <Metric
+                              label={
+                                original.source === "provider"
+                                  ? "Tokens حقيقية"
+                                  : "Tokens تقديرية"
+                              }
+                              value={original.tokens}
+                            />
+                            <Metric label="كلمة" value={original.words} />
+                            <Metric label="حرف" value={original.characters} />
+                          </div>
+                          {originalRatio !== null && (
+                            <div className="mt-3 flex items-center gap-2 border border-slate-300 bg-slate-50 px-3 py-2 text-xs">
+                              <span className="font-bold text-slate-500">
+                                نسبة العربية
+                              </span>
+                              <div className="h-2 flex-1 overflow-hidden bg-slate-200">
+                                <div
+                                  className="h-full bg-brand-500 transition-all"
+                                  style={{
+                                    width: `${Math.round(originalRatio * 100)}%`,
+                                  }}
+                                />
+                              </div>
+                              <span className="font-mono font-black text-ink">
+                                {Math.round(originalRatio * 100)}%
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <Placeholder
+                          active={s1 === "active"}
+                          text="ستظهر قياسات النص الأصلي هنا"
+                        />
+                      )}
+                    </SpecCard>
+                    <SpecCard
+                      tag="ST-02"
+                      title="المعالجة"
+                      subtitle="تنقية محلية ثم إعادة صياغة عبر Gemini عند توفره"
+                      status={s2}
+                    >
+                      {dual ? (
+                        <div className="flex items-center gap-3 border border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
+                          <Wand2 className="shrink-0 text-brand-500" />
+                          <span className="flex-1">{dual.note}</span>
+                          <span
+                            className={`px-2.5 py-1 text-[11px] font-bold ${dual.source === "gemini" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}
+                          >
+                            {dual.source === "gemini"
+                              ? `${dual.model ?? "Gemini"}${dual.viaUserKey ? " · مفتاحك" : ""}`
+                              : "محلي"}
+                          </span>
+                        </div>
+                      ) : (
+                        <Placeholder
+                          active={s2 === "active"}
+                          text="يُنقّى النص محلياً، ويُنشئ Gemini النسخة الإنجليزية المختصرة عند توفره"
+                        />
+                      )}
+                    </SpecCard>
+                  </div>
+                ),
+              },
+              {
+                id: "analysis",
+                label: "التحليل",
+                body: report ? (
+                  <div className="space-y-4">
+                    <TokenHeatmap report={report} />
+                    <OptimizationInsights report={report} />
+                    <OptimizationUsagePanel report={report} />
+                  </div>
+                ) : (
+                  <Placeholder
+                    active={phase === "measuring"}
+                    text="تظهر خريطة الثقل وتفصيل التوفير هنا بعد أول معالجة"
+                  />
+                ),
+              },
+              {
+                id: "cost",
+                label: "التكلفة",
+                body: (
+                  <CostBar
+                    report={report}
+                    active={phase === "measuring"}
+                    modelLabel={
+                      report?.model
+                        ? getModel("google", report.model).label
+                        : modelLabel
+                    }
+                    onReset={reset}
+                  />
+                ),
+              },
+              {
+                id: "notes",
+                label: "ملاحظات",
+                body: (
+                  <ul className="space-y-2 border border-slate-300 bg-white p-4 text-xs leading-6 text-slate-600">
+                    <li>
+                      لكل وكيل مدخله: ما تكتبه في تبويب وكيل يُرسل إليه هو.
+                      «معالجة» تستبدل مسودتك بالإنجليزية المختصرة، و«عرض الأصل»
+                      و«تراجع» يعيدانها حتى الإرسال.
+                    </li>
+                    <li>
+                      الوكلاء يستلمون الإنجليزية فقط لتقليل التوكنز؛ نصك بلغتك
+                      يُحفظ في عمود لغتك من سجل IN / OUT.
+                    </li>
+                    <li>
+                      «إرسال أيضاً» في السجل يعيد إرسال نصوص عولجت سابقاً إلى
+                      وكيل آخر — بلا معالجة جديدة ولا تكلفة إضافية.
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Gauge size={14} className="shrink-0" /> القياس عبر Gemini
+                      countTokens عند توفره، وإلا بتقدير محلي · مفتاحك يبقى في
+                      متصفحك.
+                    </li>
+                  </ul>
+                ),
+              },
+            ]}
+          />
         </div>
 
         <SettingsModal
@@ -1679,11 +1782,11 @@ function DetailsDrawer({
   const [open, setOpen] = useState(tabs[0].id);
   const current = tabs.find((tab) => tab.id === open) ?? tabs[0];
   return (
-    <section className="border border-dashed border-slate-400 bg-white/70">
+    <section className="border border-ink bg-white">
       <div
         role="tablist"
         aria-label="التعليمات والتفاصيل"
-        className="flex flex-wrap gap-1.5 border-b border-dashed border-slate-300 p-2"
+        className="flex flex-wrap gap-1.5 border-b border-slate-200 p-2"
       >
         {tabs.map((tab) => (
           <button
@@ -1719,7 +1822,7 @@ function DetailsDrawer({
 function Placeholder({ active, text }: { active: boolean; text: string }) {
   return (
     <div
-      className={`border border-dashed p-4 text-center text-sm ${active ? "border-brand-500/60 text-slate-500" : "border-slate-300 text-slate-400"}`}
+      className={`border bg-slate-50/60 p-4 text-center text-sm ${active ? "border-brand-500/60 text-slate-500" : "border-slate-300 text-slate-400"}`}
     >
       {active ? "جارٍ المعالجة…" : text}
     </div>
@@ -1790,10 +1893,10 @@ function OutputCard({
   status: NodeStatus;
 }) {
   const emerald = lang === "ar";
-  const bar = emerald ? "bg-emerald-500" : "bg-blue-500";
+  const bar = emerald ? "bg-emerald-500" : "bg-sky-500";
   const chipCls = emerald
     ? "bg-emerald-100 text-emerald-700"
-    : "bg-blue-100 text-blue-700";
+    : "bg-sky-100 text-sky-700";
   const active = status === "active";
   return (
     <section
@@ -1903,7 +2006,7 @@ function CopyButton({ text }: { text: string }) {
 const heatLevels = [
   {
     label: "خفيف · نحو 1",
-    className: "bg-teal-50 text-teal-900 ring-teal-200",
+    className: "bg-emerald-50 text-emerald-900 ring-emerald-200",
   },
   {
     label: "متوسط · نحو 2–3",
@@ -1943,7 +2046,7 @@ export const TokenHeatmap = memo(function TokenHeatmap({
             مقطع إلى مزود الخدمة.
           </p>
         </div>
-        <span className="border border-violet-300 bg-violet-50 px-3 py-1 font-mono text-xs font-bold text-violet-800">
+        <span className="border border-sky-300 bg-sky-50 px-3 py-1 font-mono text-xs font-bold text-sky-800">
           تقدير محلي
         </span>
       </div>
@@ -1996,7 +2099,7 @@ export const TokenHeatmap = memo(function TokenHeatmap({
           );
         })()}
       </div>
-      <p className="mt-4 border border-violet-200 bg-violet-50 px-4 py-3 text-xs leading-6 text-violet-900">
+      <p className="mt-4 border border-sky-200 bg-sky-50 px-4 py-3 text-xs leading-6 text-sky-900">
         الألوان تقدير لطول المقطع ونوع حروفه، وليست تفكيكاً رسمياً من Gemini. لا
         تجمع تقديرات المقاطع لتطابق إجمالي countTokens؛ الأرقام الرسمية والتكلفة
         المعروضة أعلاه/أدناه منفصلة عن هذه الخريطة.
@@ -2007,7 +2110,7 @@ export const TokenHeatmap = memo(function TokenHeatmap({
 
 function HeatmapUnavailable({ title }: { title: string }) {
   return (
-    <div className="border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
+    <div className="border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
       <h3 className="font-bold text-slate-700">{title}</h3>
       <p className="mt-3">
         غير متاحة في هذا التشغيل؛ لا توجد خريطة لنص غير موجود.
@@ -2084,7 +2187,7 @@ function HeatmapVariant({
                 <span dir="auto" className="max-w-28 truncate">
                   {part}
                 </span>
-                <span dir="ltr" className="shrink-0 font-mono text-violet-800">
+                <span dir="ltr" className="shrink-0 font-mono text-sky-800">
                   ~{tokens}
                 </span>
               </span>
@@ -2182,8 +2285,8 @@ export function OptimizationInsights({
             after={primary.measurement}
           />
         </div>
-        <details className="mt-4 border border-teal-200 bg-teal-50/50 p-3 text-xs">
-          <summary className="cursor-pointer font-semibold text-teal-900">
+        <details className="mt-4 border border-emerald-200 bg-emerald-50/50 p-3 text-xs">
+          <summary className="cursor-pointer font-semibold text-emerald-900">
             عرض النص بعد التنقية المحلية
           </summary>
           <p

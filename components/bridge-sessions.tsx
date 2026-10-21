@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, Link2, Play, Power } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { agentLabel } from "@/lib/bridge/agents";
 import type {
   BridgeSessionView,
@@ -72,6 +72,7 @@ export function BridgeSessions({
   onConnect,
   onEnd,
   onOpen,
+  openSignal = 0,
 }: {
   state: SessionsState;
   panels: SessionPanels;
@@ -83,6 +84,8 @@ export function BridgeSessions({
   onConnect: (session: BridgeSessionView) => void;
   onEnd: (session: BridgeSessionView) => void;
   onOpen: (closed: ClosedSession) => void;
+  /** Changes when the header badge is pressed: open and bring into view. */
+  openSignal?: number;
 }) {
   const full = panels.liveCount >= max;
   const detached = panels.live.some((s) => !attached.has(s.id));
@@ -92,8 +95,19 @@ export function BridgeSessions({
   const [open, setOpen] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   if ((full || detached) && !open && !dismissed) setOpen(true);
+  const [seenSignal, setSeenSignal] = useState(openSignal);
+  if (openSignal !== seenSignal) {
+    setSeenSignal(openSignal);
+    setOpen(true);
+    setDismissed(false);
+  }
+  const root = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    if (openSignal) root.current?.scrollIntoView({ block: "center" });
+  }, [openSignal]);
   return (
     <details
+      ref={root}
       open={open}
       onToggle={(event) => {
         const next = event.currentTarget.open;
@@ -101,7 +115,7 @@ export function BridgeSessions({
         setOpen(next);
         setDismissed(!next);
       }}
-      className="group mb-3 border border-ink bg-slate-50"
+      className="group mb-3 border border-ink bg-white"
     >
       <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden">
         <span className="bg-ink px-2 py-0.5 text-xs font-bold text-white">
@@ -137,7 +151,7 @@ export function BridgeSessions({
             </h3>
             <ul className="space-y-1.5">
               {panels.live.length === 0 ? (
-                <li className="border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-400">
+                <li className="border border-slate-300 px-3 py-2 text-xs text-slate-400">
                   لا جلسات حيّة على الجسر.
                 </li>
               ) : (
@@ -185,7 +199,7 @@ export function BridgeSessions({
             </h3>
             <ul className="space-y-1.5">
               {panels.closed.length === 0 ? (
-                <li className="border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-400">
+                <li className="border border-slate-300 px-3 py-2 text-xs text-slate-400">
                   لا جلسات مغلقة مؤخراً.
                 </li>
               ) : (

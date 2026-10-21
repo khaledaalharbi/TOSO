@@ -80,10 +80,10 @@ export function AgentCard({
   }, [live, output.length]);
   return (
     <section className="border border-ink bg-white">
-      <div className="h-1 bg-violet-500" />
+      <div className="h-1 bg-sky-500" />
       <div className="p-5">
         <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
-          <span className="flex items-center gap-1.5 bg-violet-100 px-2.5 py-1 text-xs font-bold text-violet-700">
+          <span className="flex items-center gap-1.5 bg-sky-100 px-2.5 py-1 text-xs font-bold text-sky-700">
             <TerminalSquare size={14} />
             {agentLabel(run.agent)}
           </span>

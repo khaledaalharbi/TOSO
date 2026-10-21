@@ -291,7 +291,7 @@ function LangBox({
   return (
     <div
       dir={en ? "ltr" : "rtl"}
-      className={`flex ${fill ? "h-full" : "h-96"} min-w-0 flex-col rounded-2xl border border-slate-400 bg-white ${orderClass}`}
+      className={`flex h-full max-md:h-72 max-md:shrink-0 min-w-0 flex-col rounded-2xl border border-slate-400 bg-white ${orderClass}`}
     >
       <div className="relative border-b border-slate-200">
         <p className="py-2 text-center text-sm font-bold text-slate-700">
@@ -323,7 +323,7 @@ function LangBox({
       </div>
       <ol className="flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden p-3">
         {empty ? (
-          <li className="rounded-lg border border-dashed border-slate-300 px-3 py-6 text-center text-xs text-slate-400">
+          <li className="rounded-lg border border-slate-300 px-3 py-6 text-center text-xs text-slate-400">
             {en ? "Turns appear here, numbered." : "تظهر الدورات هنا مرقّمة."}
           </li>
         ) : (
@@ -347,6 +347,7 @@ function LangBox({
  */
 export function AgentTranscript({
   agent,
+  side,
   turns,
   translatingJobs,
   autoTranslate,
@@ -360,6 +361,8 @@ export function AgentTranscript({
   onOpenTab,
 }: {
   agent: string;
+  /** Which log the agent view shows: what was sent, or what came back. */
+  side: "in" | "out";
   turns: AgentTurn[];
   translatingJobs: ReadonlySet<string>;
   /** Auto mode notes that a translation is on its way instead of nagging. */
@@ -379,7 +382,6 @@ export function AgentTranscript({
   /** Opens the receiving agent's tab (to check its folder). */
   onOpenTab?: (agent: string) => void;
 }) {
-  const [side, setSide] = useState<"in" | "out">("in");
   /** Which language box currently covers its sibling (null = split view). */
   const [expanded, setExpanded] = useState<"en" | "ar" | null>(null);
   /** «إرسال أيضاً» mode: null = off, else the picked turns. */
@@ -387,8 +389,10 @@ export function AgentTranscript({
   const [target, setTarget] = useState(sendTargets[0] ?? "");
   /** Explicit "yes, run it in the other project" — reset on every change. */
   const [confirmOther, setConfirmOther] = useState(false);
-  const selecting = picked !== null;
-  const isIn = side === "in" || selecting;
+  // Selecting texts to re-send only makes sense on IN — leaving IN ends it.
+  if (side !== "in" && picked !== null) setPicked(null);
+  const selecting = picked !== null && side === "in";
+  const isIn = side === "in";
   const empty = turns.length === 0;
   const canSendAlso = Boolean(onSendAlso) && sendTargets.length > 0 && !empty;
   const toggle = (jobId: string) =>
@@ -507,34 +511,16 @@ export function AgentTranscript({
   );
 
   return (
-    <section className="mt-4" dir="ltr">
-      <div className="flex flex-wrap items-end gap-1.5">
-        {(["in", "out"] as const).map((key) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={(isIn ? "in" : "out") === key}
-            disabled={selecting && key === "out"}
-            onClick={() => setSide(key)}
-            title={key === "in" ? "ما أرسلته إلى الوكيل" : "ما ردّ به الوكيل"}
-            className={`rounded-t-lg border border-b-0 px-6 py-2 text-xs font-bold disabled:opacity-40 ${
-              (isIn ? "in" : "out") === key
-                ? "border-amber-300 bg-amber-100 text-amber-900"
-                : "border-slate-300 bg-slate-100 text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            {key === "in" ? "IN" : "OUT"}
-          </button>
-        ))}
-        <span dir="rtl" className="ms-3 pb-2 text-[11px] text-slate-500">
+    <section className="flex h-full min-h-0 flex-col" dir="ltr">
+      <div className="flex flex-wrap items-center gap-1.5 pb-2">
+        <span dir="rtl" className="text-[11px] text-slate-500">
           {empty
             ? `لا دورات بعد مع ${agentLabel(agent)}`
             : `${turns.length} ${turns.length === 1 ? "دورة" : "دورات"} مع ${agentLabel(agent)} — تُمحى بإغلاق المتصفح`}
         </span>
         {!empty && (
-          <div dir="rtl" className="ms-auto flex gap-1.5 pb-1.5">
-            {canSendAlso ? (
+          <div dir="rtl" className="ms-auto flex gap-1.5">
+            {canSendAlso && side === "in" ? (
               <button
                 type="button"
                 aria-pressed={selecting}
@@ -629,7 +615,7 @@ export function AgentTranscript({
           )}
         </div>
       ) : null}
-      <div className="relative flex flex-col gap-3 rounded-b-lg rounded-tr-lg border border-amber-300 bg-amber-50 p-4 md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
+      <div className="relative flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded-lg border border-amber-300 bg-amber-50 p-4 md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)] md:items-stretch md:overflow-visible">
         <LangBox
           lang="en"
           empty={empty}
@@ -641,7 +627,7 @@ export function AgentTranscript({
         </LangBox>
 
         <div
-          className="order-2 flex justify-center text-slate-700"
+          className="order-2 flex items-center justify-center text-slate-700"
           role="img"
           aria-label={
             isIn

@@ -516,7 +516,7 @@ export function SettingsModal({
             </div>
           </Section>
           <Section
-            icon={<TerminalSquare size={16} className="text-violet-600" />}
+            icon={<TerminalSquare size={16} className="text-sky-600" />}
             title="جسر وكيل CLI"
             hint="إرسال الناتج إلى وكيل محلي — اختياري"
             badge={
@@ -669,7 +669,7 @@ export function SettingsModal({
                 onChange={(event) =>
                   onChange({ ...config, autoTranslate: event.target.checked })
                 }
-                className="mt-0.5 h-4 w-4 shrink-0 accent-violet-700"
+                className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
               />
               <span>
                 ترجمة تلقائية لكل رد
@@ -688,7 +688,7 @@ export function SettingsModal({
                 onChange={(event) =>
                   onChange({ ...config, smartClean: event.target.checked })
                 }
-                className="mt-0.5 h-4 w-4 shrink-0 accent-violet-700"
+                className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
               />
               <span>
                 تنظيف ذكي للمخرجات عبر Gemini

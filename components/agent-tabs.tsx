@@ -99,7 +99,7 @@ export function AgentTabStrip({
             ) : null}
             {turns[opt.id] ? (
               <span
-                className={`px-1 text-[10px] ${selected ? "bg-white/20" : "bg-violet-600 text-white"}`}
+                className={`px-1 text-[10px] ${selected ? "bg-white/20" : "bg-sky-600 text-white"}`}
               >
                 {turns[opt.id]}
               </span>
@@ -124,13 +124,13 @@ const stepTone: Record<StepState, string> = {
   done: "border-emerald-500 bg-emerald-50 text-emerald-800",
   open: "border-slate-300 bg-white text-slate-700 hover:border-ink hover:text-ink",
   locked: "border-slate-200 bg-slate-50 text-slate-400",
-  unsupported: "border-dashed border-slate-200 bg-slate-50 text-slate-400",
+  unsupported: "border-slate-200 bg-slate-50 text-slate-400",
 };
 
 /** The named capability badge on a trust step — the user-facing vocabulary. */
 const capabilityBadge: Record<TrustCapability, { text: string; tone: string }> =
   {
-    supported: { text: "مدعوم", tone: "border-violet-300 text-violet-700" },
+    supported: { text: "مدعوم", tone: "border-sky-300 text-sky-700" },
     auto: {
       text: "مدعوم تلقائياً",
       tone: "border-emerald-400 bg-white text-emerald-700",
@@ -491,7 +491,7 @@ export function AgentWorkspacePanel({
           <MonitorUp size={13} />
           {terminalBusy ? "يفتح…" : "أو افتح نافذة خارجية منفصلة"}
           {openedCount ? (
-            <span className="bg-violet-600 px-1 font-mono text-[10px] text-white">
+            <span className="bg-sky-600 px-1 font-mono text-[10px] text-white">
               {openedCount}
             </span>
           ) : null}

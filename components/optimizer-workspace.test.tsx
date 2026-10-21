@@ -75,7 +75,9 @@ describe("OptimizerWorkspace hydration", () => {
     expect(markup).not.toContain("تشغيل التحليل");
     expect(markup).not.toContain("الوكيل ▾");
     expect(markup).toContain("بطاقة لغة المستخدم");
-    expect(markup).toContain("سجل IN / OUT");
+    for (const label of ["التيرمينال", "سجل IN", "سجل OUT", "عدّادات القياس"]) {
+      expect(markup).toContain(label);
+    }
     expect(markup).toContain("التعليمات والتفاصيل");
   });
 });
