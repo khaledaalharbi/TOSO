@@ -5,7 +5,8 @@
  * The bridge writes %TMP%/toso-bridge-session.json on start. This route
  * reads it, then *proves* the session live by calling /health with that
  * token — a stale file (dead bridge, rebooted machine, recycled port owned
- * by another process) answers 404 instead of handing out a dead token.
+ * by another process) answers 404 instead of handing out a dead token. Only
+ * that proof counts: a bridge running for days is still a valid session.
  *
  * Same-origin only by construction: another website can reach neither this
  * route's response nor the tmp file, so the token stays scoped to the app
@@ -20,14 +21,23 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 
 const SESSION_FILE = path.join(tmpdir(), "toso-bridge-session.json");
-const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Liveness is proven by /health answering with THIS token — never by the
+ * file's age. A 24h cutoff once refused a healthy dev:all bridge up for 29h,
+ * leaving the UI with no token ("token rejected" everywhere).
+ */
 export async function GET(): Promise<NextResponse> {
-  let session: { port?: unknown; token?: unknown; startedAt?: unknown };
+  let session: { port?: unknown; token?: unknown };
   try {
-    session = JSON.parse(await readFile(SESSION_FILE, "utf8")) as typeof session;
+    session = JSON.parse(
+      await readFile(SESSION_FILE, "utf8"),
+    ) as typeof session;
   } catch {
-    return NextResponse.json({ ok: false, reason: "no_session" }, { status: 404 });
+    return NextResponse.json(
+      { ok: false, reason: "no_session" },
+      { status: 404 },
+    );
   }
   if (
     typeof session?.port !== "number" ||
@@ -35,11 +45,12 @@ export async function GET(): Promise<NextResponse> {
     session.port <= 0 ||
     session.port > 65535 ||
     typeof session.token !== "string" ||
-    !session.token ||
-    (typeof session.startedAt === "number" &&
-      Date.now() - session.startedAt > STALE_AFTER_MS)
+    !session.token
   ) {
-    return NextResponse.json({ ok: false, reason: "no_session" }, { status: 404 });
+    return NextResponse.json(
+      { ok: false, reason: "no_session" },
+      { status: 404 },
+    );
   }
 
   const url = `http://127.0.0.1:${session.port}`;
@@ -55,7 +66,10 @@ export async function GET(): Promise<NextResponse> {
     } | null;
     if (!payload?.ok) throw new Error("bad health");
   } catch {
-    return NextResponse.json({ ok: false, reason: "dead_bridge" }, { status: 404 });
+    return NextResponse.json(
+      { ok: false, reason: "dead_bridge" },
+      { status: 404 },
+    );
   }
   return NextResponse.json({ ok: true, url, token: session.token });
 }

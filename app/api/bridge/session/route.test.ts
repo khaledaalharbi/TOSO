@@ -72,16 +72,22 @@ describe("GET /api/bridge/session", () => {
     );
   });
 
-  it("never serves a stale or dead-bridge session", async () => {
+  it("pairs with a long-running bridge — age is no reason to refuse a live one", async () => {
+    // Seen live: a dev:all bridge up for 29h was refused by a 24h cutoff,
+    // so the UI sent no token and every call failed as "token rejected".
     writeSession({
       port: 8676,
-      token: "old",
-      pid: 1,
-      startedAt: Date.now() - 25 * 60 * 60 * 1000,
+      token: "tok-long",
+      pid: 2224,
+      startedAt: Date.now() - 29 * 60 * 60 * 1000,
     });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(healthy()));
     const res = await GET();
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(200);
+    expect((await res.json()).token).toBe("tok-long");
+  });
 
+  it("never serves a dead-bridge session, however fresh the file", async () => {
     writeSession({ port: 8676, token: "x", startedAt: Date.now() });
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("refused")));
     const dead = await GET();
