@@ -606,17 +606,19 @@ export function SettingsModal({
                 كما هي ما دام الحقل فارغاً.
               </p>
             ) : null}
-            <div className="mt-3 flex items-center gap-3">
-              <label className="block flex-1 text-sm font-semibold">
+            <div className="mt-3">
+              <label htmlFor="agent" className="block text-sm font-semibold">
                 الوكيل الافتراضي
                 <span className="block text-xs font-normal text-slate-500">
                   تبويبه يُفتح أولاً. لكل وكيل مدخله الخاص، والإرسال المباشر
                   مفتاح داخل مدخل كل وكيل.
                 </span>
+              </label>
+              <div className="mt-2 flex items-center gap-3">
                 <select
                   id="agent"
                   name="agent"
-                  className="mt-2 w-full border border-slate-300 bg-white p-3 font-mono text-sm outline-none focus:border-ink"
+                  className="w-56 border border-slate-300 bg-white p-3 font-mono text-sm outline-none focus:border-ink"
                   value={config.agent ?? AGENT_OPTIONS[0].id}
                   onChange={(event) =>
                     onChange({ ...config, agent: event.target.value })
@@ -628,15 +630,15 @@ export function SettingsModal({
                     </option>
                   ))}
                 </select>
-              </label>
-              <button
-                type="button"
-                onClick={verifyBridge}
-                disabled={bridgeStatus === "checking"}
-                className="mt-7 shrink-0 border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-600 transition hover:border-ink hover:text-ink disabled:opacity-50"
-              >
-                {bridgeStatus === "checking" ? "يفحص…" : "فحص الاتصال"}
-              </button>
+                <button
+                  type="button"
+                  onClick={verifyBridge}
+                  disabled={bridgeStatus === "checking"}
+                  className="shrink-0 border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-600 transition hover:border-ink hover:text-ink disabled:opacity-50"
+                >
+                  {bridgeStatus === "checking" ? "يفحص…" : "فحص الاتصال"}
+                </button>
+              </div>
             </div>
             {bridgeStatus !== "idle" && bridgeStatus !== "checking" && (
               <p
