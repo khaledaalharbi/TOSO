@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   newlyClosed,
   parseHistory,
+  parseLiveSnapshot,
   recordClosed,
   sessionPanels,
   type BridgeSessionView,
@@ -82,6 +83,19 @@ describe("newlyClosed", () => {
       { agent: "devin", cwd: "C:\\B", endedAt: 99 },
     ]);
     expect(newlyClosed(before, before, 99)).toEqual([]);
+  });
+});
+
+describe("parseLiveSnapshot — closes noticed across a restart", () => {
+  it("turns the saved snapshot back into sessions newlyClosed can compare", () => {
+    const saved = JSON.stringify([live("a", "hermes", "C:\\A"), { id: 1 }]);
+    const before = parseLiveSnapshot(saved);
+    expect(before.map((s) => s.id)).toEqual(["a"]);
+    // The bridge died with dev:all: on the next load it lists nothing.
+    expect(newlyClosed(before, [], 7)).toEqual([
+      { agent: "hermes", cwd: "C:\\A", endedAt: 7 },
+    ]);
+    expect(parseLiveSnapshot("nope")).toEqual([]);
   });
 });
 

@@ -91,9 +91,11 @@ import {
   providers,
 } from "@/lib/providers/registry";
 import {
+  LIVE_SNAPSHOT_STORAGE,
   SESSION_HISTORY_STORAGE,
   newlyClosed,
   parseHistory,
+  parseLiveSnapshot,
   recordClosed,
   sessionPanels,
   type BridgeSessionView,
@@ -567,15 +569,37 @@ export function OptimizerWorkspace() {
         setBridgeSessions((s) => ({ ...s, state: result.state }));
         return;
       }
-      if (lastLive.current) {
-        const closed = newlyClosed(
-          lastLive.current,
-          result.sessions,
-          Date.now(),
-        );
-        if (closed.length) setSessionHistory((h) => recordClosed(h, closed));
+      // First look of this page: compare with the snapshot the last page
+      // left — sessions may have ended while no page was open.
+      let before = lastLive.current;
+      if (!before) {
+        try {
+          before = parseLiveSnapshot(
+            window.localStorage.getItem(LIVE_SNAPSHOT_STORAGE),
+          );
+        } catch {
+          before = [];
+        }
       }
-      lastLive.current = result.sessions.filter((s) => s.alive);
+      const closed = newlyClosed(before, result.sessions, Date.now());
+      if (closed.length) setSessionHistory((h) => recordClosed(h, closed));
+      lastLive.current = result.sessions
+        .filter((s) => s.alive)
+        .map(({ id, agent, cwd, alive, startedAt }) => ({
+          id,
+          agent,
+          cwd,
+          alive,
+          startedAt,
+        }));
+      try {
+        window.localStorage.setItem(
+          LIVE_SNAPSHOT_STORAGE,
+          JSON.stringify(lastLive.current),
+        );
+      } catch {
+        /* no storage — closes are still noticed while this page is open */
+      }
       setBridgeSessions({
         state: "ok",
         sessions: result.sessions,

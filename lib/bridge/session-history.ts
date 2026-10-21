@@ -6,6 +6,33 @@
 import { samePath } from "@/lib/bridge/workspaces";
 
 export const SESSION_HISTORY_STORAGE = "toso.sessionHistory";
+/**
+ * The live sessions at the last look, kept across page loads: stopping
+ * dev:all stops a bridge it started — and every session with it — while no
+ * page is open. Comparing with this snapshot on the next load still lists
+ * them as closed.
+ */
+export const LIVE_SNAPSHOT_STORAGE = "toso.sessionLive";
+
+export function parseLiveSnapshot(raw: string | null): BridgeSessionView[] {
+  if (!raw) return [];
+  try {
+    const data: unknown = JSON.parse(raw);
+    return Array.isArray(data)
+      ? data.filter(
+          (s): s is BridgeSessionView =>
+            s &&
+            typeof s === "object" &&
+            typeof s.id === "string" &&
+            typeof s.agent === "string" &&
+            typeof s.cwd === "string" &&
+            s.cwd.trim() !== "",
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
 const HISTORY_MAX = 20;
 /** Shown per section — the rest is summarised as "+N". */
 export const PANEL_LIMIT = 3;
