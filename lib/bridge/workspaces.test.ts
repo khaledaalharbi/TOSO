@@ -3,6 +3,8 @@ import {
   parseAgentFlags,
   parseAgentSetup,
   parseWorkspaces,
+  samePath,
+  sendAlsoCheck,
   serializeAgentFlags,
   serializeWorkspaces,
   setupDone,
@@ -93,5 +95,63 @@ describe("per-agent workspaces", () => {
     );
     expect(serializeWorkspaces({ claude: "  " })).toBeNull();
     expect(serializeWorkspaces(undefined)).toBeNull();
+  });
+});
+
+describe("samePath", () => {
+  it("treats Windows case, slash style and a trailing separator as the same folder", () => {
+    expect(samePath("C:\\MyProject\\App", "c:/myproject/app/")).toBe(true);
+    expect(samePath("C:\\MyProject\\App\\", "C:\\MyProject\\App")).toBe(true);
+  });
+
+  it("keeps different folders different, and empty is never a match", () => {
+    expect(samePath("C:\\MyProject\\App", "C:\\MyProject\\App2")).toBe(false);
+    expect(samePath("", "")).toBe(false);
+    expect(samePath(undefined, "C:\\A")).toBe(false);
+  });
+
+  it("stays case-sensitive for POSIX paths", () => {
+    expect(samePath("/home/u/App", "/home/u/app")).toBe(false);
+    expect(samePath("/", "/")).toBe(true);
+  });
+});
+
+describe("sendAlsoCheck — judged before the send button is pressed", () => {
+  const ready = { folder: "C:\\B", checked: true, live: true, busy: false };
+
+  it("blocks a target without a checked folder", () => {
+    expect(sendAlsoCheck("C:\\A", { ...ready, checked: false })).toEqual({
+      kind: "unchecked",
+    });
+    expect(sendAlsoCheck("C:\\A", { ...ready, folder: " " })).toEqual({
+      kind: "unchecked",
+    });
+  });
+
+  it("flags another project so the user must confirm", () => {
+    expect(sendAlsoCheck("C:\\A", ready)).toMatchObject({
+      kind: "ready",
+      otherProject: true,
+    });
+    expect(sendAlsoCheck("c:/b/", ready)).toMatchObject({
+      otherProject: false,
+    });
+  });
+
+  it("says when the session will start, or when texts will queue behind a turn", () => {
+    expect(sendAlsoCheck("C:\\B", { ...ready, live: false })).toMatchObject({
+      willStart: true,
+      willQueue: false,
+    });
+    expect(sendAlsoCheck("C:\\B", { ...ready, busy: true })).toMatchObject({
+      willStart: false,
+      willQueue: true,
+    });
+  });
+
+  it("queues behind a turn whose session is still starting (seen live)", () => {
+    expect(
+      sendAlsoCheck("C:\\B", { ...ready, live: false, busy: true }),
+    ).toMatchObject({ willStart: false, willQueue: true });
   });
 });

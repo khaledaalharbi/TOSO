@@ -143,3 +143,63 @@ export function serializeAgentFlags(
   const clean = parseAgentFlags(JSON.stringify(all ?? {}));
   return Object.keys(clean).length ? JSON.stringify(clean) : null;
 }
+
+/**
+ * Same folder? Windows paths compare case-insensitively and either slash;
+ * a trailing separator never makes two folders different.
+ */
+export function samePath(a?: string, b?: string): boolean {
+  if (!a?.trim() || !b?.trim()) return false;
+  const norm = (p: string) => {
+    const s = p
+      .trim()
+      .replace(/[\\/]+/g, "/")
+      .replace(/(?<=.)\/$/, "");
+    return /^[a-z]:/i.test(s) ? s.toLowerCase() : s;
+  };
+  return norm(a) === norm(b);
+}
+
+/** What the receiving agent of «إرسال أيضاً» looks like right now. */
+export interface SendAlsoTarget {
+  folder?: string;
+  /** Step ① passed for that folder. */
+  checked: boolean;
+  /** Its embedded session is running. */
+  live: boolean;
+  /** It is in the middle of a turn. */
+  busy: boolean;
+}
+
+export type SendAlsoCheck =
+  | { kind: "unchecked" }
+  | {
+      kind: "ready";
+      /** Another project than the texts were written for → confirm first. */
+      otherProject: boolean;
+      /** The session starts on the first send. */
+      willStart: boolean;
+      /** The texts wait for its current turn, in order. */
+      willQueue: boolean;
+    };
+
+/**
+ * Checked BEFORE the send button is pressed, so a refusal never costs the
+ * user their selection: no checked folder → blocked; a different project →
+ * allowed only after an explicit confirmation (the same instruction on two
+ * projects can be intended — a silent send cannot).
+ */
+export function sendAlsoCheck(
+  sourceFolder: string | undefined,
+  target: SendAlsoTarget,
+): SendAlsoCheck {
+  if (!target.folder?.trim() || !target.checked) return { kind: "unchecked" };
+  return {
+    kind: "ready",
+    otherProject: !samePath(sourceFolder, target.folder),
+    // A turn already in flight (even one still starting its session) is a
+    // queue, not a fresh start — seen live with a second send during startup.
+    willStart: !target.live && !target.busy,
+    willQueue: target.busy,
+  };
+}

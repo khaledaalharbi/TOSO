@@ -12,6 +12,12 @@ import {
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { agentLabel } from "@/lib/bridge/agents";
+import {
+  samePath,
+  sendAlsoCheck,
+  type SendAlsoCheck,
+  type SendAlsoTarget,
+} from "@/lib/bridge/workspaces";
 
 /** One numbered round trip: what crossed the wire, and its user-language side. */
 export interface AgentTurn {
@@ -33,6 +39,22 @@ export interface AgentTurn {
   translateError?: string;
   /** running → still capturing; done; error. */
   status: string;
+  /** The project folder this turn ran in — «إرسال أيضاً» compares against it. */
+  cwd?: string;
+}
+
+/**
+ * The one project the selected turns ran in, or undefined when they span
+ * several (or predate recording) — undefined makes any target "another
+ * project", so the user is asked rather than assumed to agree.
+ */
+export function turnsProject(
+  turns: AgentTurn[],
+  fallback?: string,
+): string | undefined {
+  const folders = turns.map((t) => t.cwd?.trim() || fallback?.trim() || "");
+  const first = folders[0];
+  return first && folders.every((f) => samePath(f, first)) ? first : undefined;
 }
 
 export type AgentLog = Record<string, AgentTurn[]>;
@@ -105,6 +127,100 @@ export function patchTurn(
     ...log,
     [agent]: turns.map((t) => (t.jobId === jobId ? { ...t, ...patch } : t)),
   };
+}
+
+/** The tail of a path, for a compact "→ TargetApp" label. */
+const folderName = (path?: string) =>
+  path
+    ?.trim()
+    .replace(/[\\/]+$/, "")
+    .split(/[\\/]/)
+    .pop() || path;
+
+/**
+ * What will happen if «إرسال» is pressed — shown before it is pressed:
+ * a blocked target, a different project to confirm, a session that will
+ * start, or texts that will wait for the current turn.
+ */
+function SendAlsoStatus({
+  target,
+  folder,
+  sourceFolder,
+  check,
+  confirmed,
+  onConfirm,
+  onOpenTab,
+}: {
+  target: string;
+  folder?: string;
+  sourceFolder?: string;
+  check: SendAlsoCheck;
+  confirmed: boolean;
+  onConfirm: (on: boolean) => void;
+  onOpenTab?: (agent: string) => void;
+}) {
+  const label = agentLabel(target);
+  if (check.kind === "unchecked") {
+    return (
+      <div className="flex basis-full flex-wrap items-center gap-2 border border-amber-300 bg-amber-50 px-2 py-1.5 font-normal text-amber-900">
+        <span>
+          {folder?.trim()
+            ? `مجلد ${label} غير مفحوص بعد`
+            : `لم يُحدَّد مجلد مشروع لـ ${label}`}{" "}
+          — لا يُرسل إليه شيء قبل الخطوة ①.
+        </span>
+        {onOpenTab ? (
+          <button
+            type="button"
+            onClick={() => onOpenTab(target)}
+            className="border border-amber-400 bg-white px-2 py-0.5 font-bold text-amber-900 hover:border-amber-600"
+          >
+            افتح تبويب {label}
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+  return (
+    <div className="basis-full space-y-1 font-normal">
+      {check.otherProject ? (
+        <div className="border border-amber-300 bg-amber-50 px-2 py-1.5 text-amber-900">
+          <p className="font-bold">
+            {sourceFolder?.trim()
+              ? `مشروع مختلف — النص سيُنفَّذ في مشروع ${label}:`
+              : `النصوص المحددة أُرسلت في أكثر من مشروع — ستُنفَّذ كلها في مشروع ${label}:`}
+          </p>
+          <p dir="ltr" className="text-start font-mono text-[11px] break-all">
+            {sourceFolder?.trim() || "…"} → {folder}
+          </p>
+          <label className="mt-1 flex cursor-pointer items-center gap-1.5 font-bold">
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={(event) => onConfirm(event.target.checked)}
+              className="h-3.5 w-3.5 accent-amber-600"
+            />
+            أعلم أن النص سيُنفَّذ في مشروع {label}
+          </label>
+        </div>
+      ) : (
+        <p className="text-slate-600">
+          {label} ← <bdi className="font-mono">{folderName(folder)}</bdi> —
+          المشروع نفسه.
+        </p>
+      )}
+      {check.willStart ? (
+        <p className="text-slate-600">
+          ستبدأ جلسة {label} تلقائياً عند الإرسال.
+        </p>
+      ) : null}
+      {check.willQueue ? (
+        <p className="text-slate-600">
+          {label} يعمل على دورة الآن — تُرسل النصوص بعد انتهائها، بالترتيب.
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 /** One numbered rectangle per turn — lavender for English, green for Arabic. */
@@ -239,6 +355,9 @@ export function AgentTranscript({
   onClearAll,
   sendTargets = [],
   onSendAlso,
+  sourceFolder,
+  targetState,
+  onOpenTab,
 }: {
   agent: string;
   turns: AgentTurn[];
@@ -253,6 +372,12 @@ export function AgentTranscript({
   sendTargets?: string[];
   /** Re-send already-processed English texts — no new processing needed. */
   onSendAlso?: (jobIds: string[], target: string) => void;
+  /** This agent's folder — stands in for turns recorded without a `cwd`. */
+  sourceFolder?: string;
+  /** Live state of a receiving agent — judged before the button is pressed. */
+  targetState?: (agent: string) => SendAlsoTarget;
+  /** Opens the receiving agent's tab (to check its folder). */
+  onOpenTab?: (agent: string) => void;
 }) {
   const [side, setSide] = useState<"in" | "out">("in");
   /** Which language box currently covers its sibling (null = split view). */
@@ -260,6 +385,8 @@ export function AgentTranscript({
   /** «إرسال أيضاً» mode: null = off, else the picked turns. */
   const [picked, setPicked] = useState<ReadonlySet<string> | null>(null);
   const [target, setTarget] = useState(sendTargets[0] ?? "");
+  /** Explicit "yes, run it in the other project" — reset on every change. */
+  const [confirmOther, setConfirmOther] = useState(false);
   const selecting = picked !== null;
   const isIn = side === "in" || selecting;
   const empty = turns.length === 0;
@@ -272,6 +399,18 @@ export function AgentTranscript({
       return next;
     });
   const sendTarget = sendTargets.includes(target) ? target : sendTargets[0];
+  const targetInfo = targetState?.(sendTarget) ?? {
+    checked: false,
+    live: false,
+    busy: false,
+  };
+  const projectOfPicked = turnsProject(
+    turns.filter((t) => picked?.has(t.jobId)),
+    sourceFolder,
+  );
+  const check = sendAlsoCheck(projectOfPicked, targetInfo);
+  const canSend =
+    check.kind === "ready" && (!check.otherProject || confirmOther);
 
   const enEntries = turns.map((t) =>
     isIn ? (
@@ -399,7 +538,10 @@ export function AgentTranscript({
               <button
                 type="button"
                 aria-pressed={selecting}
-                onClick={() => setPicked(selecting ? null : new Set())}
+                onClick={() => {
+                  setPicked(selecting ? null : new Set());
+                  setConfirmOther(false);
+                }}
                 title="أعد إرسال نصوص سبق إرسالها إلى وكيل آخر — بلا معالجة جديدة"
                 className={`flex items-center gap-1 rounded border px-2 py-1 text-[11px] font-bold ${
                   selecting
@@ -447,7 +589,10 @@ export function AgentTranscript({
               <select
                 aria-label="الوكيل المستلم"
                 value={sendTarget}
-                onChange={(event) => setTarget(event.target.value)}
+                onChange={(event) => {
+                  setTarget(event.target.value);
+                  setConfirmOther(false);
+                }}
                 className="border border-slate-300 bg-white px-2 py-1 font-mono text-xs"
               >
                 {sendTargets.map((id) => (
@@ -458,17 +603,28 @@ export function AgentTranscript({
               </select>
               <button
                 type="button"
+                disabled={!canSend}
                 onClick={() => {
                   const ids = turns
                     .filter((t) => picked.has(t.jobId))
                     .map((t) => t.jobId);
                   setPicked(null);
+                  setConfirmOther(false);
                   onSendAlso?.(ids, sendTarget);
                 }}
-                className="flex items-center gap-1 border border-ink bg-brand-500 px-3 py-1 text-white hover:bg-brand-600"
+                className="flex items-center gap-1 border border-ink bg-brand-500 px-3 py-1 text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Send size={12} /> إرسال إلى {agentLabel(sendTarget)}
               </button>
+              <SendAlsoStatus
+                target={sendTarget}
+                folder={targetInfo.folder}
+                sourceFolder={projectOfPicked}
+                check={check}
+                confirmed={confirmOther}
+                onConfirm={setConfirmOther}
+                onOpenTab={onOpenTab}
+              />
             </>
           )}
         </div>

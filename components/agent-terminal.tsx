@@ -58,6 +58,8 @@ export interface AgentTerminalHandle {
   start: () => Promise<void>;
   /** Current status, read synchronously (no render lag). */
   status: () => TerminalStatus;
+  /** True while a turn is in flight — a new send would be refused. */
+  busy: () => boolean;
 }
 
 // Timings measured against the real Gemini CLI TUI (see terminal-clean.ts).
@@ -470,6 +472,7 @@ export function AgentTerminal({
     send,
     start,
     status: () => statusRef.current,
+    busy: () => turnActive.current,
   }));
 
   // Mount: create xterm (client-only modules), then re-attach a session that

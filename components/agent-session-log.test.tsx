@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   AgentTranscript,
+  turnsProject,
   restoreLog,
   type AgentTurn,
 } from "./agent-session-log";
@@ -133,9 +134,34 @@ describe("AgentTranscript", () => {
     ).not.toContain("إرسال أيضاً");
   });
 
+  it("keeps the project a turn ran in through a reload", () => {
+    const log = restoreLog(
+      JSON.stringify({ gemini: [{ ...turns[0], cwd: "C:\\A" }] }),
+    );
+    expect(log.gemini[0].cwd).toBe("C:\\A");
+  });
+
   it("offers per-agent clear, and clear-all only when asked", () => {
     expect(render()).toContain("مسح Gemini CLI");
     expect(render()).not.toContain("مسح الكل");
     expect(render({ onClearAll: () => {} })).toContain("مسح الكل");
+  });
+});
+
+describe("turnsProject — which project the selected texts belong to", () => {
+  const turn = (cwd?: string) =>
+    ({ n: 1, jobId: "j", inputUser: "", inputWire: "", outputWire: "", status: "done", cwd }) as AgentTurn;
+
+  it("is the shared folder (case/slash-insensitive on Windows)", () => {
+    expect(turnsProject([turn("C:/A"), turn("c:/a/")])).toBe("C:/A");
+  });
+
+  it("is undefined when the texts ran in several projects", () => {
+    expect(turnsProject([turn("C:/A"), turn("C:/B")])).toBeUndefined();
+  });
+
+  it("falls back to the agent's folder for turns recorded without one", () => {
+    expect(turnsProject([turn(undefined)], "C:/A")).toBe("C:/A");
+    expect(turnsProject([turn(undefined)])).toBeUndefined();
   });
 });

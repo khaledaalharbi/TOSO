@@ -625,6 +625,14 @@ export function OptimizerWorkspace() {
     }
     setPickedAgent(target);
     for (const turn of turns) {
+      // An agent takes one turn at a time: wait for the one in flight
+      // (started here or by the user) instead of failing every text. A turn
+      // is "in flight" from the moment it is sent — including while the
+      // session is still starting (seen live) — and always ends (finally).
+      const terminal = terminals.current[target];
+      while (terminal?.busy()) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
       await sendToAgent(turn.inputWire, target, turn.inputUser);
     }
   }
@@ -696,6 +704,7 @@ export function OptimizerWorkspace() {
             jobId: job.id,
             inputUser,
             inputWire: text,
+            cwd: workspaceFor(config.workspaces, agent),
             outputWire: output || (job.error ?? ""),
             cleanedBy: "headless",
             status: job.status,
@@ -748,6 +757,7 @@ export function OptimizerWorkspace() {
         jobId,
         inputUser,
         inputWire: text,
+        cwd: workspaceFor(config.workspaces, agent),
         outputWire: "",
         status: "running",
       }),
@@ -1120,6 +1130,7 @@ export function OptimizerWorkspace() {
               note="ما أُرسل وما ردّ به الوكيل — بلغتك وبالإنجليزية"
             />
             <AgentTranscript
+              key={activeAgent}
               agent={activeAgent}
               turns={agentLog[activeAgent] ?? []}
               translatingJobs={translatingJobs}
@@ -1145,6 +1156,14 @@ export function OptimizerWorkspace() {
                 (id) => id !== activeAgent,
               )}
               onSendAlso={(jobIds, target) => void sendAlso(jobIds, target)}
+              sourceFolder={workspaceFor(config.workspaces, activeAgent)}
+              targetState={(id) => ({
+                folder: workspaceFor(config.workspaces, id),
+                checked: folderChecked(id),
+                live: terminalStatus[id] === "live",
+                busy: agentStatus(id) === "running",
+              })}
+              onOpenTab={setPickedAgent}
             />
             <SpecHead
               title="التعليمات والتفاصيل"
