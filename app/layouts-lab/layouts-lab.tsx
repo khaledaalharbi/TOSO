@@ -229,6 +229,7 @@ function OutputCard({ lang }: { lang: "native" | "en" }) {
 /* ---- The CLI agent section — kept identical in every layout ------------- */
 
 const AGENTS = ["Gemini CLI", "Devin", "Hermes", "Claude Code", "OpenAI Codex"];
+const DEFAULT_AGENT = "OpenAI Codex";
 const AGENT_STEPS: [string, "done" | "open"][] = [
   ["فحص المجلد", "done"],
   ["ثقة دائمة", "open"],
@@ -236,7 +237,17 @@ const AGENT_STEPS: [string, "done" | "open"][] = [
   ["تشغيل الجلسة", "open"],
 ];
 
-function AgentBlock({ compact = false }: { compact?: boolean }) {
+function AgentBlock({
+  compact = false,
+  transcript = true,
+  tall = false,
+}: {
+  compact?: boolean;
+  /** false = the IN/OUT log lives in its own panel elsewhere on the page. */
+  transcript?: boolean;
+  /** A taller terminal — the agent column has the height to spare. */
+  tall?: boolean;
+}) {
   return (
     <div className="border-2 border-ink">
       <div className="bg-ink px-3 py-1.5 text-xs font-bold text-white">
@@ -258,6 +269,18 @@ function AgentBlock({ compact = false }: { compact?: boolean }) {
           >
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
             {a}
+            {a === DEFAULT_AGENT ? (
+              <span
+                dir="rtl"
+                className={`border px-1 text-[9px] ${
+                  i === 0
+                    ? "border-white/40 text-white"
+                    : "border-emerald-400 text-emerald-700"
+                }`}
+              >
+                الافتراضي
+              </span>
+            ) : null}
           </span>
         ))}
       </div>
@@ -308,7 +331,7 @@ function AgentBlock({ compact = false }: { compact?: boolean }) {
         </div>
         <div
           dir="ltr"
-          className={`space-y-1.5 p-3 ${compact ? "h-40" : "h-48"}`}
+          className={`space-y-1.5 p-3 ${tall ? "h-[30rem]" : compact ? "h-40" : "h-48"}`}
         >
           {[62, 80, 45, 70, 30].map((w, i) => (
             <div
@@ -320,21 +343,23 @@ function AgentBlock({ compact = false }: { compact?: boolean }) {
         </div>
       </div>
       {/* transcript */}
-      <div className="grid grid-cols-2 gap-px border-t border-ink bg-slate-300">
-        {[
-          ["IN / OUT — لغة المستخدم", "rtl"],
-          ["IN / OUT — English", "ltr"],
-        ].map(([label, dir]) => (
-          <div key={label} className="bg-white p-2.5">
-            <span className="mb-1.5 inline-block bg-slate-200 px-2 py-0.5 text-[11px] font-bold text-slate-700">
-              {label}
-            </span>
-            <div dir={dir}>
-              <Lines n={2} short />
+      {transcript ? (
+        <div className="grid grid-cols-2 gap-px border-t border-ink bg-slate-300">
+          {[
+            ["IN / OUT — لغة المستخدم", "rtl"],
+            ["IN / OUT — English", "ltr"],
+          ].map(([label, dir]) => (
+            <div key={label} className="bg-white p-2.5">
+              <span className="mb-1.5 inline-block bg-slate-200 px-2 py-0.5 text-[11px] font-bold text-slate-700">
+                {label}
+              </span>
+              <div dir={dir}>
+                <Lines n={2} short />
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -861,6 +886,110 @@ function DesignConversationWide() {
   );
 }
 
+/* ---- Design 6 — Agent centre, log + details column --------------------- */
+
+/** The IN/OUT log as its own panel: IN/OUT tabs, the two languages side by side. */
+function TranscriptPanel() {
+  const [side, setSide] = useState<"in" | "out">("out");
+  return (
+    <section className="border border-ink bg-amber-50/60 p-3">
+      <header className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="bg-ink px-2 py-0.5 text-xs font-bold text-white">
+          سجل IN / OUT
+        </span>
+        <span className="text-[11px] text-slate-500">
+          أُخرج من قسم الوكيل ليقف بجانب الطرفية — كل دورة مرقّمة
+        </span>
+        <div role="tablist" dir="ltr" className="ms-auto flex gap-1">
+          {(["in", "out"] as const).map((s) => (
+            <button
+              key={s}
+              role="tab"
+              type="button"
+              aria-selected={side === s}
+              onClick={() => setSide(s)}
+              className={`border px-3 py-1 font-mono text-[11px] font-bold outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
+                side === s
+                  ? "border-amber-500 bg-amber-100 text-amber-900"
+                  : "border-slate-300 bg-white text-slate-600"
+              }`}
+            >
+              {s.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      </header>
+      <div className="grid items-center gap-2 sm:grid-cols-[1fr_auto_1fr]">
+        <div className="border border-slate-300 bg-white p-3">
+          <span className="mb-2 block text-center text-xs font-bold text-slate-700">
+            لغة المستخدم
+          </span>
+          <div className="min-h-32 border border-slate-200 bg-slate-50 p-2">
+            <Lines n={2} short />
+          </div>
+          <span className="mt-1.5 block text-[10px] text-slate-500">
+            {side === "out" ? "ترجمة رد الوكيل" : "ما كتبه المستخدم"}
+          </span>
+        </div>
+        <span
+          aria-hidden
+          className="text-center text-lg font-bold text-slate-500"
+        >
+          ←
+        </span>
+        <div className="border border-slate-300 bg-white p-3" dir="ltr">
+          <span className="mb-2 block text-center text-xs font-bold text-slate-700">
+            English
+          </span>
+          <div className="min-h-32 border border-slate-200 bg-slate-50 p-2">
+            <Lines n={2} short />
+          </div>
+          <span className="mt-1.5 block text-[10px] text-slate-500">
+            {side === "out" ? "the agent's reply" : "what reached the agent"}
+          </span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DesignAgentCentre() {
+  return (
+    <>
+      <Header thin />
+      <div className="mt-5 grid items-start gap-4 xl:grid-cols-[4fr_8fr] min-[1600px]:grid-cols-[3fr_6fr_6fr]">
+        <div className="space-y-3">
+          <ColumnZone zone="work" />
+          <PromptInput rows={4} />
+          <PipelineTrack />
+          <OutputCard lang="en" />
+          <Collapsible
+            name="بطاقة لغة المستخدم"
+            zone="work"
+            summary={<Chip>مرافقة — مطوية افتراضياً</Chip>}
+          >
+            <Lines n={3} />
+          </Collapsible>
+        </div>
+        <div>
+          <ColumnZone zone="work" />
+          <AgentBlock transcript={false} tall />
+        </div>
+        <div className="space-y-4 xl:col-span-2 min-[1600px]:col-span-1">
+          <div>
+            <ColumnZone zone="work" />
+            <TranscriptPanel />
+          </div>
+          <div>
+            <ColumnZone zone="detail" />
+            <DetailsDrawer />
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 /* ---- The lab ------------------------------------------------------------ */
 
 const DESIGNS = [
@@ -899,13 +1028,20 @@ const DESIGNS = [
     fits: "الاستخدام اليومي على شاشة عريضة: المحادثة في مركز النظر، وكل شيء آخر على الأطراف.",
     View: DesignConversationWide,
   },
+  {
+    id: 6,
+    name: "الوكيل في المركز",
+    idea: "ثلاثة أعمدة على الشاشات الأوسع من 1600 بكسل: عمود عمل ضيق (التلقينة ومخرجاتها)، ثم الوكيل في المنتصف بطرفية طويلة، ثم عمود يجمع سجل IN/OUT في أعلاه — خارج قسم الوكيل وبجانب الطرفية مباشرة — ودرج التفاصيل تحته. بين 1280 و1600 ينزل العمود الثالث تحت العمودين، وأصغر من ذلك تتكدس الحاويات.",
+    fits: "متابعة حوار الوكيل: الطرفية بارتفاع مريح، والسجل المترجم أمامك دون تمرير.",
+    View: DesignAgentCentre,
+  },
 ] as const;
 
 /** Wide designs use the whole screen; the originals keep their 1024px frame. */
-const WIDE = new Set([4, 5]);
+const WIDE = new Set([4, 5, 6]);
 
 export function LayoutsLab() {
-  const [active, setActive] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [active, setActive] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
   const design = DESIGNS.find((d) => d.id === active)!;
   const View = design.View;
   const frame = WIDE.has(active) ? "max-w-[1840px]" : "max-w-5xl";
