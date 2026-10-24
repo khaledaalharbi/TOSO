@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 /**
  * dev:all — one command, whole loop: `next dev` + `toso-bridge`.
+ * start:all (`--prod`) — the same loop on a production build: builds once if
+ * `.next` is missing, then `next start` + `toso-bridge`. Still local-only:
+ * TOSO is a personal tool that runs on the machine that has your agents.
  *
  * The bridge prints its token, but you rarely need it: it also writes a
  * session file that /api/bridge/session serves, so the UI auto-pairs on the
  * first "إلى الوكيل" click. Ctrl+C stops both.
  */
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,6 +21,14 @@ const nextCli = path.join(root, "node_modules", "next", "dist", "bin", "next");
 const BRIDGE_PORT =
   Number.parseInt(process.env.TOSO_BRIDGE_PORT ?? "", 10) || 8676;
 
+const prod = process.argv.includes("--prod");
+const nextArgs = process.argv.slice(2).filter((arg) => arg !== "--prod");
+// Personal tool: listen on this machine only unless the user asks otherwise
+// (-H 0.0.0.0) — the app's API routes can carry a server key and must not
+// be reachable from the LAN by default.
+if (!nextArgs.some((arg) => arg === "-H" || arg.startsWith("--hostname"))) {
+  nextArgs.push("-H", "127.0.0.1");
+}
 const children = [];
 
 /** Something already answering on the bridge port → reuse it, don't fight it. */
@@ -106,7 +118,20 @@ function shutdown(code) {
 process.on("SIGINT", () => shutdown(0));
 process.on("SIGTERM", () => shutdown(0));
 
-run("app", [nextCli, "dev", ...process.argv.slice(2)], "\u001b[36m");
+if (prod && !existsSync(path.join(root, ".next", "BUILD_ID"))) {
+  console.log("[app   ] no production build yet — running next build once…");
+  const build = spawnSync(process.execPath, [nextCli, "build"], {
+    cwd: root,
+    stdio: "inherit",
+  });
+  if (build.status !== 0) process.exit(build.status ?? 1);
+}
+
+run(
+  "app",
+  [nextCli, prod ? "start" : "dev", ...nextArgs],
+  "\u001b[36m",
+);
 
 if (await portInUse(BRIDGE_PORT)) {
   console.log(

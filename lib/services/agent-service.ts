@@ -310,36 +310,46 @@ export function openAgentTerminal(
 }
 
 /** Arabic, user-facing reading of a bridge action failure. */
-export function describeBridgeAction(result: BridgeActionResult): string {
+export function describeBridgeAction(
+  result: BridgeActionResult,
+  translate: (
+    source: string,
+    params?: Record<string, string | number>,
+  ) => string = t,
+): string {
   switch (result.state) {
     case "ok":
-      return t("تم.");
+      return translate("تم.");
     case "offline":
-      return t("الجسر غير متصل — شغّله بأمر npm run bridge.");
+      return translate("الجسر غير متصل — شغّله بأمر npm run bridge.");
     case "bad_token":
-      return t("توكن الجسر مرفوض — راجع الإعدادات.");
+      return translate("توكن الجسر مرفوض — راجع الإعدادات.");
     case "invalid_workspace":
-      return t("مجلد مساحة العمل غير صالح{v1}.", {
+      return translate("مجلد مساحة العمل غير صالح{v1}.", {
         v1: result.detail ? `: ${result.detail}` : "",
       });
     case "trust_unsupported":
-      return t("هذا الوكيل لا يملك ملف ثقة معروفاً — ثقته تُدار من داخله.");
+      return translate(
+        "هذا الوكيل لا يملك ملف ثقة معروفاً — ثقته تُدار من داخله.",
+      );
     case "trust_file_unreadable":
-      return t("ملف الثقة الخاص بالوكيل غير قابل للقراءة — لم يُعدَّل شيء.");
+      return translate(
+        "ملف الثقة الخاص بالوكيل غير قابل للقراءة — لم يُعدَّل شيء.",
+      );
     case "trust_conflict":
-      return t(
+      return translate(
         "المجلد مسجّل في إعدادات الوكيل بمستوى ثقة آخر — لم يُعدَّل شيء؛ غيّره من داخل الوكيل.",
       );
     case "trust_path_unsupported":
-      return t(
+      return translate(
         "مسار المجلد يحوي علامة ' لا يقبلها ملف إعدادات الوكيل — لم يُعدَّل شيء.",
       );
     case "agent_not_installed":
-      return t("الوكيل غير مثبّت أو غير موجود في PATH.");
+      return translate("الوكيل غير مثبّت أو غير موجود في PATH.");
     case "no_terminal_found":
-      return t("لم يُعثر على تطبيق طرفية على هذا النظام.");
+      return translate("لم يُعثر على تطبيق طرفية على هذا النظام.");
     default:
-      return t("تعذّر التنفيذ{v1}.", {
+      return translate("تعذّر التنفيذ{v1}.", {
         v1: result.detail ? ` (${result.detail})` : "",
       });
   }

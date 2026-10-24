@@ -15,9 +15,12 @@ the repo. Do not include real API keys or user prompts in reports.
 - The user BYOK key (`x-user-gemini-key` header) lives in the visitor's own
   `localStorage` and is forwarded per request; it is never persisted or
   logged server-side.
-- If you fork this into a real service, key storage, rate limiting, and
-  authentication are **your** responsibility — none are implemented here by
-  design (see `AGENTS.md` → «جاهزية الإنتاج»).
+- TOSO is a tool you run yourself, **not a hosted service**: no accounts,
+  rate limits or billing exist or are planned. `npm run start:all` (like
+  `dev:all`) listens on `127.0.0.1` only. If you fork it into a shared service,
+  authentication, rate limiting and key custody are **your** responsibility —
+  and do not set `AGENT_PLATFORM_API_KEY` on anything reachable by others, or
+  everyone's calls are billed to you.
 
 ## The local bridge (`bin/toso-bridge.mjs`)
 

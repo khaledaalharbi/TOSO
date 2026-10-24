@@ -123,6 +123,11 @@ export interface TerminalNote {
   text: string;
 }
 
+type Translate = (
+  source: string,
+  params?: Record<string, string | number>,
+) => string;
+
 type StepState = "done" | "open" | "locked" | "unsupported";
 
 const stepTone: Record<StepState, string> = {
@@ -336,7 +341,8 @@ export function AgentWorkspacePanel({
   const [note, setNote] = useState<{
     path: string;
     ok: boolean;
-    text: string;
+    /** Built at render time so a language switch re-words it. */
+    text: (translate: Translate) => string;
   } | null>(null);
   const [busy, setBusy] = useState<"checked" | "trusted" | null>(null);
   const shown = note && note.path === path ? note : null;
@@ -346,7 +352,10 @@ export function AgentWorkspacePanel({
   async function act(
     step: "checked" | "trusted",
     run: () => ReturnType<typeof checkWorkspace>,
-    okText: (r: Awaited<ReturnType<typeof checkWorkspace>>) => string,
+    okText: (
+      r: Awaited<ReturnType<typeof checkWorkspace>>,
+      translate: Translate,
+    ) => string,
   ) {
     if (!path || busy) return;
     setBusy(step);
@@ -356,7 +365,10 @@ export function AgentWorkspacePanel({
       setNote({
         path,
         ok,
-        text: ok ? okText(result) : describeBridgeAction(result),
+        text: (translate) =>
+          ok
+            ? okText(result, translate)
+            : describeBridgeAction(result, translate),
       });
       if (ok) onStepDone(step, path);
     } finally {
@@ -436,8 +448,8 @@ export function AgentWorkspacePanel({
             void act(
               "checked",
               () => checkWorkspace(bridge, path),
-              (r) =>
-                t("المجلد موجود — {label} سيعمل داخل: {v2}", {
+              (r, tr) =>
+                tr("المجلد موجود — {label} سيعمل داخل: {v2}", {
                   label,
                   v2: r.state === "ok" ? (r.path ?? path) : path,
                 }),
@@ -454,14 +466,16 @@ export function AgentWorkspacePanel({
             void act(
               "trusted",
               () => trustWorkspace(bridge, agent, path),
-              (r) =>
+              (r, tr) =>
                 r.state === "ok" && r.already
-                  ? t("المجلد موثوق مسبقاً لدى {label} — لم يتغير شيء.", {
+                  ? tr("المجلد موثوق مسبقاً لدى {label} — لم يتغير شيء.", {
                       label,
                     })
-                  : t("سُجّل المجلد موثوقاً دائماً في {file}.", {
+                  : tr("سُجّل المجلد موثوقاً دائماً في {file}.", {
                       file:
-                        r.state === "ok" ? (r.file ?? t("ملف ثقة الوكيل")) : "",
+                        r.state === "ok"
+                          ? (r.file ?? tr("ملف ثقة الوكيل"))
+                          : "",
                     }),
             )
           }
@@ -536,7 +550,7 @@ export function AgentWorkspacePanel({
                 : "border-amber-300 bg-amber-50 text-amber-800"
             }`}
           >
-            {entry.text}
+            {typeof entry.text === "function" ? entry.text(t) : entry.text}
           </p>
         ) : null,
       )}

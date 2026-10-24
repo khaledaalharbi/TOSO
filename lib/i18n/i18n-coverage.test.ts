@@ -6,7 +6,7 @@ import { EN } from "./en";
 import { translate } from "./index";
 
 const ROOT = join(__dirname, "..", "..");
-const TRANSLATORS = new Set(["t", "tx", "tNow"]);
+const TRANSLATORS = new Set(["t", "tx", "tNow", "tr", "translate"]);
 
 function sourceFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -24,7 +24,7 @@ function collectKeys(): Set<string> {
   const keys = new Set<string>();
   const literals = (node: ts.Node) => {
     if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node))
-      keys.add(node.text);
+      node.text && keys.add(node.text);
     else if (!ts.isFunctionLike(node)) ts.forEachChild(node, literals);
   };
   for (const dir of ["app", "components", "lib"]) {

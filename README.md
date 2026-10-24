@@ -7,6 +7,8 @@ choice, and lets you drive several agents from one screen.
 
 [العربية](README.ar.md) · [Evidence](Docs/RESEARCH.md) · [Setup & usage (Arabic)](Docs/setup-and-usage.md) · [Architecture](Docs/ARCHITECTURE.md) · MIT License
 
+![TOSO's English interface: the prompt you wrote on the right, the concise English sent to the agent on the left, token gauges on the side](Docs/images/workspace-en-in.png)
+
 ---
 
 ## The idea
@@ -85,6 +87,13 @@ English for the same meaning** on Gemini's tokenizer, so the English version sav
 kind to Arabic; English-centric tokenizers tax it far more, so the saving at your
 agent can be larger. Full method, limits and sources: **[Docs/RESEARCH.md](Docs/RESEARCH.md)**.
 
+## See it work
+
+The agent runs for real, in a live terminal inside the page — TOSO only
+decides what it receives:
+
+![Codex running in TOSO's embedded terminal, answering the English prompt TOSO produced](Docs/images/terminal-en.png)
+
 ## Features
 
 - **Real token measurement** of the original, the local cleanup and the final
@@ -131,6 +140,18 @@ together, pairs them automatically and opens your browser. Then:
    one click. Past prompts can be re-sent to another agent from the IN/OUT log
    («إرسال أيضاً»), with no new processing.
 
+### Daily use: a production build
+
+`dev:all` is for hacking on TOSO. To just use it, run the optimized build — it
+builds once, then starts the app and the bridge the same way:
+
+```bash
+npm run start:all
+```
+
+Both listen on `127.0.0.1` only. Pass `-- -p 4000` to change the app port, or
+`-- -H 0.0.0.0` if you knowingly want the app on your network.
+
 Step-by-step guide (Arabic): [Docs/setup-and-usage.md](Docs/setup-and-usage.md).
 
 ## Free tier: know the conditions
@@ -141,10 +162,20 @@ Step-by-step guide (Arabic): [Docs/setup-and-usage.md](Docs/setup-and-usage.md).
   products_; on the paid tier it is not. Keep confidential code out of prompts on
   the free tier.
 - Free-tier [rate limits](https://ai.google.dev/gemini-api/docs/rate-limits) apply.
-- The free path is **your own AI Studio key**. The optional server key uses
-  Google's billed Agent Platform.
+- The free path is **your own AI Studio key**. The server key (`AGENT_PLATFORM_API_KEY`)
+  is only for someone running a private copy for their own team; it uses Google's
+  billed Agent Platform — leave it unset.
 - Without any key, only the local cleanup (①) runs; the Gemini rewrite and the
   translation are unavailable and TOSO says so.
+
+## Not a hosted service
+
+TOSO is free software you run yourself, not a SaaS: no accounts, no billing, no
+rate limits, no data kept on a server. Everything that matters happens on your
+machine — the CLI agents, the bridge, your key and your history (browser
+storage). It can't be a public website anyway: the agents live on your computer,
+and the bridge only answers `127.0.0.1`. If you host the page somewhere for a team,
+do not set a server key unless you are happy to pay for everyone's calls.
 
 ## Status and limits
 
@@ -160,10 +191,14 @@ TOSO is a working prototype and the author's first open-source project.
 
 ## Roadmap
 
-- Five languages for both input and interface: **Arabic, English, Chinese, Russian,
-  Hindi** — chosen because their token tax is measurable and varies widely.
+Help wanted — these are open for the community, not scheduled:
+
+- **More languages** for input and interface: **Chinese, Russian, Hindi** — chosen
+  because their token tax is measurable and varies widely. The translation layer
+  is ready (`lib/i18n`); each language needs its own cleanup rules and checks —
+  see [Docs/future-ideas.md](Docs/future-ideas.md).
 - A larger, reproducible multi-language benchmark using TOSO's measurement path.
-- Free-form sessions beyond the fixed agent tabs.
+- Free-form sessions beyond the fixed agent tabs ([idea](Docs/future-ideas.md)).
 
 ## Documentation
 
