@@ -35,7 +35,8 @@ Add a test with every behaviour change. UI text is checked by
 ## Rules that keep the project honest
 
 - **Agents receive English only.** Never add a path that sends Arabic (or any
-  non-English text) to a CLI agent.
+  non-English text) to a CLI agent. Every send goes through `withEnglishReply`
+  (`lib/bridge/agents.ts`) so the reply comes back in English too.
 - **No claim without a source.** A number or saving in the docs needs a link to a
   paper/vendor doc or a measurement anyone can reproduce
   ([`Docs/RESEARCH.md`](Docs/RESEARCH.md) lists what we do and do not claim).
@@ -64,14 +65,15 @@ can agree on scope — and a native speaker's review of the wording is required.
 
 Update the docs that your change touches:
 
-| File                                                      | Covers                                                  |
-| --------------------------------------------------------- | ------------------------------------------------------- |
-| [`README.md`](README.md) / [`README.ar.md`](README.ar.md) | What TOSO is, quick start, limits, roadmap              |
-| [`Docs/setup-and-usage.md`](Docs/setup-and-usage.md)      | Install, run, per-agent steps, troubleshooting (Arabic) |
-| [`Docs/ARCHITECTURE.md`](Docs/ARCHITECTURE.md)            | Technical reference: pipeline, routes, bridge, guards   |
-| [`Docs/RESEARCH.md`](Docs/RESEARCH.md)                    | Evidence behind every claim                             |
-| [`SECURITY.md`](SECURITY.md)                              | Key handling and the bridge threat model                |
-| [`AGENTS.md`](AGENTS.md)                                  | Rules for coding agents working on this repo            |
+| File                                                      | Covers                                                   |
+| --------------------------------------------------------- | -------------------------------------------------------- |
+| [`README.md`](README.md) / [`README.ar.md`](README.ar.md) | What TOSO is, quick start, limits, roadmap               |
+| [`Docs/getting-started.md`](Docs/getting-started.md)      | Install, run, per-agent steps, troubleshooting (English) |
+| [`Docs/setup-and-usage.md`](Docs/setup-and-usage.md)      | The same guide in Arabic — keep the two in sync          |
+| [`Docs/ARCHITECTURE.md`](Docs/ARCHITECTURE.md)            | Technical reference: pipeline, routes, bridge, guards    |
+| [`Docs/RESEARCH.md`](Docs/RESEARCH.md)                    | Evidence behind every claim                              |
+| [`SECURITY.md`](SECURITY.md)                              | Key handling and the bridge threat model                 |
+| [`AGENTS.md`](AGENTS.md)                                  | Rules for coding agents working on this repo             |
 
 ## Reporting problems
 

@@ -1,15 +1,39 @@
-# TOSO
+<p align="center">
+  <img src="Docs/images/logo.svg" alt="TOSO logo" width="110">
+</p>
 
-[![CI](https://github.com/khaledaalharbi/TOSO/actions/workflows/ci.yml/badge.svg)](https://github.com/khaledaalharbi/TOSO/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+<h1 align="center">TOSO</h1>
 
-**Spend fewer tokens on every AI coding task — before the agent reads your prompt,
-and while it works.** TOSO cleans and tightens your prompt, translates it to English
-when you write in another language, sends it to the CLI coding agent of your
-choice, and lets you drive several agents from one screen.
+<p align="center">
+  <b>Spend fewer tokens on every AI coding task — before the agent reads your prompt, and while it works.</b><br>
+  Free · local · Arabic + English · five CLI coding agents on one screen
+</p>
 
-[العربية](README.ar.md) · [Evidence](Docs/RESEARCH.md) · [Setup & usage (Arabic)](Docs/setup-and-usage.md) · [Architecture](Docs/ARCHITECTURE.md) · MIT License
+<p align="center">
+  <a href="https://github.com/khaledaalharbi/TOSO/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/khaledaalharbi/TOSO/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
+  <img alt="Node 22.12+" src="https://img.shields.io/badge/node-%E2%89%A522.12-339933.svg">
+</p>
 
-![TOSO's English interface: the prompt you wrote on the right, the concise English sent to the agent on the left, token gauges on the side](Docs/images/workspace-en-in.png)
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="Docs/getting-started.md">Full guide</a> ·
+  <a href="Docs/RESEARCH.md">Evidence</a> ·
+  <a href="Docs/ARCHITECTURE.md">Architecture</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a> ·
+  <a href="README.ar.md">العربية</a>
+</p>
+
+<p align="center">
+  <img src="Docs/images/demo-en.gif" alt="TOSO in action: write a prompt, process it, send it to Codex, read the IN log" width="760">
+</p>
+
+TOSO cleans and tightens your prompt, translates it to English when you write in
+another language, sends it to the CLI coding agent of your choice, and lets you
+drive several agents from one screen. Everything runs on your machine with your
+own free Gemini key — it is **not** a hosted service.
+
+**Contents:** [The idea](#the-idea) · [Quick start](#quick-start) · [How to use it](#how-to-use-it) · [Why it saves tokens](#why-it-saves-tokens) · [Features](#features) · [Troubleshooting](#troubleshooting) · [FAQ](#faq) · [Free tier](#free-tier-know-the-conditions) · [Status](#status-and-limits) · [Roadmap](#roadmap) · [Documentation](#documentation)
 
 ---
 
@@ -23,7 +47,7 @@ Tokens are the bill. TOSO cuts them in two places:
 | --- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | ①   | **Local processing**         | Deterministic cleanup on your machine, no network: drops greetings, filler and repeated spacing; never touches code, URLs, JSON, quotes or `{variables}`. Works in Arabic and English, even without any API key. |
 | ②   | **A free model rewrites it** | Gemini tightens the wording without changing the task. It runs on your own free [AI Studio](https://aistudio.google.com/) key, so the preprocessing costs **$0** (conditions below).                             |
-| ③   | **Translation to English**   | A non-English prompt is translated to concise English first — the same meaning costs fewer tokens. **Arabic is supported today**; English input skips translation. See [why](#the-problem).                      |
+| ③   | **Translation to English**   | A non-English prompt is translated to concise English first — the same meaning costs fewer tokens. **Arabic is supported today**; English input skips translation.                                               |
 
 **2 · On the execution — how the agent works (two ideas)**
 
@@ -34,7 +58,39 @@ Tokens are the bill. TOSO cuts them in two places:
 
 **TOSO moves language work from your paid agent's budget to Gemini's free quota.**
 
-## The problem
+## Quick start
+
+**You need:** [Node.js](https://nodejs.org/) 22.12 or newer, and at least one CLI agent installed and logged in
+([Gemini CLI](https://github.com/google-gemini/gemini-cli), Claude Code, Codex, Devin or Hermes — install commands in the [full guide](Docs/getting-started.md#3-install-and-log-in-to-a-cli-agent)).
+Works on Windows and macOS out of the box; Linux needs build tools for the embedded terminal ([details](Docs/getting-started.md#linux)).
+
+```bash
+git clone https://github.com/khaledaalharbi/TOSO.git
+cd TOSO
+npm install
+npm run start:all      # builds once, then starts the app and the agent bridge
+```
+
+Your browser opens at `http://127.0.0.1:3000` and the app pairs with the bridge
+automatically. For hacking on TOSO itself use `npm run dev:all` instead. Both
+commands listen on `127.0.0.1` only (`-- -p 4000` changes the port, `-- -H 0.0.0.0`
+exposes the app on your network at your own risk).
+
+## How to use it
+
+1. **Add your key.** Settings → paste a free [Google AI Studio](https://aistudio.google.com/) key. Without a key only the local cleanup runs.
+2. **Set up an agent.** Open its tab, enter the project folder, then ① **Check folder** → ④ **Start session**. No agent ever runs on an unchecked folder.
+3. **Write in your own language** in that agent's prompt box → **Process**. Your draft is replaced in place by the concise English version, and the gauges show the saving.
+4. **Send.** The agent receives English only and answers in its live terminal. A per-agent switch makes steps 3–4 one click.
+5. **Read the result** in the **IN log** (what you wrote next to what was sent) and the **OUT log** (the reply, translated back if you want). Past prompts can be re-sent to another agent from the log with no new processing.
+
+![The agent running for real, inside the page](Docs/images/terminal-en.png)
+
+Prefer Arabic? Switch the interface with the **العربية | English** toggle at the top.
+The complete, step-by-step guide is in [Docs/getting-started.md](Docs/getting-started.md)
+(Arabic: [Docs/setup-and-usage.md](Docs/setup-and-usage.md)).
+
+## Why it saves tokens
 
 Developers who think in Arabic, Hindi, Russian or Chinese pay more to use AI
 coding agents than developers who write in English — for the same request.
@@ -55,7 +111,7 @@ coding agents than developers who write in English — for the same request.
   expensive context: one 1920×1080 screenshot is roughly 1,500–2,700 tokens
   ([calculated from vendor docs](Docs/RESEARCH.md)).
 
-## How a prompt flows
+How a prompt flows:
 
 ```
  your prompt                TOSO                                   your CLI agent
@@ -78,23 +134,14 @@ coding agents than developers who write in English — for the same request.
 | ④   | A CLI agent instead of a GUI agent            | [Zhou 2026](https://arxiv.org/abs/2606.24551), [Bechard 2026](https://arxiv.org/abs/2604.00073)                       |
 | ⑤   | Several agents from one screen                | A workflow feature — no saving is claimed for it                                                                      |
 
-## Measured, not assumed
-
-TOSO counts tokens with Gemini's billing-exact `countTokens` and shows the real
-numbers for _your_ prompt — original, cleaned, and final English.
-
-On a 12-prompt Arabic/English parallel corpus, Arabic cost **1.36× the tokens of
-English for the same meaning** on Gemini's tokenizer, so the English version saved
-≈26% ([report](Docs/reports/token-benchmark.md)). Gemini's tokenizer is relatively
-kind to Arabic; English-centric tokenizers tax it far more, so the saving at your
-agent can be larger. Full method, limits and sources: **[Docs/RESEARCH.md](Docs/RESEARCH.md)**.
-
-## See it work
-
-The agent runs for real, in a live terminal inside the page — TOSO only
-decides what it receives:
-
-![Codex running in TOSO's embedded terminal, answering the English prompt TOSO produced](Docs/images/terminal-en.png)
+**Measured, not assumed.** TOSO counts tokens with Gemini's billing-exact
+`countTokens` and shows the real numbers for _your_ prompt — original, cleaned,
+and final English. On a 12-prompt Arabic/English parallel corpus, Arabic cost
+**1.36× the tokens of English for the same meaning** on Gemini's tokenizer, so
+the English version saved ≈26% ([report](Docs/reports/token-benchmark.md)).
+Gemini's tokenizer is relatively kind to Arabic; English-centric tokenizers tax it
+far more, so the saving at your agent can be larger. Full method, limits and
+sources: **[Docs/RESEARCH.md](Docs/RESEARCH.md)**.
 
 ## Features
 
@@ -108,7 +155,8 @@ decides what it receives:
   and quotes must survive; lost negation is flagged; a failing rewrite falls back
   to the local cleanup.
 - **English-only rule:** agents never receive the Arabic text — mostly-Arabic text
-  is refused on every send path.
+  is refused on every send path. Every send also ends with `Respond in English.`,
+  so an agent whose project files are in Arabic doesn't answer in Arabic.
 - **Five CLI agents on one screen**, in live embedded terminals: Gemini CLI,
   Claude Code, OpenAI Codex, Devin, Hermes. Each has its own prompt box, so a
   prompt can't go to the wrong agent, and sessions keep context across turns.
@@ -121,40 +169,31 @@ decides what it receives:
 - **Local bridge** bound to `127.0.0.1` with a session token and a fixed agent
   allowlist — see [SECURITY.md](SECURITY.md).
 
-## Quick start
+## Troubleshooting
 
-Requires **Node.js 22.12+** and at least one CLI agent installed and logged in.
+| Symptom                                       | Fix                                                                                                                          |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Header badge says the bridge is offline       | Run `npm run start:all` (or `npm run bridge` in another terminal). It must be on `127.0.0.1:8676`.                           |
+| "Token rejected"                              | Restart both; the app pairs automatically. If you set a token by hand in Settings, clear it.                                 |
+| An agent says `Not logged in` / is not found  | Log in once from your normal terminal, make sure its command is on `PATH`, then **restart TOSO** (the bridge copies `PATH`). |
+| Nothing is sent / "check the folder first"    | Finish step ① (Check folder) in that agent's tab; the message appears inside the tab.                                        |
+| Reply shows "waiting for a decision"          | The agent asked a permission question in its terminal — answer it there, then send again.                                    |
+| Rewrite unavailable, only local cleanup works | No key, or its quota is used up — open Settings → **Verify** / **Check models**.                                             |
 
-```bash
-git clone https://github.com/khaledaalharbi/TOSO.git
-cd TOSO
-npm install
-npm run dev:all
-```
+More cases (Git `NUL` error, Hermes quota, environment-variable key shadowing) in the
+[full guide](Docs/getting-started.md#7-troubleshooting).
 
-`dev:all` starts the app (`http://localhost:3000`) and the local agent bridge
-together, pairs them automatically and opens your browser. Then:
+## FAQ
 
-1. **Settings →** paste your free [Google AI Studio](https://aistudio.google.com/) key.
-2. **Agent tab →** enter your project folder → ① Check → ④ Start session.
-3. Write your prompt in that agent's own box → **Process** (your draft is replaced
-   in place by the concise English version) → **Send**. A per-agent switch makes it
-   one click. Past prompts can be re-sent to another agent from the IN/OUT log
-   («إرسال أيضاً»), with no new processing.
+**Does TOSO send my code anywhere?** Only your _prompt text_ goes to Gemini (for the rewrite/translation), through your own key. The agents run locally and talk to their own providers exactly as they do outside TOSO. Keep confidential code out of prompts on the free tier (see below).
 
-### Daily use: a production build
+**Is it a SaaS or a website I can use online?** No. It is a program you run yourself; the agents live on your computer and the bridge answers `127.0.0.1` only.
 
-`dev:all` is for hacking on TOSO. To just use it, run the optimized build — it
-builds once, then starts the app and the bridge the same way:
+**Which agents work?** Gemini CLI, Claude Code, OpenAI Codex, Devin and Hermes. Any other CLI agent can be added through `TOSO_AGENTS_FILE` (see [ARCHITECTURE](Docs/ARCHITECTURE.md)).
 
-```bash
-npm run start:all
-```
+**Why does the agent get English even when I write Arabic?** That is the point: the same meaning costs fewer tokens in English, and TOSO translates the reply back for you.
 
-Both listen on `127.0.0.1` only. Pass `-- -p 4000` to change the app port, or
-`-- -H 0.0.0.0` if you knowingly want the app on your network.
-
-Step-by-step guide (Arabic): [Docs/setup-and-usage.md](Docs/setup-and-usage.md).
+**Can I use it without any key?** Yes — only the local cleanup runs; the Gemini rewrite and translation say they are unavailable.
 
 ## Free tier: know the conditions
 
@@ -170,14 +209,11 @@ Step-by-step guide (Arabic): [Docs/setup-and-usage.md](Docs/setup-and-usage.md).
 - Without any key, only the local cleanup (①) runs; the Gemini rewrite and the
   translation are unavailable and TOSO says so.
 
-## Not a hosted service
-
-TOSO is free software you run yourself, not a SaaS: no accounts, no billing, no
-rate limits, no data kept on a server. Everything that matters happens on your
-machine — the CLI agents, the bridge, your key and your history (browser
-storage). It can't be a public website anyway: the agents live on your computer,
-and the bridge only answers `127.0.0.1`. If you host the page somewhere for a team,
-do not set a server key unless you are happy to pay for everyone's calls.
+**Not a hosted service.** TOSO is free software you run yourself: no accounts, no
+billing, no rate limits, no data kept on a server. Everything that matters happens
+on your machine — the CLI agents, the bridge, your key and your history (browser
+storage). If you host the page somewhere for a team, do not set a server key unless
+you are happy to pay for everyone's calls.
 
 ## Status and limits
 
@@ -204,13 +240,14 @@ Help wanted — these are open for the community, not scheduled:
 
 ## Documentation
 
-| Document                                           | Contents                                                                |
-| -------------------------------------------------- | ----------------------------------------------------------------------- |
-| [Docs/RESEARCH.md](Docs/RESEARCH.md)               | Every claim with its source, evidence level, and what we do not claim   |
-| [Docs/setup-and-usage.md](Docs/setup-and-usage.md) | Install, run, first settings, per-agent steps, troubleshooting (Arabic) |
-| [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md)       | Technical reference: pipeline, API routes, bridge, guards (Arabic)      |
-| [SECURITY.md](SECURITY.md)                         | Key handling and the local bridge threat model                          |
-| [CONTRIBUTING.md](CONTRIBUTING.md)                 | Set up, the four CI checks, project rules, adding a language            |
+| Document                                           | Contents                                                              |
+| -------------------------------------------------- | --------------------------------------------------------------------- |
+| [Docs/getting-started.md](Docs/getting-started.md) | Install, run, settings, per-agent steps, daily use, troubleshooting   |
+| [Docs/setup-and-usage.md](Docs/setup-and-usage.md) | The same guide in Arabic                                              |
+| [Docs/RESEARCH.md](Docs/RESEARCH.md)               | Every claim with its source, evidence level, and what we do not claim |
+| [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md)       | Technical reference: pipeline, API routes, bridge, guards (Arabic)    |
+| [SECURITY.md](SECURITY.md)                         | Key handling and the local bridge threat model                        |
+| [CONTRIBUTING.md](CONTRIBUTING.md)                 | Set up, the four CI checks, project rules, adding a language          |
 
 ## License
 

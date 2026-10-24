@@ -211,6 +211,7 @@ are not used anywhere in this project:
 - "Context caching saves an extra 30–50% for CLI."
 - "The local cleanup saves N% of tokens." (No such number exists: the saving depends on how much filler your prompt has. TOSO shows the measured before/after for each prompt.)
 - "Running several agents at once saves tokens." (It is a workflow feature; no saving is claimed.)
+- "The `Respond in English.` line saves N% on replies." (It keeps an agent from answering in Arabic when its project context is Arabic, so Claim 1's language tax applies to the reply too — but it costs ~4 input tokens per send and the saving per reply was not measured.)
 - "CLI skills cut tokens by 82–96%." (That range is from AutoRPA, ICML 2026 — compiling agent trajectories into code — not from a CLI-vs-GUI comparison.)
 
 If you have a primary source for any of them, open an issue.
