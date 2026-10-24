@@ -220,7 +220,7 @@ const expandHome = (p) =>
  */
 function resolveWorkspace(raw, { fallback = true } = {}) {
   if (raw !== undefined && raw !== null && typeof raw !== "string") {
-    return { ok: false, detail: "المسار يجب أن يكون نصاً" };
+    return { ok: false, detail: "The path must be a string" };
   }
   const value =
     raw?.trim() || (fallback ? process.env.TOSO_BRIDGE_WORKSPACE?.trim() : "");
@@ -228,16 +228,16 @@ function resolveWorkspace(raw, { fallback = true } = {}) {
   if (!path.isAbsolute(value)) {
     return {
       ok: false,
-      detail: "المسار يجب أن يكون مطلقاً (مثل C:\\Projects\\App)",
+      detail: "The path must be absolute (e.g. C:\\Projects\\App)",
     };
   }
   const resolved = path.resolve(value);
   try {
     if (!fs.statSync(resolved).isDirectory()) {
-      return { ok: false, detail: "المسار موجود لكنه ليس مجلداً" };
+      return { ok: false, detail: "The path exists but is not a folder" };
     }
   } catch {
-    return { ok: false, detail: "المجلد غير موجود" };
+    return { ok: false, detail: "The folder does not exist" };
   }
   return { ok: true, cwd: resolved };
 }
@@ -845,7 +845,7 @@ function runAgent(
       trusted,
       status: "error",
       output: "",
-      error: `prompt_too_long_for_agent: ${agentId} يستقبل التلقينة عبر argv (~${MAX_ARGV_PROMPT} حرف كحد أقصى)؛ اختصر النص أو استخدم وكيلاً يقرأه من ملف/stdin`,
+      error: `prompt_too_long_for_agent: ${agentId} takes the prompt through argv (~${MAX_ARGV_PROMPT} characters at most); shorten the text or use an agent that reads it from a file/stdin`,
       exitCode: null,
       startedAt: Date.now(),
       endedAt: Date.now(),
@@ -922,7 +922,7 @@ function runAgent(
       job,
       "error",
       error.code === "ENOENT"
-        ? `agent_not_installed: ${adapter.cmd} غير موجود في PATH`
+        ? `agent_not_installed: ${adapter.cmd} is not on PATH`
         : `agent_spawn_failed: ${error.message}`,
       null,
     );
@@ -934,14 +934,14 @@ function runAgent(
       code === 0
         ? null
         : code === 127
-          ? `agent_not_installed: ${adapter.cmd} غير موجود في PATH`
+          ? `agent_not_installed: ${adapter.cmd} is not on PATH`
           : `exit_${code}${stderr.trim() ? `: ${stderr.trim().slice(0, 500)}` : ""}`,
       code,
     );
   });
   job.timer = setTimeout(() => {
     if (job.status === "running") {
-      job.error = `timeout: تجاوز ${Math.round(timeoutMs / 1000)} ثانية`;
+      job.error = `timeout: exceeded ${Math.round(timeoutMs / 1000)} seconds`;
       killJob(job);
       finish(job, "error", job.error, null);
     }
@@ -1022,7 +1022,7 @@ async function handle(req, res) {
           : {
               ok: false,
               error: "invalid_workspace",
-              detail: ws.ok ? "المسار فارغ" : ws.detail,
+              detail: ws.ok ? "The path is empty" : ws.detail,
             },
       );
       return;
@@ -1050,7 +1050,7 @@ async function handle(req, res) {
       if (!ws.cwd) {
         sendJson(req, res, 400, {
           error: "invalid_workspace",
-          detail: "حدّد مجلد مساحة العمل أولاً",
+          detail: "Set the workspace folder first",
         });
         return;
       }
@@ -1126,7 +1126,7 @@ async function handle(req, res) {
     if (req.method === "DELETE") {
       if (job.status === "running") {
         killJob(job);
-        finish(job, "killed", "أُلغي من الواجهة", null);
+        finish(job, "killed", "Cancelled from the UI", null);
       }
       sendJson(req, res, 200, { job: jobView(job) });
       return;
@@ -1280,13 +1280,13 @@ server.listen(PORT, "127.0.0.1", () => {
   }
   const pad = "─".repeat(52);
   console.log(`┌${pad}┐`);
-  console.log(`  TOSO Bridge v${VERSION} — جسر الوكلاء المحلي`);
+  console.log(`  TOSO Bridge v${VERSION} — local agent bridge`);
   console.log(`  http://127.0.0.1:${PORT}`);
   console.log(`  Token: ${TOKEN}`);
   console.log(`  Agents: ${Object.keys(AGENTS).join(", ")}`);
   console.log(`└${pad}┘`);
   console.log(
-    "أدخل العنوان والتوكن في إعدادات TOSO. هذا السطر يظهر مرة واحدة عند التشغيل.",
+    "Enter the address and token in TOSO's Settings. This line appears once, at startup.",
   );
   if (process.env.TOSO_BRIDGE_TOKEN === undefined) {
     console.error(

@@ -7,7 +7,7 @@
  *
  * The bridge prints its token, but you rarely need it: it also writes a
  * session file that /api/bridge/session serves, so the UI auto-pairs on the
- * first "إلى الوكيل" click. Ctrl+C stops both.
+ * first send to an agent. Ctrl+C stops both.
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -94,7 +94,7 @@ function run(name, args, color) {
     } else {
       // The bridge is optional — its failure must not kill the app.
       console.log(
-        `[${name}] exited (${code}) — التطبيق يستمر بدون جسر (زر «إلى الوكيل» سيقترح إعادة تشغيله)`,
+        `[${name}] exited (${code}) — the app keeps running without a bridge (restart it with npm run bridge)`,
       );
     }
   });
@@ -127,11 +127,7 @@ if (prod && !existsSync(path.join(root, ".next", "BUILD_ID"))) {
   if (build.status !== 0) process.exit(build.status ?? 1);
 }
 
-run(
-  "app",
-  [nextCli, prod ? "start" : "dev", ...nextArgs],
-  "\u001b[36m",
-);
+run("app", [nextCli, prod ? "start" : "dev", ...nextArgs], "\u001b[36m");
 
 if (await portInUse(BRIDGE_PORT)) {
   console.log(
