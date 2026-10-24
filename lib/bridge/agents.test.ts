@@ -1,5 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { isAgentWireText } from "./agents";
+import {
+  AGENT_REPLY_DIRECTIVE,
+  isAgentWireText,
+  withEnglishReply,
+} from "./agents";
+
+describe("withEnglishReply — agents answer in English too", () => {
+  it("appends the directive on its own line", () => {
+    expect(withEnglishReply("List the open tasks.  \n")).toBe(
+      `List the open tasks.\n${AGENT_REPLY_DIRECTIVE}`,
+    );
+  });
+
+  it("is idempotent, so a re-sent turn is not doubled", () => {
+    const once = withEnglishReply("List the open tasks.");
+    expect(withEnglishReply(once)).toBe(once);
+  });
+
+  it("keeps the wire English", () => {
+    expect(isAgentWireText(withEnglishReply("Summarize progress"))).toBe(true);
+  });
+});
 
 describe("isAgentWireText — agents receive English only", () => {
   it("accepts plain English", () => {

@@ -65,6 +65,7 @@ import {
   agentCommand,
   agentLabel,
   isAgentWireText,
+  withEnglishReply,
 } from "@/lib/bridge/agents";
 import {
   abortAllRuns,
@@ -943,12 +944,18 @@ export function OptimizerWorkspace() {
     }
   }
 
-  async function sendToAgent(text: string, agent: string, inputUser: string) {
-    const blocked = sendBlocker(text, agent);
+  async function sendToAgent(
+    english: string,
+    agent: string,
+    inputUser: string,
+  ) {
+    const blocked = sendBlocker(english, agent);
     if (blocked) {
       refuseSend(agent, blocked);
       return;
     }
+    // Pin the reply language too — what crosses the wire (and the IN log).
+    const text = withEnglishReply(english);
     // The live embedded session is the primary path; the one-shot run is
     // the honest fallback when the bridge has no PTY support.
     const terminal = terminals.current[agent];

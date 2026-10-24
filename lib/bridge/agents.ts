@@ -72,6 +72,23 @@ export function isAgentWireText(text: string): boolean {
   return arabicRatio(text) <= MAX_AGENT_ARABIC_RATIO;
 }
 
+/**
+ * The same rule on the way back: an agent tends to answer in the language of
+ * its context (an Arabic AGENTS.md made Codex reply in Arabic to an English
+ * prompt, seen live), and an Arabic reply costs far more tokens. One short
+ * line on every send pins the reply language; idempotent, so a re-sent turn
+ * (already carrying it) is not doubled. Its own line keeps it inside the
+ * prompt's echo for reply extraction.
+ */
+export const AGENT_REPLY_DIRECTIVE = "Respond in English.";
+
+export function withEnglishReply(text: string): string {
+  const body = text.trimEnd();
+  return body.endsWith(AGENT_REPLY_DIRECTIVE)
+    ? body
+    : `${body}\n${AGENT_REPLY_DIRECTIVE}`;
+}
+
 export function agentLabel(id: string): string {
   return AGENT_OPTIONS.find((agent) => agent.id === id)?.label ?? id;
 }

@@ -114,6 +114,22 @@ describe("Codex TUI conventions (live)", () => {
     ).toBe("BLUE-HERON");
   });
 
+  it("skips the reply-language directive line in the echo", () => {
+    const sent =
+      "What is our latest progress on this project?\nRespond in English.";
+    const withEcho = [
+      ...before.slice(0, 4),
+      "› What is our latest progress on this project?",
+      "  Respond in English.",
+      "• Billing is done; reports remain.",
+      "  Worked for 31s • 1:19 AM",
+      ...before.slice(4),
+    ];
+    expect(extractReply(before, withEcho, sent)).toBe(
+      "Billing is done; reports remain.",
+    );
+  });
+
   it("drops Claude Code's status line and its ❯-ended rule (live 429 turn)", () => {
     const before = ["❯ earlier", "────────────────────────────────❯"];
     const after = [
