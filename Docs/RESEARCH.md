@@ -1,7 +1,12 @@
 # The evidence behind TOSO
 
-TOSO rests on three claims. This page states each one, the evidence for it,
-how strong that evidence is, and what we deliberately do **not** claim.
+TOSO's one idea is to **cut token consumption**: on the input (① local cleanup,
+② a free model's rewrite, ③ translation to English for non-English prompts) and in
+execution (④ CLI agents instead of GUI agents, ⑤ many agents from one screen).
+Three of those rest on published or measurable evidence, stated below as three
+claims. ① and ⑤ carry no published figure and **no saving is claimed for them**;
+TOSO measures ① per prompt instead. This page states each claim, the evidence for
+it, how strong that evidence is, and what we deliberately do **not** claim.
 
 Every number here falls into one of three levels:
 
@@ -159,7 +164,10 @@ that reads a large file can also consume tens of thousands of tokens.
 
 ## The free preprocessing layer (verified 2026-10-20)
 
-TOSO's translation runs on Gemini. On the **free tier** of the Gemini Developer
+TOSO's preprocessing has two parts. The **local cleanup** (①) runs on your machine
+with no network and no key: it removes greetings, request filler and repeated
+spacing in Arabic and English, and never edits code, URLs, JSON, quotes or
+`{variables}`. The **rewrite and translation** (② and ③) run on Gemini. On the **free tier** of the Gemini Developer
 API ([pricing](https://ai.google.dev/gemini-api/docs/pricing)):
 
 | TOSO model | Free tier |
@@ -201,6 +209,8 @@ are not used anywhere in this project:
 - "GUI agents are 3–6× slower." (The controlled study above measured 1.2–1.8× for the same model.)
 - "GUI agents get stuck in loops 35–50% more often."
 - "Context caching saves an extra 30–50% for CLI."
+- "The local cleanup saves N% of tokens." (No such number exists: the saving depends on how much filler your prompt has. TOSO shows the measured before/after for each prompt.)
+- "Running several agents at once saves tokens." (It is a workflow feature; no saving is claimed.)
 - "CLI skills cut tokens by 82–96%." (That range is from AutoRPA, ICML 2026 — compiling agent trajectories into code — not from a CLI-vs-GUI comparison.)
 
 If you have a primary source for any of them, open an issue.
