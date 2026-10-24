@@ -1131,7 +1131,14 @@ export function OptimizerWorkspace() {
    */
   async function translateJob(agent: string, jobId: string, output: string) {
     // English UI: replies are already in the user's language — never translate back.
-    if (lang !== "ar" || !output.trim() || translatingJobs.has(jobId)) return;
+    // A reply the agent already wrote in Arabic (Hermes by design) needs no translation either.
+    if (
+      lang !== "ar" ||
+      !output.trim() ||
+      !isAgentWireText(output) ||
+      translatingJobs.has(jobId)
+    )
+      return;
     setTranslatingJobs((jobs) => new Set(jobs).add(jobId));
     try {
       const result = await translateToArabic(

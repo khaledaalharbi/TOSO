@@ -11,7 +11,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { agentLabel } from "@/lib/bridge/agents";
+import { agentLabel, isAgentWireText } from "@/lib/bridge/agents";
 import {
   samePath,
   sendAlsoCheck,
@@ -238,12 +238,15 @@ function Entry({
   n,
   lang,
   muted,
+  auto,
   select,
   children,
 }: {
   n: number;
   lang: "en" | "ar";
   muted?: boolean;
+  /** A reply the agent wrote in Arabic (e.g. Hermes) — follows its own direction. */
+  auto?: boolean;
   /** «إرسال أيضاً» mode: a checkbox beside the text. */
   select?: { checked: boolean; onToggle: () => void };
   children: ReactNode;
@@ -251,10 +254,12 @@ function Entry({
   const { t, lang: ui } = useI18n();
   return (
     <li
-      dir={lang === "en" ? "ltr" : ui === "ar" ? "rtl" : "auto"}
+      dir={
+        lang === "en" ? (auto ? "auto" : "ltr") : ui === "ar" ? "rtl" : "auto"
+      }
       className={`flex gap-2 rounded-lg border px-3 py-2 leading-7 ${
         lang === "en"
-          ? "border-[#9673a6]/50 bg-[#e1d5e7] text-left font-mono text-[12.5px]"
+          ? `border-[#9673a6]/50 bg-[#e1d5e7] font-mono text-[12.5px] ${auto ? "text-start" : "text-left"}`
           : `border-[#82b366]/60 bg-[#d5e8d4] text-sm ${ui === "ar" ? "text-right" : "text-start"}`
       } ${muted ? "opacity-60" : ""} ${select?.checked ? "ring-2 ring-brand-500" : ""}`}
     >
@@ -460,7 +465,12 @@ export function AgentTranscript({
         waiting for the agent…
       </Entry>
     ) : (
-      <Entry key={turn.jobId} n={turn.n} lang="en">
+      <Entry
+        key={turn.jobId}
+        n={turn.n}
+        lang="en"
+        auto={!isAgentWireText(turn.outputWire)}
+      >
         <span className={turn.status === "done" ? "" : "text-amber-800"}>
           {turn.outputWire || "—"}
         </span>
@@ -492,6 +502,12 @@ export function AgentTranscript({
     ) : turn.outputUser ? (
       <Entry key={turn.jobId} n={turn.n} lang="ar">
         {turn.outputUser}
+      </Entry>
+    ) : turn.status === "done" &&
+      turn.outputWire.trim() &&
+      !isAgentWireText(turn.outputWire) ? (
+      <Entry key={turn.jobId} n={turn.n} lang="ar">
+        {turn.outputWire}
       </Entry>
     ) : turn.status === "running" ? (
       <Entry key={turn.jobId} n={turn.n} lang="ar" muted>

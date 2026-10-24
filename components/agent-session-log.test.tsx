@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { I18nProvider } from "./i18n-provider";
 import {
   AgentTranscript,
   turnsProject,
@@ -183,5 +184,59 @@ describe("turnsProject — which project the selected texts belong to", () => {
   it("falls back to the agent's folder for turns recorded without one", () => {
     expect(turnsProject([turn(undefined)], "C:/A")).toBe("C:/A");
     expect(turnsProject([turn(undefined)])).toBeUndefined();
+  });
+});
+
+describe("AgentTranscript in the English UI and with Arabic replies", () => {
+  const arabicReply: AgentTurn[] = [
+    {
+      n: 1,
+      jobId: "h",
+      inputUser: "capital of France?",
+      inputWire: "What is the capital of France?",
+      outputWire: "باريس",
+      status: "done",
+    },
+  ];
+  const renderEn = (
+    props: Partial<Parameters<typeof AgentTranscript>[0]> = {},
+  ) =>
+    renderToStaticMarkup(
+      <I18nProvider initialLang="en">
+        <AgentTranscript
+          agent="hermes"
+          side="out"
+          turns={arabicReply}
+          translatingJobs={new Set()}
+          onTranslate={() => {}}
+          onClear={() => {}}
+          {...props}
+        />
+      </I18nProvider>,
+    );
+
+  it("shows OUT as one English column with no arrow or translate button", () => {
+    const html = renderEn({ turns });
+    expect(html).toContain(">English<");
+    expect(html).not.toContain("lucide-arrow-right");
+    expect(html).not.toContain(">Translate<");
+    expect(html).not.toContain(">Your original text<");
+  });
+
+  it("keeps IN as two columns, the user's side titled for English", () => {
+    const html = renderEn({ side: "in", turns });
+    expect(html).toContain(">Your original text<");
+    expect(html).toContain("lucide-arrow-left");
+  });
+
+  it("renders a reply the agent wrote in Arabic with its own direction", () => {
+    const html = renderEn();
+    expect(html).toMatch(/<li dir="auto"[^>]*>[^]*?باريس/);
+  });
+
+  it("puts an Arabic reply straight into the Arabic column instead of offering a translation", () => {
+    const html = render({ side: "out", turns: arabicReply });
+    expect(html).toMatch(/<li dir="rtl"[^>]*>[^]*?1\.[^]*?باريس/);
+    expect(html).not.toContain(">ترجمة<");
   });
 });
