@@ -165,6 +165,33 @@ function normalizeArabicWord(word: string): string {
     .replace(/ة/g, "ه");
 }
 
+/** English function words and courtesy filler — no content signal for coverage. */
+const EN_STOPWORDS = new Set(
+  (
+    "the and for are but not you your yours this that these those with from into onto over under about after before " +
+    "was were been being have has had having does did doing will would shall should could can may might must " +
+    "its it's his her hers our ours their theirs them they she him who whom whose which what when where why how " +
+    "than then there here also just very too any all some each every more most other such only own same " +
+    "please pls plz kindly thanks thank hello hey want need like wanna gonna let lets make sure"
+  ).split(" "),
+);
+
+/** Crude suffix stripping so "analyze/analyzed/analyzing" count as one word. */
+function stemEnglishWord(word: string): string {
+  return word.length > 4
+    ? word.replace(/(?:ing|edly|ed|es|s|ly)$/, "").replace(/e$/, "")
+    : word;
+}
+
+function englishContentWords(text: string): Set<string> {
+  const words = new Set<string>();
+  for (const raw of text.toLowerCase().split(/[^a-z]+/)) {
+    if (raw.length >= 3 && !EN_STOPWORDS.has(raw))
+      words.add(stemEnglishWord(raw));
+  }
+  return words;
+}
+
 function arabicContentWords(text: string): Set<string> {
   const words = new Set<string>();
   for (const raw of text.replace(/[ً-ٰٟـ]/g, "").split(/[^ء-ي]+/u)) {
@@ -225,11 +252,19 @@ export function checkQuality(
     warnings.push("لم تُحفظ أدوات النفي الموجودة في المدخل");
   }
 
+  // Coverage is same-language only: Arabic against Arabic, English against an
+  // English-written source (an Arabic source has no English words to compare).
   let keywordCoverage: number | null = null;
-  if (lang === "ar") {
-    const sourceWords = arabicContentWords(original);
+  const contentWords =
+    lang === "ar"
+      ? arabicContentWords
+      : originalArabic === 0
+        ? englishContentWords
+        : null;
+  if (contentWords) {
+    const sourceWords = contentWords(original);
     if (sourceWords.size >= 3) {
-      const outputWords = arabicContentWords(output);
+      const outputWords = contentWords(output);
       let kept = 0;
       for (const word of sourceWords) if (outputWords.has(word)) kept += 1;
       keywordCoverage = kept / sourceWords.size;

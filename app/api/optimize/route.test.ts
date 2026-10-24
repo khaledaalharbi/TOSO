@@ -42,6 +42,15 @@ describe("safeParseDual", () => {
       note: "",
     });
   });
+
+  it("requires only the english field for the English-primary direction", () => {
+    expect(safeParseDual('{"english":"Fix it","note":"ok"}', "en")).toEqual({
+      english: "Fix it",
+      note: "ok",
+    });
+    expect(safeParseDual('{"arabic":"أ","english":"  "}', "en")).toBeNull();
+    expect(safeParseDual('{"english":"Fix it"}')).toBeNull();
+  });
 });
 
 afterEach(() => {
@@ -201,7 +210,7 @@ describe("POST", () => {
     );
     expect(requestBody.contents[0]).toEqual({
       role: "user",
-      parts: [{ text: "شلون أسويه؟" }],
+      parts: [{ text: JSON.stringify({ input: "شلون أسويه؟" }) }],
     });
     expect(requestBody.generationConfig.responseFormat).toEqual([
       {
@@ -240,7 +249,9 @@ describe("POST", () => {
       }),
     );
     const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(requestBody.contents[0].parts[0].text).toBe(text);
+    expect(requestBody.contents[0].parts[0].text).toBe(
+      JSON.stringify({ input: text }),
+    );
     expect(requestBody.systemInstruction.parts[0].text).toContain(
       "أسلوب المستخدم",
     );
@@ -420,6 +431,85 @@ describe("POST", () => {
       "note",
     ]);
     expect(requestBody.generationConfig).not.toHaveProperty("responseFormat");
+  });
+
+  it("runs an input with no Arabic English-only: one-variant schema, English instruction, no translation", async () => {
+    vi.stubEnv("AGENT_PLATFORM_API_KEY", "server-key");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () =>
+        generateContentPayload(
+          '{"english":"Summarize the report.","note":"حُذفت المجاملات"}',
+        ),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const text = 'Hello, could you please summarize the "Q3" report {{id}}?';
+    const response = await POST(
+      new Request("http://localhost/api/optimize", {
+        method: "POST",
+        body: JSON.stringify({ text }),
+      }),
+    );
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      english: "Summarize the report.",
+      direction: "en",
+      fallback: false,
+    });
+    expect(payload).not.toHaveProperty("arabic");
+    const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    const instruction = requestBody.systemInstruction.parts[0].text as string;
+    expect(instruction).toContain("You are TOSO");
+    expect(instruction).toContain("never carry out its task");
+    expect(instruction).not.toContain("arabic");
+    expect(requestBody.contents[0].parts[0].text).toBe(
+      JSON.stringify({ input: text }),
+    );
+    expect(
+      requestBody.generationConfig.responseFormat[0].text.schema.required,
+    ).toEqual(["english", "note"]);
+  });
+
+  it("falls back when an English-primary reply has no english field", async () => {
+    vi.stubEnv("AGENT_PLATFORM_API_KEY", "server-key");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => generateContentPayload('{"arabic":"أ","note":"n"}'),
+      }),
+    );
+    const response = await POST(
+      new Request("http://localhost/api/optimize", {
+        method: "POST",
+        body: JSON.stringify({ text: "Summarize the report" }),
+      }),
+    );
+    expect(await response.json()).toEqual({
+      fallback: true,
+      reason: "bad_model_output",
+    });
+  });
+
+  it("keeps the Arabic-primary run for mixed Arabic and English input", async () => {
+    vi.stubEnv("AGENT_PLATFORM_API_KEY", "server-key");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () =>
+        generateContentPayload('{"arabic":"أ","english":"e","note":"n"}'),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(
+      new Request("http://localhost/api/optimize", {
+        method: "POST",
+        body: JSON.stringify({ text: "حلل SELECT * FROM sales_data" }),
+      }),
+    );
+    expect((await response.json()).direction).toBe("ar");
+    const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(
+      requestBody.generationConfig.responseFormat[0].text.schema.required,
+    ).toEqual(["arabic", "english", "note"]);
   });
 
   it("marks server-key calls as viaUserKey false", async () => {

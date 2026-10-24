@@ -21,6 +21,7 @@ import {
 } from "@/components/agent-card";
 import { AgentComposer } from "@/components/agent-composer";
 import { AgentViewTabs, type AgentView } from "@/components/agent-view-tabs";
+import { ArabicOnDemand } from "@/components/arabic-on-demand";
 import { BridgeBadge } from "@/components/bridge-badge";
 import {
   MeasureGauges,
@@ -1161,9 +1162,17 @@ export function OptimizerWorkspace() {
     phase === "optimizing" ? "active" : dual ? "done" : "idle";
   const s3: NodeStatus =
     phase === "measuring" ? "active" : report ? "done" : "idle";
-  const arabicUnavailable = dual !== null && dual.arabic === null;
+  // No Arabic in the input → the user's language is English: the card shows
+  // the polished English, and the Arabic version is on demand only.
+  const englishPrimary = report
+    ? report.direction === "en"
+    : originalRatio === 0;
+  const arabicUnavailable =
+    !englishPrimary && dual !== null && dual.arabic === null;
   const isMock = report?.source === "mock" || dual?.source === "mock";
-  const nativeText = report?.arabic?.text ?? dual?.arabic ?? null;
+  const nativeText = englishPrimary
+    ? (report?.english?.text ?? dual?.english ?? null)
+    : (report?.arabic?.text ?? dual?.arabic ?? null);
   const progress = running
     ? (runLabel[phase as keyof typeof runLabel] ?? "يعالج…")
     : null;
@@ -1508,9 +1517,15 @@ export function OptimizerWorkspace() {
                 </summary>
                 <div className="border-t border-slate-200 p-4">
                   <OutputCard
-                    lang="ar"
+                    lang={englishPrimary ? "en" : "ar"}
                     title="Optimized Output"
-                    chip={isMock && nativeText ? "تنقية محلية" : "العربية"}
+                    chip={
+                      isMock && nativeText
+                        ? "تنقية محلية"
+                        : englishPrimary
+                          ? "English"
+                          : "العربية"
+                    }
                     status={s3}
                     text={nativeText}
                     unavailable={arabicUnavailable}
@@ -1519,8 +1534,20 @@ export function OptimizerWorkspace() {
                         ? "حُجبت النسخة العربية لأن مخرج Gemini لم يجتز فحوص السلامة؛ عُرض النص المنقّى محلياً."
                         : "الترجمة العربية غير متاحة في الوضع المحلي أو عند تعذّر Gemini."
                     }
-                    report={report?.arabic ?? null}
+                    report={
+                      englishPrimary
+                        ? (report?.english ?? null)
+                        : (report?.arabic ?? null)
+                    }
                   />
+                  {englishPrimary && report?.english && (
+                    <ArabicOnDemand
+                      key={report.english.text}
+                      english={report.english.text}
+                      model={config.model}
+                      userKey={config.userKey}
+                    />
+                  )}
                 </div>
               </details>
             </div>

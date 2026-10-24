@@ -53,4 +53,16 @@ describe("checkEntities", () => {
       { kind: "number", value: "2025-03-01" },
     ]);
   });
+
+  it("keeps double-brace template variables intact and flags a lost brace", () => {
+    expect(
+      checkEntities(
+        "Hi {{user_name}}, plan {{ plan.id }}",
+        "Hi {{user_name}}, plan {{ plan.id }}",
+      ).preserved,
+    ).toBe(true);
+    expect(checkEntities("Hi {{user_name}}", "Hi {user_name}").missing).toEqual(
+      [{ kind: "variable", value: "{{user_name}}" }],
+    );
+  });
 });

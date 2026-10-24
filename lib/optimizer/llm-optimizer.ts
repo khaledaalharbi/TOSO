@@ -4,7 +4,8 @@
  *
  * Falls back to the local mock when no key is configured: the Arabic variant
  * still works offline, the English one stays null so the UI can honestly say
- * why the translation is missing instead of fabricating one.
+ * why the translation is missing instead of fabricating one. An input with no
+ * Arabic runs the other way round: English only, nothing translated.
  */
 
 import { optimizePrompt } from "@/lib/optimizer/mock-optimizer";
@@ -59,17 +60,22 @@ export async function optimizeDual(
         viaUserKey?: boolean;
         usage?: GeminiUsage | null;
       } | null;
+      // English-primary runs ask Gemini for one variant: the Arabic slot
+      // stays null whatever the payload carries (Arabic is on demand only).
+      const englishPrimary = arabicRatio(prompt) === 0;
       if (
         payload &&
         !payload.fallback &&
-        typeof payload.arabic === "string" &&
-        payload.arabic.trim() &&
-        (payload.english === undefined ||
-          typeof payload.english === "string") &&
+        (englishPrimary
+          ? typeof payload.english === "string" && payload.english.trim()
+          : typeof payload.arabic === "string" &&
+            payload.arabic.trim() &&
+            (payload.english === undefined ||
+              typeof payload.english === "string")) &&
         (payload.note === undefined || typeof payload.note === "string")
       ) {
         return {
-          arabic: payload.arabic.trim(),
+          arabic: englishPrimary ? null : (payload.arabic?.trim() ?? null),
           english: payload.english?.trim() ? payload.english.trim() : null,
           note:
             payload.note?.trim() ||

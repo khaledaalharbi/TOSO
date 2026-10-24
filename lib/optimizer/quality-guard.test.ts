@@ -140,4 +140,34 @@ describe("checkQuality", () => {
     const check = checkQuality("write a summary", "اكتب ملخصاً", "en");
     expect(check.languageOk).toBe(false);
   });
+
+  it("measures English content-word coverage across stems, ignoring courtesy filler", () => {
+    const check = checkQuality(
+      "Please could you analyze the quarterly revenue numbers and summarize trends",
+      "Analyzing quarterly revenue numbers; summarizing trends",
+      "en",
+    );
+    expect(check.keywordCoverage).toBe(1);
+    expect(check.warnings).toEqual([]);
+  });
+
+  it("warns when an English rewrite drops most of the content words", () => {
+    const check = checkQuality(
+      "Analyze the quarterly revenue numbers and summarize regional trends",
+      "Do the thing",
+      "en",
+    );
+    expect(check.keywordCoverage).toBeLessThan(0.4);
+    expect(check.warnings.join(" ")).toContain("تغطية كلمات المحتوى");
+  });
+
+  it("skips English coverage when the source is Arabic (cross-language)", () => {
+    expect(
+      checkQuality(
+        "حلل أداء المبيعات في الربع الأول",
+        "Analyze Q1 sales performance",
+        "en",
+      ).keywordCoverage,
+    ).toBeNull();
+  });
 });

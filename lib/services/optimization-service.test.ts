@@ -333,4 +333,23 @@ describe("runOptimization", () => {
     expect(report.english?.text).toBe("Summarize the report");
     expect(report.entityChecks.arabic).toBeNull();
   });
+
+  it("cleans an English input with the English normalizer and sends only that to Gemini", async () => {
+    vi.mocked(arabicRatio).mockReturnValue(0);
+    mockedOptimize.mockResolvedValue({
+      arabic: null,
+      english: "Summarize the report.",
+      note: "تم",
+      source: "gemini",
+    });
+    const report = await runOptimization(
+      "Please   summarize the report, thanks!",
+      config,
+    );
+    expect(report.normalizedPrompt).toBe("summarize the report");
+    expect(mockedOptimize.mock.calls[0][0]).toBe("summarize the report");
+    expect(report.direction).toBe("en");
+    expect(report.arabic).toBeNull();
+    expect(report.english?.text).toBe("Summarize the report.");
+  });
 });

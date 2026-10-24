@@ -1,5 +1,6 @@
 import { estimateCost } from "@/lib/cost-engine/estimate-cost";
 import { normalizeArabic } from "@/lib/optimizer/arabic-normalizer";
+import { normalizeEnglish } from "@/lib/optimizer/english-normalizer";
 import { checkEntities } from "@/lib/optimizer/entity-guard";
 import { checkQuality } from "@/lib/optimizer/quality-guard";
 import {
@@ -37,7 +38,8 @@ export async function runOptimization(
   // primary and Arabic becomes the companion translation.
   const direction = arabicRatio(prompt) === 0 ? "en" : "ar";
   const model = getModel(config.provider, config.model);
-  const candidate = normalizeArabic(prompt);
+  const candidate =
+    direction === "en" ? normalizeEnglish(prompt) : normalizeArabic(prompt);
   const normalizedPrompt = checkEntities(prompt, candidate).preserved
     ? candidate
     : prompt;

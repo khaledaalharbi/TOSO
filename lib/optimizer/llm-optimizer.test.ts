@@ -157,4 +157,64 @@ describe("optimizeDual usage", () => {
     expect(result.note).toContain("حصة");
     expect(result.note).not.toContain("بدون مفتاح");
   });
+
+  it("accepts an English-only reply for an input with no Arabic and leaves Arabic null", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          english: "Summarize the report.",
+          note: "حُذفت المجاملات",
+          direction: "en",
+          model: "gemini-3.8-flash",
+          fallback: false,
+        }),
+      }),
+    );
+    expect(await optimizeDual("Please summarize the report")).toMatchObject({
+      arabic: null,
+      english: "Summarize the report.",
+      source: "gemini",
+    });
+  });
+
+  it("ignores a stray arabic field for an English input and rejects a missing english field", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          arabic: "لخص",
+          english: "Summarize",
+          fallback: false,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ arabic: "لخص", fallback: false }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+    expect((await optimizeDual("Summarize it")).arabic).toBeNull();
+    const rejected = await optimizeDual("Summarize it");
+    expect(rejected.fallbackReason).toBe("bad_model_output");
+    expect(rejected.source).toBe("mock");
+  });
+
+  it("cleans an English input locally on fallback and keeps Arabic null", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ fallback: true, reason: "no_api_key" }),
+      }),
+    );
+    expect(
+      await optimizeDual("Please   summarize the report, thanks!"),
+    ).toMatchObject({
+      arabic: null,
+      english: "summarize the report",
+      source: "mock",
+    });
+  });
 });
