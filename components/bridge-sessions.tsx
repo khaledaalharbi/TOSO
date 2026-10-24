@@ -8,13 +8,14 @@ import type {
   ClosedSession,
   SessionPanels,
 } from "@/lib/bridge/session-history";
+import { useI18n } from "@/components/i18n-provider";
 
 export type SessionsState =
   "loading" | "ok" | "outdated" | "offline" | "bad_token";
 
-const time = (ms?: number | null) =>
+const time = (ms: number | null | undefined, locale: string) =>
   ms
-    ? new Date(ms).toLocaleString("ar", {
+    ? new Date(ms).toLocaleString(locale, {
         month: "numeric",
         day: "numeric",
         hour: "2-digit",
@@ -87,6 +88,7 @@ export function BridgeSessions({
   /** Changes when the header badge is pressed: open and bring into view. */
   openSignal?: number;
 }) {
+  const { t, lang } = useI18n();
   const full = panels.liveCount >= max;
   const detached = panels.live.some((s) => !attached.has(s.id));
   // Opens by itself when something needs attention (full, or a session no
@@ -119,24 +121,26 @@ export function BridgeSessions({
     >
       <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden">
         <span className="bg-ink px-2 py-0.5 text-xs font-bold text-white">
-          جلسات الجسر
+          {t("جلسات الجسر")}
         </span>
         {state === "ok" ? (
           <span
             className={`text-xs font-bold ${full ? "text-rose-700" : "text-slate-600"}`}
           >
-            حيّة {panels.liveCount}/{max}
-            {full ? " — ممتلئ" : ""}
+            {t("حيّة {live}/{max}", { live: panels.liveCount, max })}
+            {full ? t(" — ممتلئ") : ""}
           </span>
         ) : null}
         <span className="text-[11px] text-slate-500">
           {state === "outdated"
-            ? "الجسر الحالي بإصدار أقدم لا يعرض جلساته — أعد تشغيله (npm run dev:all بعد إيقاف الجسر القديم)."
+            ? t(
+                "الجسر الحالي بإصدار أقدم لا يعرض جلساته — أعد تشغيله (npm run dev:all بعد إيقاف الجسر القديم).",
+              )
             : state === "offline"
-              ? "الجسر غير متصل."
+              ? t("الجسر غير متصل.")
               : state === "bad_token"
-                ? "توكن الجسر مرفوض — راجع الإعدادات."
-                : "تبقى بعد إغلاق الصفحة وإعادة تشغيل المشروع"}
+                ? t("توكن الجسر مرفوض — راجع الإعدادات.")
+                : t("تبقى بعد إغلاق الصفحة وإعادة تشغيل المشروع")}
         </span>
         <ChevronDown
           size={16}
@@ -145,14 +149,14 @@ export function BridgeSessions({
       </summary>
       {state === "ok" ? (
         <div className="grid gap-3 border-t border-slate-200 p-3 lg:grid-cols-2">
-          <section aria-label="الجلسات الحية">
+          <section aria-label={t("الجلسات الحية")}>
             <h3 className="mb-1.5 text-xs font-bold text-emerald-800">
-              الجلسات الحية
+              {t("الجلسات الحية")}
             </h3>
             <ul className="space-y-1.5">
               {panels.live.length === 0 ? (
                 <li className="border border-slate-300 px-3 py-2 text-xs text-slate-400">
-                  لا جلسات حيّة على الجسر.
+                  {t("لا جلسات حيّة على الجسر.")}
                 </li>
               ) : (
                 panels.live.map((s) => {
@@ -162,7 +166,7 @@ export function BridgeSessions({
                       key={s.id}
                       agent={s.agent}
                       cwd={s.cwd}
-                      when={time(s.startedAt)}
+                      when={time(s.startedAt, lang)}
                     >
                       <button
                         type="button"
@@ -171,16 +175,16 @@ export function BridgeSessions({
                         className={`${btn} border-emerald-500 bg-emerald-50 text-emerald-800 hover:bg-emerald-100`}
                       >
                         <Link2 size={12} />
-                        {shown ? "متصلة" : "الاتصال بالجلسة"}
+                        {shown ? t("متصلة") : t("الاتصال بالجلسة")}
                       </button>
                       <button
                         type="button"
                         disabled={pending !== null}
                         onClick={() => onEnd(s)}
-                        title="يُغلق الوكيل في هذه الجلسة"
+                        title={t("يُغلق الوكيل في هذه الجلسة")}
                         className={`${btn} border-slate-300 bg-white text-rose-700 hover:border-rose-500`}
                       >
-                        <Power size={12} /> إنهاء الجلسة
+                        <Power size={12} /> {t("إنهاء الجلسة")}
                       </button>
                     </Row>
                   );
@@ -189,18 +193,18 @@ export function BridgeSessions({
             </ul>
             {panels.moreLive ? (
               <p className="mt-1 text-[11px] text-slate-500">
-                و{panels.moreLive} جلسات حيّة أخرى لا تُعرض.
+                {t("و{n} جلسات حيّة أخرى لا تُعرض.", { n: panels.moreLive })}
               </p>
             ) : null}
           </section>
-          <section aria-label="الجلسات المغلقة">
+          <section aria-label={t("الجلسات المغلقة")}>
             <h3 className="mb-1.5 text-xs font-bold text-slate-600">
-              الجلسات المغلقة
+              {t("الجلسات المغلقة")}
             </h3>
             <ul className="space-y-1.5">
               {panels.closed.length === 0 ? (
                 <li className="border border-slate-300 px-3 py-2 text-xs text-slate-400">
-                  لا جلسات مغلقة مؤخراً.
+                  {t("لا جلسات مغلقة مؤخراً.")}
                 </li>
               ) : (
                 panels.closed.map((c) => (
@@ -208,16 +212,18 @@ export function BridgeSessions({
                     key={`${c.agent}:${c.cwd}`}
                     agent={c.agent}
                     cwd={c.cwd}
-                    when={time(c.endedAt)}
+                    when={time(c.endedAt, lang)}
                   >
                     <button
                       type="button"
                       disabled={pending !== null}
                       onClick={() => onOpen(c)}
-                      title="يبدأ جلسة جديدة للوكيل في المجلد نفسه — محادثة الجلسة السابقة لا تُستعاد"
+                      title={t(
+                        "يبدأ جلسة جديدة للوكيل في المجلد نفسه — محادثة الجلسة السابقة لا تُستعاد",
+                      )}
                       className={`${btn} border-slate-300 bg-white text-slate-700 hover:border-ink`}
                     >
-                      <Play size={12} /> فتح الجلسة
+                      <Play size={12} /> {t("فتح الجلسة")}
                     </button>
                   </Row>
                 ))
@@ -225,7 +231,7 @@ export function BridgeSessions({
             </ul>
             {panels.moreClosed ? (
               <p className="mt-1 text-[11px] text-slate-500">
-                و{panels.moreClosed} جلسات مغلقة أقدم.
+                {t("و{n} جلسات مغلقة أقدم.", { n: panels.moreClosed })}
               </p>
             ) : null}
           </section>

@@ -138,9 +138,13 @@ bin/toso-bridge.mjs              الجسر المحلي: تشغيل CLI agents 
 lib/mcp/contract.ts            عقد TypeScript لواجهة MCP المستقبلية
 ```
 
+## لغة الواجهة (i18n)
+
+عربي وإنجليزي فقط. `lib/i18n/index.ts`: `translate(lang, source, params)` و`t`/`tx` — **المفتاح هو النص العربي** والقاموس الإنجليزي `lib/i18n/en.ts` (يفرض تغطيته `i18n-coverage.test.ts` بمسح AST). `components/i18n-provider.tsx` يوفّر `useI18n()` ويكتب الكوكي `toso-lang` ويضبط `<html lang dir>` والعنوان؛ `app/layout.tsx` يقرأ الكوكي على الخادم (`cookies()`) فلا وميض لغة عند التحميل. نداءات الخدمة الشبكية تمرر `ui` إلى `/api/optimize` لتحديد لغة `note` فقط؛ بقية التعليمات ثابتة. في الإنجليزية تُعطَّل ترجمة الردود للعربية كلياً.
+
 ## مسار التحسين (`POST /api/optimize`)
 
-الطلب: `{ text, model? }` — والرد أحد شكلين. الاتجاه يحدده الخادم من النص: خالٍ من العربية → **إنجليزي فقط** (مخطط `{english, note}`، بلا `arabic`، `direction: "en"`)، وإلا الرد المزدوج أدناه (`direction: "ar"`). نص المستخدم يُرسل لـGemini كقيمة JSON `{"input": "…"}` في الاتجاهين.
+الطلب: `{ text, model?, ui? }` (`ui`: `ar` افتراضياً أو `en` — لغة `note` فقط) — والرد أحد شكلين. الاتجاه يحدده الخادم من النص: خالٍ من العربية → **إنجليزي فقط** (مخطط `{english, note}`، بلا `arabic`، `direction: "en"`)، وإلا الرد المزدوج أدناه (`direction: "ar"`). نص المستخدم يُرسل لـGemini كقيمة JSON `{"input": "…"}` في الاتجاهين.
 
 ```jsonc
 // نجاح:

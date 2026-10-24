@@ -89,6 +89,7 @@ agent can be larger. Full method, limits and sources: **[Docs/RESEARCH.md](Docs/
 
 - **Real token measurement** of the original, the local cleanup and the final
   English, with two gauges and a per-segment heat map.
+- **Arabic and English interface** with a one-click switch (RTL ↔ LTR); in English the reply-translation controls disappear because replies are already in your language.
 - **Arabic and English input.** Arabic is translated to English; English is
   cleaned and tightened without translation, with the Arabic version one click
   away if you want to read it («عرض النسخة العربية»).
@@ -149,7 +150,7 @@ Step-by-step guide (Arabic): [Docs/setup-and-usage.md](Docs/setup-and-usage.md).
 
 TOSO is a working prototype and the author's first open-source project.
 
-- Input today is **Arabic and English**; the interface is Arabic.
+- Input and interface today are **Arabic and English**.
 - Savings are measured on **Gemini's tokenizer**; your agent's tokenizer differs.
 - Reply capture reads each agent's terminal screen; a new agent UI may need a new
   rule. Long replies from full-screen agents can be truncated.

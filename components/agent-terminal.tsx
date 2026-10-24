@@ -31,14 +31,11 @@ import {
   type BridgeConfig,
   type PtySession,
 } from "@/lib/services/agent-service";
+import { useI18n } from "@/components/i18n-provider";
+import { tx } from "@/lib/i18n";
 
 export type TerminalStatus =
-  | "idle"
-  | "starting"
-  | "live"
-  | "exited"
-  | "unavailable"
-  | "error";
+  "idle" | "starting" | "live" | "exited" | "unavailable" | "error";
 
 /** One captured turn: the deterministic reply and the raw changed region. */
 export interface TurnCapture {
@@ -132,12 +129,12 @@ const screenSignature = (term: Terminal, screen: string) =>
   `${term.buffer.active.length}|${term.buffer.active.baseY}|${screen}`;
 
 const statusLabel: Record<TerminalStatus, string> = {
-  idle: "غير مشغّلة",
-  starting: "تبدأ…",
-  live: "حيّة",
-  exited: "انتهت",
-  unavailable: "غير متاحة",
-  error: "تعذّر التشغيل",
+  idle: tx("غير مشغّلة"),
+  starting: tx("تبدأ…"),
+  live: tx("حيّة"),
+  exited: tx("انتهت"),
+  unavailable: tx("غير متاحة"),
+  error: tx("تعذّر التشغيل"),
 };
 
 const statusTone: Record<TerminalStatus, string> = {
@@ -175,6 +172,7 @@ export function AgentTerminal({
   onStatus?: (status: TerminalStatus) => void;
   ref?: Ref<AgentTerminalHandle>;
 }) {
+  const { t, dir } = useI18n();
   const hostRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -237,8 +235,12 @@ export function AgentTerminal({
         if (typeof event.exit === "number") {
           setMessage(
             event.exit === 127
-              ? `${agentLabel(agent)} غير مثبّت أو غير موجود في PATH.`
-              : `انتهت الجلسة (exit ${event.exit}) — أعد التشغيل لمتابعة العمل.`,
+              ? t("{v1} غير مثبّت أو غير موجود في PATH.", {
+                  v1: agentLabel(agent),
+                })
+              : t("انتهت الجلسة (exit {v1}) — أعد التشغيل لمتابعة العمل.", {
+                  v1: event.exit,
+                }),
           );
           setStatus("exited");
         }
@@ -246,7 +248,7 @@ export function AgentTerminal({
       controller.signal,
     ).catch(() => {
       if (controller.signal.aborted) return;
-      setMessage("انقطع البث من الجسر — أعد تشغيل الجسر أو الجلسة.");
+      setMessage(t("انقطع البث من الجسر — أعد تشغيل الجسر أو الجلسة."));
       setStatus("error");
     });
   }
@@ -258,7 +260,9 @@ export function AgentTerminal({
     // cwd, and an unchecked path may not exist.
     if (!props.current.workspace?.trim() || !props.current.ready) {
       setMessage(
-        "افحص مجلد المشروع أولاً — الخطوة ① أعلى هذه اللوحة — فالجلسة لا تبدأ قبل نجاح الفحص.",
+        t(
+          "افحص مجلد المشروع أولاً — الخطوة ① أعلى هذه اللوحة — فالجلسة لا تبدأ قبل نجاح الفحص.",
+        ),
       );
       setStatus("idle");
       return;
@@ -277,16 +281,27 @@ export function AgentTerminal({
     if (result.state !== "ok") {
       setMessage(
         result.state === "pty_unavailable"
-          ? "الطرفيات المدمجة غير متاحة على هذا الجسر (node-pty) — يُستخدم التشغيل الأحادي بدلها."
+          ? t(
+              "الطرفيات المدمجة غير متاحة على هذا الجسر (node-pty) — يُستخدم التشغيل الأحادي بدلها.",
+            )
           : result.state === "offline"
-            ? "الجسر غير متصل — شغّله بأمر npm run bridge."
+            ? t("الجسر غير متصل — شغّله بأمر npm run bridge.")
             : result.state === "bad_token"
-              ? "توكن الجسر مرفوض — راجع الإعدادات."
+              ? t("توكن الجسر مرفوض — راجع الإعدادات.")
               : result.state === "invalid_workspace"
-                ? `مجلد المشروع مرفوض${result.detail ? `: ${result.detail}` : ""}.`
+                ? t("مجلد المشروع مرفوض{v1}.", {
+                    v1: result.detail ? `: ${result.detail}` : "",
+                  })
                 : result.state === "too_many_sessions"
-                  ? "الجسر وصل حدّه الأقصى (8 جلسات حيّة) — الجلسات تبقى بعد إغلاق الصفحة. أنهِ جلسة لا تحتاجها من قسم «جلسات الجسر» أعلاه ثم أعد المحاولة."
-                  : `تعذّر تشغيل الجلسة${"detail" in result && result.detail ? ` (${result.detail})` : ""}.`,
+                  ? t(
+                      "الجسر وصل حدّه الأقصى (8 جلسات حيّة) — الجلسات تبقى بعد إغلاق الصفحة. أنهِ جلسة لا تحتاجها من قسم «جلسات الجسر» أعلاه ثم أعد المحاولة.",
+                    )
+                  : t("تعذّر تشغيل الجلسة{v1}.", {
+                      v1:
+                        "detail" in result && result.detail
+                          ? ` (${result.detail})`
+                          : "",
+                    }),
       );
       setStatus(result.state === "pty_unavailable" ? "unavailable" : "error");
       return;
@@ -375,7 +390,10 @@ export function AgentTerminal({
       const decision = pendingDecision(screen);
       if (decision && sinceOutput > 1000) {
         throw new Error(
-          `${agentLabel(agent)} ينتظر قراراً منك في الطرفية أعلاه (${decision}) — أجب عليه ثم أعد الإرسال.`,
+          t(
+            "{v1} ينتظر قراراً منك في الطرفية أعلاه ({decision}) — أجب عليه ثم أعد الإرسال.",
+            { v1: agentLabel(agent), decision: t(decision) },
+          ),
         );
       }
       const settled = !isAgentBusy(screen);
@@ -397,7 +415,7 @@ export function AgentTerminal({
 
   async function send(text: string): Promise<TurnCapture> {
     if (turnActive.current)
-      throw new Error("دورة سابقة لهذا الوكيل لم تنتهِ بعد.");
+      throw new Error(t("دورة سابقة لهذا الوكيل لم تنتهِ بعد."));
     turnActive.current = true;
     setTurnRunning(true);
     captureNow.current = false;
@@ -406,7 +424,7 @@ export function AgentTerminal({
       const term = termRef.current;
       const session = sessionRef.current;
       if (!term || !session || statusRef.current !== "live") {
-        throw new Error(messageRef.current ?? "الجلسة غير حيّة.");
+        throw new Error(messageRef.current ?? t("الجلسة غير حيّة."));
       }
       await waitReady(term);
       // Some agents enable their input before a startup dialog paints (Devin
@@ -415,7 +433,10 @@ export function AgentTerminal({
       const late = pendingDecision(viewport(term));
       if (late) {
         throw new Error(
-          `${agentLabel(agent)} ينتظر قراراً منك في الطرفية أعلاه (${late}) — أجب عليه ثم أعد الإرسال.`,
+          t(
+            "{v1} ينتظر قراراً منك في الطرفية أعلاه ({late}) — أجب عليه ثم أعد الإرسال.",
+            { v1: agentLabel(agent), late },
+          ),
         );
       }
       await drain(term);
@@ -490,14 +511,20 @@ export function AgentTerminal({
       const pending = pendingDecision(viewport(term));
       if (pending && !reply) {
         throw new Error(
-          `${agentLabel(agent)} ينتظر قراراً منك في الطرفية أعلاه (${pending}) — أجب عليه ثم أعد الإرسال.`,
+          t(
+            "{v1} ينتظر قراراً منك في الطرفية أعلاه ({pending}) — أجب عليه ثم أعد الإرسال.",
+            { v1: agentLabel(agent), pending },
+          ),
         );
       }
       // The text never left the input box and nothing answered: say so
       // instead of reporting a finished turn with an empty/noisy reply.
       if (!reply && !sawBusy && promptStuckInInput(viewport(term), text)) {
         throw new Error(
-          `${agentLabel(agent)} لم يستلم النص — بقي في خانة الإدخال دون إرسال. اضغط Enter في الطرفية أعلاه أو أعد الإرسال.`,
+          t(
+            "{v1} لم يستلم النص — بقي في خانة الإدخال دون إرسال. اضغط Enter في الطرفية أعلاه أو أعد الإرسال.",
+            { v1: agentLabel(agent) },
+          ),
         );
       }
       return {
@@ -616,10 +643,10 @@ export function AgentTerminal({
     <div className="flex h-full flex-col overflow-hidden border-x border-b border-ink bg-[#14121f]">
       <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2 text-[11px]">
         <span className={`px-2 py-0.5 font-bold ${statusTone[status]}`}>
-          {statusLabel[status]}
+          {t(statusLabel[status])}
         </span>
         <span className="font-bold text-white/80">
-          {agentLabel(agent)} — طرفية تفاعلية
+          {t("{label} — طرفية تفاعلية", { label: agentLabel(agent) })}
         </span>
         {sessionCwd && (
           <code dir="ltr" className="truncate font-mono text-white/50">
@@ -631,10 +658,10 @@ export function AgentTerminal({
             <button
               type="button"
               onClick={() => (captureNow.current = true)}
-              title="اعتبر الرد مكتملاً والتقطه الآن"
+              title={t("اعتبر الرد مكتملاً والتقطه الآن")}
               className="flex items-center gap-1 border border-amber-400/60 px-2 py-1 font-bold text-amber-300 transition hover:bg-amber-400/10"
             >
-              <ScanText size={12} /> يلتقط الرد… التقط الآن
+              <ScanText size={12} /> {t("يلتقط الرد… التقط الآن")}
             </button>
           )}
           {/* Starting lives in the tab's setup sequence (step ④); once a
@@ -646,15 +673,17 @@ export function AgentTerminal({
                 onClick={() => void stop().then(start)}
                 className="flex items-center gap-1 border border-white/20 px-2 py-1 font-bold text-white/70 transition hover:border-white/60 hover:text-white"
               >
-                <RotateCcw size={12} /> إعادة تشغيل
+                <RotateCcw size={12} /> {t("إعادة تشغيل")}
               </button>
               <button
                 type="button"
                 onClick={() => void stop()}
-                title="ينهي جلسة هذا التبويب فقط (يُغلق الوكيل) — الجلسات الأخرى لا تتأثر"
+                title={t(
+                  "ينهي جلسة هذا التبويب فقط (يُغلق الوكيل) — الجلسات الأخرى لا تتأثر",
+                )}
                 className="flex items-center gap-1 border border-white/20 px-2 py-1 font-bold text-white/70 transition hover:border-rose-400 hover:text-rose-300"
               >
-                <Square size={12} /> إنهاء الجلسة
+                <Square size={12} /> {t("إنهاء الجلسة")}
               </button>
             </>
           ) : null}
@@ -667,7 +696,7 @@ export function AgentTerminal({
           className="border-b border-white/10 px-3 py-1.5 text-[11px] text-amber-300"
         >
           {cwdChanged
-            ? "مسار المشروع تغيّر منذ بدء الجلسة — أعد التشغيل لتطبيقه."
+            ? t("مسار المشروع تغيّر منذ بدء الجلسة — أعد التشغيل لتطبيقه.")
             : message}
         </p>
       )}
@@ -677,12 +706,14 @@ export function AgentTerminal({
         <div ref={hostRef} className="h-full w-full" />
         {status === "idle" && (
           <p
-            dir="rtl"
+            dir={dir}
             className="pointer-events-none absolute inset-0 grid place-items-center px-6 text-center text-sm text-white/40"
           >
             {ready
-              ? "الجلسة غير مشغّلة — اضغط «④ تشغيل الجلسة» أعلاه، أو أرسل نصاً من مدخل الوكيل أدناه فتبدأ تلقائياً."
-              : "الجلسة غير مشغّلة — ابدأ بالخطوة ① «فحص» أعلاه."}
+              ? t(
+                  "الجلسة غير مشغّلة — اضغط «④ تشغيل الجلسة» أعلاه، أو أرسل نصاً من مدخل الوكيل أدناه فتبدأ تلقائياً.",
+                )
+              : t("الجلسة غير مشغّلة — ابدأ بالخطوة ① «فحص» أعلاه.")}
           </p>
         )}
       </div>

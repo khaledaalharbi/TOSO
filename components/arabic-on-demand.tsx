@@ -6,6 +6,7 @@ import {
   translateToArabic,
   type TranslationResult,
 } from "@/lib/services/agent-service";
+import { useI18n } from "@/components/i18n-provider";
 
 /**
  * English-primary runs carry no Arabic version — the user asks for one here,
@@ -20,6 +21,7 @@ export function ArabicOnDemand({
   model: string;
   userKey?: string;
 }) {
+  const { t } = useI18n();
   const [result, setResult] = useState<TranslationResult | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -42,7 +44,7 @@ export function ArabicOnDemand({
           className="flex items-center gap-2 border border-ink bg-white px-4 py-2.5 text-sm font-bold text-ink transition hover:bg-slate-50 disabled:opacity-50"
         >
           <Languages size={15} />
-          {loading ? "تُترجم…" : "عرض النسخة العربية"}
+          {loading ? t("تُترجم…") : t("عرض النسخة العربية")}
         </button>
       )}
       {result && !result.arabic && (
@@ -50,16 +52,22 @@ export function ArabicOnDemand({
           role="status"
           className="mt-2 border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800"
         >
-          تعذّرت الترجمة عبر Gemini
-          {result.fallbackReason ? ` (${result.fallbackReason})` : ""}؛ النسخة
-          الإنجليزية هي المعتمدة للإرسال على أي حال.
+          {t(
+            "تعذّرت الترجمة عبر Gemini{reason}؛ النسخة الإنجليزية هي المعتمدة للإرسال على أي حال.",
+            {
+              reason: result.fallbackReason
+                ? ` (${result.fallbackReason})`
+                : "",
+            },
+          )}
         </p>
       )}
       {result?.arabic && (
         <div className="border border-emerald-300 bg-emerald-50/50">
           <div className="border-b border-emerald-200 px-4 py-2.5 text-xs font-bold text-emerald-800">
             <span className="flex items-center gap-1.5">
-              <Languages size={14} /> النسخة العربية (للقراءة فقط — لا تُرسل)
+              <Languages size={14} />
+              {t("النسخة العربية (للقراءة فقط — لا تُرسل)")}
               {result.model ? ` · ${result.model}` : ""}
             </span>
           </div>

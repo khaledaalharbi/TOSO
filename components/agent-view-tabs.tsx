@@ -1,20 +1,26 @@
 "use client";
 
 import { ScrollText, SquareTerminal } from "lucide-react";
+import { useI18n } from "@/components/i18n-provider";
+import { tx } from "@/lib/i18n";
 
 export type AgentView = "terminal" | "in" | "out";
 
 const tabs: { id: AgentView; label: string; title: string }[] = [
-  { id: "terminal", label: "التيرمينال", title: "الطرفية الحيّة للوكيل" },
+  {
+    id: "terminal",
+    label: tx("التيرمينال"),
+    title: tx("الطرفية الحيّة للوكيل"),
+  },
   {
     id: "in",
-    label: "سجل IN",
-    title: "ما أُرسل إلى الوكيل — بلغتك وبالإنجليزية",
+    label: tx("سجل IN"),
+    title: tx("ما أُرسل إلى الوكيل — بلغتك وبالإنجليزية"),
   },
   {
     id: "out",
-    label: "سجل OUT",
-    title: "ما ردّ به الوكيل — بالإنجليزية وبلغتك",
+    label: tx("سجل OUT"),
+    title: tx("ما ردّ به الوكيل — بالإنجليزية وبلغتك"),
   },
 ];
 
@@ -37,10 +43,11 @@ export function AgentViewTabs({
   unseenReply: boolean;
   onChange: (view: AgentView) => void;
 }) {
+  const { t } = useI18n();
   return (
     <div
       role="tablist"
-      aria-label="عروض الوكيل"
+      aria-label={t("عروض الوكيل")}
       className="flex flex-wrap gap-1.5 border-x border-b border-ink bg-white px-3 py-2"
     >
       {tabs.map((tab) => {
@@ -52,7 +59,7 @@ export function AgentViewTabs({
             type="button"
             role="tab"
             aria-selected={selected}
-            title={tab.title}
+            title={t(tab.title)}
             onClick={() => onChange(tab.id)}
             className={`flex items-center gap-1.5 border px-3 py-1.5 text-xs font-bold transition ${
               selected
@@ -65,7 +72,7 @@ export function AgentViewTabs({
             ) : (
               <ScrollText size={13} />
             )}
-            {tab.label}
+            {t(tab.label)}
             {tab.id !== "terminal" && turns > 0 ? (
               <span
                 className={`px-1 font-mono text-[10px] ${selected ? "bg-white/20" : "bg-slate-200 text-slate-700"}`}
@@ -76,7 +83,7 @@ export function AgentViewTabs({
             {tab.id === "out" && unseenReply && !selected ? (
               <span
                 role="img"
-                aria-label="رد جديد لم تقرأه"
+                aria-label={t("رد جديد لم تقرأه")}
                 className="h-2 w-2 rounded-full bg-amber-500"
               />
             ) : null}

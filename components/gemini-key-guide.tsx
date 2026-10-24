@@ -8,6 +8,7 @@ import {
   Settings2,
   ShieldCheck,
 } from "lucide-react";
+import { useI18n } from "@/components/i18n-provider";
 
 function GoogleKeyIcon({
   size = 14,
@@ -30,111 +31,117 @@ function GoogleKeyIcon({
   );
 }
 
-const steps = [
-  {
-    icon: ExternalLink,
-    title: "الانتقال إلى صفحة المفاتيح",
-    body: (
-      <>
-        افتح صفحة المفاتيح في{" "}
-        <a
-          href="https://aistudio.google.com/app/apikey"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="font-semibold text-brand-600 underline underline-offset-2"
-          dir="ltr"
-        >
-          Google AI Studio
-        </a>{" "}
-        وسجّل الدخول بحساب Google إن طُلب منك.
-      </>
-    ),
-  },
-  {
-    icon: MousePointerClick,
-    title: "ابدأ الإنشاء",
-    body: (
-      <>
-        اضغط زر{" "}
-        <bdi dir="ltr">
-          <span className="inline-flex items-center gap-1 border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700">
-            <GoogleKeyIcon size={12} />
-            Create API key
-          </span>
-        </bdi>{" "}
-        في الزاوية العلوية من الصفحة.
-      </>
-    ),
-  },
-  {
-    icon: Settings2,
-    title: "إعداد المفتاح",
-    body: (
-      <>
-        ستظهر نافذة{" "}
-        <bdi dir="ltr" className="font-semibold">
-          Create a new key
-        </bdi>
-        :
-      </>
-    ),
-    sub: [
-      <>أدخل اسماً للمفتاح (اختياري).</>,
-      <>
-        اختر مشروعك الحالي، أو اضغط{" "}
-        <bdi dir="ltr">
-          <span className="inline-flex items-center gap-1 border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700">
-            <Plus size={12} />
-            Create project
-          </span>
-        </bdi>{" "}
-        إن لم يكن لديك مشروع — ستفتح نافذة{" "}
-        <bdi dir="ltr" className="font-semibold">
-          Create a new project
-        </bdi>
-        : أضف الاسم ثم اضغط{" "}
-        <bdi dir="ltr">
-          <span className="inline-flex items-center border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700">
-            Create project
-          </span>
-        </bdi>
-        .
-      </>,
-      <>
-        اضغط{" "}
-        <bdi dir="ltr">
-          <span className="inline-flex items-center border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700">
-            Create key
-          </span>
-        </bdi>
-        .
-      </>,
-    ],
-  },
-  {
-    icon: Copy,
-    title: "انسخ وألصق",
-    body: (
-      <>
-        انسخ المفتاح الظاهر لك — يبدأ عادةً بـ{" "}
-        <bdi dir="ltr" className="font-semibold">
-          AQ.
-        </bdi>{" "}
-        — ثم ألصقه في حقل «مفتاح Gemini» هنا؛ يعمل فوراً وتُحمَّل طلباتك على
-        حصتك.
-      </>
-    ),
-  },
-];
+type Translate = (source: string) => string;
+
+const buttonCls =
+  "inline-flex items-center gap-1 border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700";
+
+function buildSteps(t: Translate) {
+  return [
+    {
+      icon: ExternalLink,
+      title: t("الانتقال إلى صفحة المفاتيح"),
+      body: (
+        <>
+          {t("افتح صفحة المفاتيح في")}{" "}
+          <a
+            href="https://aistudio.google.com/app/apikey"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold text-brand-600 underline underline-offset-2"
+            dir="ltr"
+          >
+            Google AI Studio
+          </a>{" "}
+          {t("وسجّل الدخول بحساب Google إن طُلب منك.")}
+        </>
+      ),
+    },
+    {
+      icon: MousePointerClick,
+      title: t("ابدأ الإنشاء"),
+      body: (
+        <>
+          {t("اضغط زر")}{" "}
+          <bdi dir="ltr">
+            <span className={buttonCls}>
+              <GoogleKeyIcon size={12} />
+              Create API key
+            </span>
+          </bdi>{" "}
+          {t("في الزاوية العلوية من الصفحة.")}
+        </>
+      ),
+    },
+    {
+      icon: Settings2,
+      title: t("إعداد المفتاح"),
+      body: (
+        <>
+          {t("ستظهر نافذة")}{" "}
+          <bdi dir="ltr" className="font-semibold">
+            Create a new key
+          </bdi>
+          :
+        </>
+      ),
+      sub: [
+        <>{t("أدخل اسماً للمفتاح (اختياري).")}</>,
+        <>
+          {t("اختر مشروعك الحالي، أو اضغط")}{" "}
+          <bdi dir="ltr">
+            <span className={buttonCls}>
+              <Plus size={12} />
+              Create project
+            </span>
+          </bdi>{" "}
+          {t("إن لم يكن لديك مشروع — ستفتح نافذة")}{" "}
+          <bdi dir="ltr" className="font-semibold">
+            Create a new project
+          </bdi>
+          {t(": أضف الاسم ثم اضغط")}{" "}
+          <bdi dir="ltr">
+            <span className={buttonCls}>Create project</span>
+          </bdi>
+          .
+        </>,
+        <>
+          {t("اضغط")}{" "}
+          <bdi dir="ltr">
+            <span className={buttonCls}>Create key</span>
+          </bdi>
+          .
+        </>,
+      ],
+    },
+    {
+      icon: Copy,
+      title: t("انسخ وألصق"),
+      body: (
+        <>
+          {t("انسخ المفتاح الظاهر لك — يبدأ عادةً بـ")}{" "}
+          <bdi dir="ltr" className="font-semibold">
+            AQ.
+          </bdi>{" "}
+          {t(
+            "— ثم ألصقه في حقل «مفتاح Gemini» هنا؛ يعمل فوراً وتُحمَّل طلباتك على حصتك.",
+          )}
+        </>
+      ),
+    },
+  ];
+}
 
 export function GeminiKeyGuide() {
+  const { t } = useI18n();
+  const steps = buildSteps(t);
   return (
     <div className="space-y-3">
       <details className="group border border-slate-300 p-3 text-xs">
         <summary className="flex cursor-pointer list-none items-center justify-between font-semibold text-slate-600 [&::-webkit-details-marker]:hidden">
           <span className="flex items-center gap-2">
             <KeyRound size={14} className="text-brand-600" />
-            كيف أحصل على مفتاح مجاني؟
+            {t("كيف أحصل على مفتاح مجاني؟")}
           </span>
           <ChevronDown
             size={14}
@@ -166,15 +173,19 @@ export function GeminiKeyGuide() {
         <ShieldCheck className="shrink-0" size={18} />
         <ul className="list-disc space-y-1 ps-4 marker:text-emerald-400">
           <li>
-            يُخزَّن المفتاح محلياً في متصفحك (
-            <span dir="ltr">localStorage</span>) فقط.
+            {t("يُخزَّن المفتاح محلياً في متصفحك (")}
+            <span dir="ltr">localStorage</span>
+            {t(") فقط.")}
           </li>
           <li>
-            يُرسل مع طلباتك إلى خادمك المحلي دون تسجيله أو تخزينه في الخادم.
+            {t(
+              "يُرسل مع طلباتك إلى خادمك المحلي دون تسجيله أو تخزينه في الخادم.",
+            )}
           </li>
           <li>
-            إذا تُرك فارغاً يُعتمد تلقائياً على مفتاح الخادم إن وُجد، وإلا تعمل
-            التنقية المحلية.
+            {t(
+              "إذا تُرك فارغاً يُعتمد تلقائياً على مفتاح الخادم إن وُجد، وإلا تعمل التنقية المحلية.",
+            )}
           </li>
         </ul>
       </div>

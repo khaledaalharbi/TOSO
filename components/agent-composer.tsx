@@ -4,6 +4,7 @@ import { Eye, EyeOff, Send, Undo2, Wand2 } from "lucide-react";
 import { useState } from "react";
 import { agentLabel } from "@/lib/bridge/agents";
 import type { OptimizationReport } from "@/lib/types";
+import { useI18n } from "@/components/i18n-provider";
 
 type Phase = "draft" | "processing" | "ready";
 
@@ -52,6 +53,7 @@ export function AgentComposer({
   /** Fires the send; false = refused (the reason is shown in the tab). */
   onSend: (english: string, original: string) => boolean;
 }) {
+  const { t } = useI18n();
   const label = agentLabel(agent);
   const [phase, setPhase] = useState<Phase>("draft");
   const [text, setText] = useState("");
@@ -75,7 +77,7 @@ export function AgentComposer({
     const report = await onProcess(draft);
     if (!report) {
       setPhase("draft");
-      setStatus("تعذّرت المعالجة — النص كما هو، أعد المحاولة.");
+      setStatus(t("تعذّرت المعالجة — النص كما هو، أعد المحاولة."));
       return;
     }
     const english = report.english?.text.trim();
@@ -83,14 +85,19 @@ export function AgentComposer({
     if (!english) {
       setPhase("draft");
       setStatus(
-        "لا توجد نسخة إنجليزية لهذا التحليل (الوضع المحلي أو حجبها فحص السلامة) — الوكلاء يستقبلون الإنجليزية فقط.",
+        t(
+          "لا توجد نسخة إنجليزية لهذا التحليل (الوضع المحلي أو حجبها فحص السلامة) — الوكلاء يستقبلون الإنجليزية فقط.",
+        ),
       );
       return;
     }
     if (autoSend) {
       if (onSend(english, draft)) {
         clear(
-          `عولج وأُرسل مباشرة إلى ${label}${delta ? ` — ${delta} توكن` : ""}.`,
+          t("عولج وأُرسل مباشرة إلى {label}{delta}.", {
+            label,
+            delta: delta ? t(" — {n} توكن", { n: delta }) : "",
+          }),
         );
         return;
       }
@@ -101,7 +108,9 @@ export function AgentComposer({
     setText(english);
     setPhase("ready");
     setStatus(
-      `جاهز${delta ? `: ${delta} توكن` : ""}. راجع الإنجليزية أو عدّلها ثم أرسل.`,
+      t("جاهز{delta}. راجع الإنجليزية أو عدّلها ثم أرسل.", {
+        delta: delta ? t(": {n} توكن", { n: delta }) : "",
+      }),
     );
   }
 
@@ -109,7 +118,9 @@ export function AgentComposer({
     const english = text.trim();
     if (!english || agentBusy) return;
     if (onSend(english, original || english)) {
-      clear(`أُرسل إلى ${label} — الأصل والإنجليزية في سجل IN / OUT.`);
+      clear(
+        t("أُرسل إلى {label} — الأصل والإنجليزية في سجل IN / OUT.", { label }),
+      );
     }
   }
 
@@ -118,20 +129,20 @@ export function AgentComposer({
     setOriginal("");
     setShowOriginal(false);
     setPhase("draft");
-    setStatus("عاد نصك الأصلي — عدّله ثم عالجه من جديد.");
+    setStatus(t("عاد نصك الأصلي — عدّله ثم عالجه من جديد."));
   }
 
   const ready = phase === "ready";
   const processing = phase === "processing";
-  const statusLine = processing ? (progress ?? "يعالج…") : status;
+  const statusLine = processing ? (progress ?? t("يعالج…")) : status;
   return (
     <section
-      aria-label={`مدخل ${label}`}
+      aria-label={t("مدخل {label}", { label })}
       className="border-x border-b border-ink bg-white p-4"
     >
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className="bg-ink px-2 py-0.5 text-xs font-bold text-white">
-          مدخل {label}
+          {t("مدخل {label}", { label })}
         </span>
         <span
           className={`border px-2 py-0.5 text-[11px] font-bold ${
@@ -140,7 +151,7 @@ export function AgentComposer({
               : "border-amber-400 bg-amber-50 text-amber-800"
           }`}
         >
-          {ready ? "جاهز — English" : "مسودة — بلغتك"}
+          {ready ? t("جاهز — English") : t("مسودة — بلغتك")}
         </span>
         <label className="ms-auto flex cursor-pointer items-center gap-1.5 text-xs font-bold text-slate-700">
           <input
@@ -150,23 +161,23 @@ export function AgentComposer({
             onChange={(event) => onAutoSendChange(event.target.checked)}
             className="h-3.5 w-3.5 accent-brand-600"
           />
-          إرسال مباشرة بعد المعالجة
+          {t("إرسال مباشرة بعد المعالجة")}
         </label>
       </div>
       <textarea
         id={`composer-${agent}`}
         name={`composer-${agent}`}
-        aria-label={`تلقينة ${label}`}
+        aria-label={t("تلقينة {label}", { label })}
         dir={ready ? "ltr" : "auto"}
         value={text}
         disabled={disabled || processing}
         onChange={(event) => setText(event.target.value)}
-        placeholder={`اكتب تلقينتك لـ ${label} بلغتك هنا`}
+        placeholder={t("اكتب تلقينتك لـ {label} بلغتك هنا", { label })}
         className="min-h-28 w-full resize-y border border-slate-300 bg-slate-50/60 p-3 text-sm leading-7 outline-none transition placeholder:text-slate-400 focus:border-brand-500 disabled:opacity-60"
       />
       {showOriginal && original ? (
         <p className="mt-1.5 border border-slate-300 bg-slate-50 p-2 text-xs leading-6 text-slate-600">
-          <b>الأصل:</b> {original}
+          <b>{t("الأصل:")}</b> {original}
         </p>
       ) : null}
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -177,11 +188,13 @@ export function AgentComposer({
               onClick={send}
               disabled={agentBusy || !text.trim()}
               title={
-                agentBusy ? `${label} ما زال يعمل على دورة سابقة` : undefined
+                agentBusy
+                  ? t("{label} ما زال يعمل على دورة سابقة", { label })
+                  : undefined
               }
               className="flex items-center gap-1.5 border border-ink bg-brand-500 px-4 py-2 text-sm font-bold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Send size={15} /> إرسال إلى {label}
+              <Send size={15} /> {t("إرسال إلى {label}", { label })}
             </button>
             <button
               type="button"
@@ -189,14 +202,14 @@ export function AgentComposer({
               className="flex items-center gap-1.5 border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-ink"
             >
               {showOriginal ? <EyeOff size={14} /> : <Eye size={14} />}
-              {showOriginal ? "إخفاء الأصل" : "عرض الأصل"}
+              {showOriginal ? t("إخفاء الأصل") : t("عرض الأصل")}
             </button>
             <button
               type="button"
               onClick={undo}
               className="flex items-center gap-1.5 border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-ink"
             >
-              <Undo2 size={14} /> تراجع
+              <Undo2 size={14} /> {t("تراجع")}
             </button>
           </>
         ) : (
@@ -208,10 +221,10 @@ export function AgentComposer({
           >
             <Wand2 size={15} />
             {processing
-              ? "يعالج…"
+              ? t("يعالج…")
               : autoSend
-                ? `معالجة وإرسال إلى ${label}`
-                : "معالجة"}
+                ? t("معالجة وإرسال إلى {label}", { label })
+                : t("معالجة")}
           </button>
         )}
       </div>

@@ -14,6 +14,8 @@ import {
   trustWorkspace,
   type BridgeConfig,
 } from "@/lib/services/agent-service";
+import { useI18n } from "@/components/i18n-provider";
+import { tx } from "@/lib/i18n";
 
 /** What a tab's dot says about that agent's latest run. */
 export type TabStatus = "idle" | "running" | "done" | "error";
@@ -26,10 +28,10 @@ const dotTone: Record<TabStatus, string> = {
 };
 
 const dotLabel: Record<TabStatus, string> = {
-  idle: "لم يعمل بعد",
-  running: "يعمل الآن",
-  done: "اكتمل",
-  error: "فشل",
+  idle: tx("لم يعمل بعد"),
+  running: tx("يعمل الآن"),
+  done: tx("اكتمل"),
+  error: tx("فشل"),
 };
 
 /**
@@ -52,10 +54,11 @@ export function AgentTabStrip({
   defaultAgent?: string;
   onSelect: (agentId: string) => void;
 }) {
+  const { t, dir } = useI18n();
   return (
     <div
       role="tablist"
-      aria-label="وكلاء CLI"
+      aria-label={t("وكلاء CLI")}
       dir="ltr"
       className="flex flex-wrap gap-1 border-b border-ink"
     >
@@ -79,22 +82,24 @@ export function AgentTabStrip({
           >
             <span
               className={`h-2 w-2 shrink-0 rounded-full ${dotTone[state]}`}
-              title={dotLabel[state]}
+              title={t(dotLabel[state])}
               role="img"
-              aria-label={dotLabel[state]}
+              aria-label={t(dotLabel[state])}
             />
             {opt.label}
             {opt.id === defaultAgent ? (
               <span
-                dir="rtl"
-                title="الوكيل الافتراضي — تبويبه يُفتح أولاً، ويُحدَّد من الإعدادات"
+                dir={dir}
+                title={t(
+                  "الوكيل الافتراضي — تبويبه يُفتح أولاً، ويُحدَّد من الإعدادات",
+                )}
                 className={`border px-1.5 py-px text-[10px] leading-4 font-bold ${
                   selected
                     ? "border-white/40 text-white"
                     : "border-emerald-400 text-emerald-700"
                 }`}
               >
-                الافتراضي
+                {t("الافتراضي")}
               </span>
             ) : null}
             {turns[opt.id] ? (
@@ -130,13 +135,16 @@ const stepTone: Record<StepState, string> = {
 /** The named capability badge on a trust step — the user-facing vocabulary. */
 const capabilityBadge: Record<TrustCapability, { text: string; tone: string }> =
   {
-    supported: { text: "مدعوم", tone: "border-sky-300 text-sky-700" },
+    supported: { text: tx("مدعوم"), tone: "border-sky-300 text-sky-700" },
     auto: {
-      text: "مدعوم تلقائياً",
+      text: tx("مدعوم تلقائياً"),
       tone: "border-emerald-400 bg-white text-emerald-700",
     },
-    unwired: { text: "غير مربوط", tone: "border-amber-300 text-amber-700" },
-    unsupported: { text: "غير مدعوم", tone: "border-slate-300 text-slate-500" },
+    unwired: { text: tx("غير مربوط"), tone: "border-amber-300 text-amber-700" },
+    unsupported: {
+      text: tx("غير مدعوم"),
+      tone: "border-slate-300 text-slate-500",
+    },
   };
 
 /**
@@ -145,6 +153,7 @@ const capabilityBadge: Record<TrustCapability, { text: string; tone: string }> =
  * check, then for the user; the other two explain why nothing can be done.
  */
 function trustStep(
+  t: (source: string) => string,
   capability: TrustCapability,
   done: boolean,
   checked: boolean,
@@ -168,16 +177,16 @@ function trustStep(
       return {
         state: "done",
         title: copy.title,
-        tag: "لا يحتاج تفعيلاً",
-        hint: "لا يسأل هذا الوكيل عن ثقة المجلد أصلاً — لا شيء لتفعيله",
+        tag: t("لا يحتاج تفعيلاً"),
+        hint: t("لا يسأل هذا الوكيل عن ثقة المجلد أصلاً — لا شيء لتفعيله"),
         settled: true,
       };
     case "unwired":
       return {
         state: "unsupported",
         title: copy.title,
-        tag: "الوكيل يملك الآلية ولم تُربط بـTOSO بعد",
-        hint: "آلية الثقة موجودة لدى الوكيل لكنها غير مربوطة بـTOSO بعد",
+        tag: t("الوكيل يملك الآلية ولم تُربط بـTOSO بعد"),
+        hint: t("آلية الثقة موجودة لدى الوكيل لكنها غير مربوطة بـTOSO بعد"),
       };
     case "unsupported":
       return {
@@ -191,9 +200,9 @@ function trustStep(
         state: !checked ? "locked" : done ? "done" : "open",
         title: done ? copy.doneTitle : copy.title,
         tag: !checked
-          ? "اختياري — يُفتح بعد فحص المجلد"
+          ? t("اختياري — يُفتح بعد فحص المجلد")
           : done
-            ? "اختياري — مُفعّل"
+            ? t("اختياري — مُفعّل")
             : copy.openTag,
         hint: copy.hint,
       };
@@ -232,6 +241,7 @@ function Step({
   settled?: boolean;
   onClick: () => void;
 }) {
+  const { t } = useI18n();
   const disabled =
     state === "locked" || state === "unsupported" || busy || settled;
   return (
@@ -262,7 +272,7 @@ function Step({
             <span
               className={`border px-1.5 py-px text-[10px] leading-4 font-bold ${badge.tone}`}
             >
-              {badge.text}
+              {t(badge.text)}
             </span>
           ) : null}
         </span>
@@ -319,6 +329,7 @@ export function AgentWorkspacePanel({
   onStart: () => void;
   onOpenTerminal: () => void;
 }) {
+  const { t } = useI18n();
   const label = agentLabel(agent);
   const option = AGENT_OPTIONS.find((opt) => opt.id === agent);
   const path = workspace?.trim() ?? "";
@@ -357,23 +368,27 @@ export function AgentWorkspacePanel({
     persistent: "unsupported" as const,
     perRun: "unsupported" as const,
   };
-  const persistent = trustStep(caps.persistent, trusted, checked, {
-    title: "ثقة دائمة",
-    doneTitle: "موثوق دائماً",
-    openTag: "اختياري — اضغط للتفعيل",
-    hint: "يكتب في ملف إعدادات الوكيل نفسه — أثره يشمل جلساتك اليدوية خارج TOSO أيضاً",
-    unsupportedHint: "هذا الوكيل لا يملك ملف ثقة معروفاً — ثقته تُدار من داخله",
-    unsupportedTag: "لا ملف ثقة لديه — أجب سؤال الثقة داخل الطرفية",
+  const persistent = trustStep(t, caps.persistent, trusted, checked, {
+    title: t("ثقة دائمة"),
+    doneTitle: t("موثوق دائماً"),
+    openTag: t("اختياري — اضغط للتفعيل"),
+    hint: t(
+      "يكتب في ملف إعدادات الوكيل نفسه — أثره يشمل جلساتك اليدوية خارج TOSO أيضاً",
+    ),
+    unsupportedHint: t(
+      "هذا الوكيل لا يملك ملف ثقة معروفاً — ثقته تُدار من داخله",
+    ),
+    unsupportedTag: t("لا ملف ثقة لديه — أجب سؤال الثقة داخل الطرفية"),
   });
-  const perRun = trustStep(caps.perRun, autoTrust, checked, {
-    title: "ثقة لكل تشغيلة",
-    doneTitle: "ثقة لكل تشغيلة: مفعّلة",
+  const perRun = trustStep(t, caps.perRun, autoTrust, checked, {
+    title: t("ثقة لكل تشغيلة"),
+    doneTitle: t("ثقة لكل تشغيلة: مفعّلة"),
     openTag: live
-      ? "اختياري — يسري عند إعادة التشغيل"
-      : "اختياري — اضغط للتبديل",
-    hint: "مفتاح مؤقت يُزرع في عملية الوكيل ويموت معها — لا يُكتب أي ملف",
-    unsupportedHint: "لا يملك هذا الوكيل متغير ثقة موثقاً لكل تشغيلة",
-    unsupportedTag: "لا متغير مؤقت لديه — استخدم ② أو أجب داخل الطرفية",
+      ? t("اختياري — يسري عند إعادة التشغيل")
+      : t("اختياري — اضغط للتبديل"),
+    hint: t("مفتاح مؤقت يُزرع في عملية الوكيل ويموت معها — لا يُكتب أي ملف"),
+    unsupportedHint: t("لا يملك هذا الوكيل متغير ثقة موثقاً لكل تشغيلة"),
+    unsupportedTag: t("لا متغير مؤقت لديه — استخدم ② أو أجب داخل الطرفية"),
   });
 
   return (
@@ -381,7 +396,7 @@ export function AgentWorkspacePanel({
       <label className="block text-sm font-semibold">
         <span className="flex items-center gap-1.5">
           <FolderOpen size={14} className="text-amber-600" />
-          مشروع {label}
+          {t("مشروع {label}", { label })}
         </span>
         <input
           id={`agent-workspace-${agent}`}
@@ -397,22 +412,24 @@ export function AgentWorkspacePanel({
       </label>
       <p className="mt-1.5 text-xs leading-5 text-slate-500">
         {!path
-          ? "اكتب مسار مجلد المشروع المستهدف، ثم ابدأ بالخطوة ①."
+          ? t("اكتب مسار مجلد المشروع المستهدف، ثم ابدأ بالخطوة ①.")
           : checked
-            ? "كل تشغيل وكل طرفية لهذا الوكيل تبدأ داخل هذا المجلد — ولا تتأثر بمشاريع الوكلاء الآخرين."
-            : "افحص المجلد أولاً — الفحص يفتح بقية الخطوات."}
+            ? t(
+                "كل تشغيل وكل طرفية لهذا الوكيل تبدأ داخل هذا المجلد — ولا تتأثر بمشاريع الوكلاء الآخرين.",
+              )
+            : t("افحص المجلد أولاً — الفحص يفتح بقية الخطوات.")}
       </p>
       <div
         className="mt-3 flex flex-wrap gap-2"
         role="group"
-        aria-label={`إعداد ${label}`}
+        aria-label={t("إعداد {label}", { label })}
       >
         <Step
           n={1}
           state={!path ? "locked" : checked ? "done" : "open"}
-          title={checked ? "مفحوص" : "فحص المجلد"}
-          tag="إلزامي"
-          hint="يفحص أن المجلد موجود على جهازك قبل التشغيل"
+          title={checked ? t("مفحوص") : t("فحص المجلد")}
+          tag={t("إلزامي")}
+          hint={t("يفحص أن المجلد موجود على جهازك قبل التشغيل")}
           icon={<FolderOpen size={14} />}
           busy={busy === "checked"}
           onClick={() =>
@@ -420,7 +437,10 @@ export function AgentWorkspacePanel({
               "checked",
               () => checkWorkspace(bridge, path),
               (r) =>
-                `المجلد موجود — ${label} سيعمل داخل: ${r.state === "ok" ? (r.path ?? path) : path}`,
+                t("المجلد موجود — {label} سيعمل داخل: {v2}", {
+                  label,
+                  v2: r.state === "ok" ? (r.path ?? path) : path,
+                }),
             )
           }
         />
@@ -436,8 +456,13 @@ export function AgentWorkspacePanel({
               () => trustWorkspace(bridge, agent, path),
               (r) =>
                 r.state === "ok" && r.already
-                  ? `المجلد موثوق مسبقاً لدى ${label} — لم يتغير شيء.`
-                  : `سُجّل المجلد موثوقاً دائماً في ${r.state === "ok" ? (r.file ?? "ملف ثقة الوكيل") : ""}.`,
+                  ? t("المجلد موثوق مسبقاً لدى {label} — لم يتغير شيء.", {
+                      label,
+                    })
+                  : t("سُجّل المجلد موثوقاً دائماً في {file}.", {
+                      file:
+                        r.state === "ok" ? (r.file ?? t("ملف ثقة الوكيل")) : "",
+                    }),
             )
           }
         />
@@ -462,19 +487,19 @@ export function AgentWorkspacePanel({
           }
           title={
             sessionStatus === "live"
-              ? "الجلسة تعمل"
+              ? t("الجلسة تعمل")
               : sessionStatus === "starting"
-                ? "تبدأ…"
-                : "تشغيل الجلسة"
+                ? t("تبدأ…")
+                : t("تشغيل الجلسة")
           }
           tag={
             sessionStatus === "unavailable"
-              ? "طرفية مدمجة غير متاحة — تشغيل أحادي"
+              ? t("طرفية مدمجة غير متاحة — تشغيل أحادي")
               : live
-                ? "إيقاف وإعادة التشغيل من رأس الطرفية"
-                : "الخطوة الأخيرة"
+                ? t("إيقاف وإعادة التشغيل من رأس الطرفية")
+                : t("الخطوة الأخيرة")
           }
-          hint="يشغّل واجهة الوكيل التفاعلية داخل المجلد المفحوص"
+          hint={t("يشغّل واجهة الوكيل التفاعلية داخل المجلد المفحوص")}
           icon={<Play size={14} />}
           settled={live}
           onClick={onStart}
@@ -485,11 +510,13 @@ export function AgentWorkspacePanel({
           type="button"
           disabled={terminalBusy || !checked}
           onClick={onOpenTerminal}
-          title="نافذة PowerShell خارجية منفصلة — جلسة أخرى لا تشارك سياق الطرفية المدمجة، ولا يقرؤها TOSO"
+          title={t(
+            "نافذة PowerShell خارجية منفصلة — جلسة أخرى لا تشارك سياق الطرفية المدمجة، ولا يقرؤها TOSO",
+          )}
           className="flex items-center gap-1.5 px-1 py-1 text-xs font-bold text-slate-500 underline-offset-2 transition hover:text-ink hover:underline disabled:opacity-40"
         >
           <MonitorUp size={13} />
-          {terminalBusy ? "يفتح…" : "أو افتح نافذة خارجية منفصلة"}
+          {terminalBusy ? t("يفتح…") : t("أو افتح نافذة خارجية منفصلة")}
           {openedCount ? (
             <span className="bg-sky-600 px-1 font-mono text-[10px] text-white">
               {openedCount}

@@ -11,6 +11,7 @@
 import { optimizePrompt } from "@/lib/optimizer/mock-optimizer";
 import { arabicRatio } from "@/lib/token-engine/token-engine";
 import type { GeminiUsage } from "@/lib/types";
+import { getCurrentLang, t } from "@/lib/i18n";
 
 export type OptimizerSource = "gemini" | "mock";
 
@@ -47,7 +48,7 @@ export async function optimizeDual(
         "Content-Type": "application/json",
         ...(userKey ? { "x-user-gemini-key": userKey } : {}),
       },
-      body: JSON.stringify({ text: prompt, model }),
+      body: JSON.stringify({ text: prompt, model, ui: getCurrentLang() }),
     });
     if (response.ok) {
       const payload = (await response.json().catch(() => null)) as {
@@ -79,7 +80,9 @@ export async function optimizeDual(
           english: payload.english?.trim() ? payload.english.trim() : null,
           note:
             payload.note?.trim() ||
-            "فُهمت النية وأُعيدت الصياغة عبر Gemini دون فقدان المعلومات الأساسية.",
+            t(
+              "فُهمت النية وأُعيدت الصياغة عبر Gemini دون فقدان المعلومات الأساسية.",
+            ),
           source: "gemini",
           model: payload.model,
           viaUserKey: payload.viaUserKey === true,
@@ -124,29 +127,53 @@ function localOptimization(
 /** Honest local-fallback notes keyed by the route's reported reason. */
 function localNoteFor(reason: string | null, englishInput = false): string {
   // The cleanup that ran, and the variant that could not be produced locally.
-  const cleanup = englishInput ? "تنقية النص محلياً" : "تنقية محلية";
+  const cleanup = englishInput ? t("تنقية النص محلياً") : t("تنقية محلية");
   const missing = englishInput
-    ? "النسخة العربية غير متاحة"
-    : "الترجمة الإنجليزية غير متاحة";
+    ? t("النسخة العربية غير متاحة")
+    : t("الترجمة الإنجليزية غير متاحة");
   switch (reason) {
     case null:
     case "no_api_key":
-      return `وضع محلي بدون مفتاح Gemini: ${cleanup} فقط — ${missing}.`;
+      return t("وضع محلي بدون مفتاح Gemini: {cleanup} فقط — {missing}.", {
+        cleanup,
+        missing,
+      });
     case "network":
-      return `تعذّر الاتصال بـ Gemini؛ استُخدمت ${cleanup} — ${missing}.`;
+      return t("تعذّر الاتصال بـ Gemini؛ استُخدمت {cleanup} — {missing}.", {
+        cleanup,
+        missing,
+      });
     case "bad_model_output":
-      return `أعاد Gemini ردًا غير صالح؛ استُخدمت ${cleanup} — ${missing}.`;
+      return t("أعاد Gemini ردًا غير صالح؛ استُخدمت {cleanup} — {missing}.", {
+        cleanup,
+        missing,
+      });
     case "user_key_quota":
-      return `حصة مفتاحك في AI Studio استُنزفت مؤقتاً؛ استُخدمت ${cleanup}. راجع حصتك أو امسح المفتاح من الإعدادات.`;
+      return t(
+        "حصة مفتاحك في AI Studio استُنزفت مؤقتاً؛ استُخدمت {cleanup}. راجع حصتك أو امسح المفتاح من الإعدادات.",
+        { cleanup },
+      );
     case "user_key_invalid":
-      return `مفتاحك مرفوض من Google؛ تحقق منه في الإعدادات — استُخدمت ${cleanup}.`;
+      return t(
+        "مفتاحك مرفوض من Google؛ تحقق منه في الإعدادات — استُخدمت {cleanup}.",
+        { cleanup },
+      );
     default:
       if (reason.startsWith("http_429")) {
-        return `حصة نماذج Gemini مستنزفة حالياً؛ استُخدمت ${cleanup} — ${missing}.`;
+        return t(
+          "حصة نماذج Gemini مستنزفة حالياً؛ استُخدمت {cleanup} — {missing}.",
+          { cleanup, missing },
+        );
       }
       if (reason.startsWith("user_key_")) {
-        return `تعذّر استدعاء Gemini بمفتاحك (${reason})؛ استُخدمت ${cleanup} — ${missing}.`;
+        return t(
+          "تعذّر استدعاء Gemini بمفتاحك ({reason})؛ استُخدمت {cleanup} — {missing}.",
+          { reason, cleanup, missing },
+        );
       }
-      return `تعذّر استدعاء Gemini (${reason})؛ استُخدمت ${cleanup} — ${missing}.`;
+      return t(
+        "تعذّر استدعاء Gemini ({reason})؛ استُخدمت {cleanup} — {missing}.",
+        { reason, cleanup, missing },
+      );
   }
 }

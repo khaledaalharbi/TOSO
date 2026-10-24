@@ -25,14 +25,11 @@ import {
 } from "@/lib/services/model-service";
 import { providers } from "@/lib/providers/registry";
 import type { ProviderConfig } from "@/lib/types";
+import { useI18n } from "@/components/i18n-provider";
+import { tx } from "@/lib/i18n";
 
 export type KeyStatus =
-  | "idle"
-  | "checking"
-  | "ok"
-  | "invalid"
-  | "quota"
-  | "unreachable";
+  "idle" | "checking" | "ok" | "invalid" | "quota" | "unreachable";
 
 /**
  * Maps a user-key signal (route errorCode, verify result, or "ok" from a
@@ -69,18 +66,18 @@ const chipTone: Record<KeyStatus, string> = {
 
 /** One-word status shown inline next to the masked key. */
 const statusLabel: Partial<Record<KeyStatus, string>> = {
-  idle: "محفوظ",
-  ok: "يعمل",
-  invalid: "مرفوض",
-  quota: "الحصة منتهية",
-  unreachable: "تعذّر الفحص",
+  idle: tx("محفوظ"),
+  ok: tx("يعمل"),
+  invalid: tx("مرفوض"),
+  quota: tx("الحصة منتهية"),
+  unreachable: tx("تعذّر الفحص"),
 };
 
 /** Short actionable hint — surfaced only on failure states. */
 const statusHint: Partial<Record<KeyStatus, string>> = {
-  invalid: "تأكد أنه منسوخ كاملاً من AI Studio ويبدأ بـ AQ.",
-  quota: "راجع حصتك في AI Studio.",
-  unreachable: "أعد المحاولة بعد قليل أو راجع الاتصال.",
+  invalid: tx("تأكد أنه منسوخ كاملاً من AI Studio ويبدأ بـ AQ."),
+  quota: tx("راجع حصتك في AI Studio."),
+  unreachable: tx("أعد المحاولة بعد قليل أو راجع الاتصال."),
 };
 
 /** Collapsible settings group — closed by default, expands on click. */
@@ -141,6 +138,7 @@ export function SettingsModal({
   keySignal,
   onSignal,
 }: Props) {
+  const { t, lang } = useI18n();
   const [checking, setChecking] = useState(false);
   const [bridgeStatus, setBridgeStatus] = useState<
     "idle" | "checking" | "ok" | "bad_token" | "offline"
@@ -293,18 +291,18 @@ export function SettingsModal({
       }`}
     >
       <Check size={14} />
-      {status === "ok" ? "يعمل" : (statusLabel[status] ?? "محفوظ")}
+      {status === "ok" ? t("يعمل") : t(statusLabel[status] ?? "محفوظ")}
     </span>
   ) : serverKey === "active" ? (
     <span className="flex items-center gap-1 text-xs font-bold text-emerald-700">
-      <Check size={14} /> مفتاح الخادم
+      <Check size={14} /> {t("مفتاح الخادم")}
     </span>
   ) : serverKey === "checking" ? (
-    <span className="text-xs text-slate-400">يفحص…</span>
+    <span className="text-xs text-slate-400">{t("يفحص…")}</span>
   ) : serverKey === "none" ? (
-    <span className="text-xs font-bold text-amber-700">لا مفتاح</span>
+    <span className="text-xs font-bold text-amber-700">{t("لا مفتاح")}</span>
   ) : serverKey === "offline" ? (
-    <span className="text-xs text-slate-500">تعذّر الفحص</span>
+    <span className="text-xs text-slate-500">{t("تعذّر الفحص")}</span>
   ) : null;
   const bridgeReady = Boolean(
     (config.bridgeToken?.trim() || bridgeSession?.token) &&
@@ -315,19 +313,19 @@ export function SettingsModal({
       className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="الإعدادات"
+      aria-label={t("الإعدادات")}
     >
       <div className="max-h-[92vh] w-full max-w-md overflow-y-auto border border-ink bg-white p-6 shadow-hard">
-        <div className="mb-6 flex items-center justify-between border-b border-slate-200 pb-4">
+        <div className="mb-6 flex items-center justify-between border-b border-slate-200 pb-4 ltr:flex-row-reverse">
           <button
             onClick={onClose}
             className="border border-slate-300 p-2 text-slate-500 transition hover:border-ink hover:bg-slate-50"
-            aria-label="إغلاق"
+            aria-label={t("إغلاق")}
           >
             <X size={20} />
           </button>
           <div>
-            <h2 className="text-lg font-bold">الإعدادات</h2>
+            <h2 className="text-lg font-bold">{t("الإعدادات")}</h2>
             <p className="font-mono text-[11px] text-slate-500">
               ENGINE — Google Gemini
             </p>
@@ -336,14 +334,14 @@ export function SettingsModal({
         <div className="space-y-3">
           <Section
             icon={<KeyRound size={16} className="text-brand-600" />}
-            title="المفتاح والوصول"
-            hint="BYOK أو مفتاح الخادم"
+            title={t("المفتاح والوصول")}
+            hint={t("BYOK أو مفتاح الخادم")}
             badge={keyBadge}
           >
             <label className="block text-sm font-semibold">
-              مفتاح Gemini الخاص بك{" "}
+              {t("مفتاح Gemini الخاص بك")}{" "}
               <span className="font-normal text-slate-400">
-                اختياري — استخدم حصتك أنت (BYOK)
+                {t("اختياري — استخدم حصتك أنت (BYOK)")}
               </span>
               <div className="relative mt-2">
                 <KeyRound
@@ -359,7 +357,7 @@ export function SettingsModal({
                   onChange={(event) =>
                     onChange({ ...config, userKey: event.target.value.trim() })
                   }
-                  placeholder="مفتاح AI Studio — يُحفظ في متصفحك فقط"
+                  placeholder={t("مفتاح AI Studio — يُحفظ في متصفحك فقط")}
                   className="w-full border border-slate-300 bg-white py-3 pr-10 pl-3 font-mono text-sm outline-none focus:border-ink"
                   dir="ltr"
                 />
@@ -379,7 +377,9 @@ export function SettingsModal({
                       ••••{userKey.slice(-4)}
                     </span>
                     {statusLabel[status] ? (
-                      <span className="font-bold">{statusLabel[status]}</span>
+                      <span className="font-bold">
+                        {t(statusLabel[status])}
+                      </span>
                     ) : null}
                   </span>
                   <div className="flex shrink-0 items-center gap-2">
@@ -389,7 +389,7 @@ export function SettingsModal({
                       disabled={checking}
                       className="font-bold underline underline-offset-2 hover:opacity-80 disabled:opacity-50"
                     >
-                      {checking ? "يفحص…" : "تحقق"}
+                      {checking ? t("يفحص…") : t("تحقق")}
                     </button>
                     <button
                       type="button"
@@ -399,38 +399,40 @@ export function SettingsModal({
                       className="flex items-center gap-1 font-bold text-rose-600 hover:text-rose-700"
                     >
                       <Trash2 size={14} />
-                      مسح
+                      {t("مسح")}
                     </button>
                   </div>
                 </div>
                 {statusHint[status] ? (
-                  <p className="mt-1 leading-5">{statusHint[status]}</p>
+                  <p className="mt-1 leading-5">{t(statusHint[status])}</p>
                 ) : null}
               </div>
             ) : serverKey === "checking" ? (
               <p className="border border-slate-300 px-3 py-2 text-xs text-slate-500">
-                يُفحص مفتاح الخادم…
+                {t("يُفحص مفتاح الخادم…")}
               </p>
             ) : serverKey === "active" ? (
               <p className="flex items-center gap-1.5 border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
-                <Check size={14} /> يُستخدم مفتاح الخادم — لا حاجة لمفتاحك.
+                <Check size={14} />{" "}
+                {t("يُستخدم مفتاح الخادم — لا حاجة لمفتاحك.")}
               </p>
             ) : serverKey === "none" ? (
               <p className="border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                لا مفتاح على الإطلاق — أضف مفتاحك هنا أو اضبط مفتاح الخادم، وإلا
-                تعمل التنقية المحلية فقط.
+                {t(
+                  "لا مفتاح على الإطلاق — أضف مفتاحك هنا أو اضبط مفتاح الخادم، وإلا تعمل التنقية المحلية فقط.",
+                )}
               </p>
             ) : serverKey === "offline" ? (
               <p className="border border-slate-300 px-3 py-2 text-xs text-slate-500">
-                تعذّر فحص مفتاح الخادم — الخادم غير متاح.
+                {t("تعذّر فحص مفتاح الخادم — الخادم غير متاح.")}
               </p>
             ) : null}
             <GeminiKeyGuide />
           </Section>
           <Section
             icon={<Sparkles size={16} className="text-brand-600" />}
-            title="النموذج"
-            hint="المعالجة والترجمة"
+            title={t("النموذج")}
+            hint={t("المعالجة والترجمة")}
             badge={
               <span className="font-mono text-xs text-slate-500" dir="ltr">
                 {currentModelLabel}
@@ -438,7 +440,7 @@ export function SettingsModal({
             }
           >
             <label className="block text-sm font-semibold">
-              نموذج المعالجة والترجمة
+              {t("نموذج المعالجة والترجمة")}
               <select
                 id="model"
                 name="model"
@@ -451,7 +453,7 @@ export function SettingsModal({
                 {options.map((model) => (
                   <option key={model.id} value={model.id}>
                     {model.label}
-                    {unavailableModels.has(model.id) ? " — غير متاح" : ""}
+                    {unavailableModels.has(model.id) ? t(" — غير متاح") : ""}
                   </option>
                 ))}
               </select>
@@ -464,17 +466,19 @@ export function SettingsModal({
                 className="border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:border-ink hover:text-ink disabled:opacity-50"
               >
                 {modelCheck === "checking"
-                  ? "يفحص النماذج…"
-                  : "تحقق من النماذج"}
+                  ? t("يفحص النماذج…")
+                  : t("تحقق من النماذج")}
               </button>
               {modelCheck === "no_key" ? (
                 <p className="mt-2 border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  لا يوجد مفتاح للفحص — أضف مفتاحك أعلاه أو اضبط مفتاح الخادم.
+                  {t(
+                    "لا يوجد مفتاح للفحص — أضف مفتاحك أعلاه أو اضبط مفتاح الخادم.",
+                  )}
                 </p>
               ) : null}
               {modelCheck === "offline" ? (
                 <p className="mt-2 border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  تعذّر الوصول — راجع الاتصال وأعد المحاولة.
+                  {t("تعذّر الوصول — راجع الاتصال وأعد المحاولة.")}
                 </p>
               ) : null}
               {typeof modelCheck === "object" && modelCheck.state === "ok" ? (
@@ -491,9 +495,9 @@ export function SettingsModal({
                       {!result.available ? (
                         <span className="text-slate-500">
                           {result.status === 429
-                            ? "الحصة منتهية"
+                            ? t("الحصة منتهية")
                             : result.status === "network"
-                              ? "تعذّر الوصول"
+                              ? t("تعذّر الوصول")
                               : `http_${result.status}`}
                         </span>
                       ) : null}
@@ -501,15 +505,18 @@ export function SettingsModal({
                   ))}
                   {modelCheck.data.extras?.length ? (
                     <p className="pt-1 leading-5 text-slate-600">
-                      نماذج أخرى متاحة لحسابك غير مسجلة بعد:{" "}
+                      {t("نماذج أخرى متاحة لحسابك غير مسجلة بعد:")}{" "}
                       <span dir="ltr" className="font-mono">
-                        {modelCheck.data.extras.join("، ")}
+                        {modelCheck.data.extras.join(t("، "))}
                       </span>
                     </p>
                   ) : null}
                   <p className="text-slate-400">
-                    عبر {modelCheck.data.viaUserKey ? "مفتاحك" : "مفتاح الخادم"}{" "}
-                    — فحص حرّ بلا تكلفة
+                    {t("عبر {key} — فحص حرّ بلا تكلفة", {
+                      key: modelCheck.data.viaUserKey
+                        ? t("مفتاحك")
+                        : t("مفتاح الخادم"),
+                    })}
                   </p>
                 </div>
               ) : null}
@@ -517,12 +524,12 @@ export function SettingsModal({
           </Section>
           <Section
             icon={<TerminalSquare size={16} className="text-sky-600" />}
-            title="جسر وكيل CLI"
-            hint="إرسال الناتج إلى وكيل محلي — اختياري"
+            title={t("جسر وكيل CLI")}
+            hint={t("إرسال الناتج إلى وكيل محلي — اختياري")}
             badge={
               bridgeReady ? (
                 <span className="flex items-center gap-1 text-xs font-bold text-emerald-700">
-                  <Check size={14} /> مُهيأ
+                  <Check size={14} /> {t("مُهيأ")}
                 </span>
               ) : null
             }
@@ -534,31 +541,34 @@ export function SettingsModal({
               className="flex items-center gap-1.5 text-xs font-bold text-slate-500 transition hover:text-ink"
             >
               <CircleHelp size={15} />
-              ما الجسر؟
+              {t("ما الجسر؟")}
             </button>
             {showBridgeHelp ? (
               <div className="border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-6 text-slate-600">
                 <p>
-                  الجسر خادم صغير على جهازك (
-                  <code dir="ltr">bin/toso-bridge.mjs</code>) — المتصفح لا
-                  يستطيع تشغيل الوكيل، فيستقبل الجسر طلبات الواجهة ويشغّل الوكيل
-                  في مجلد مشروعك.
+                  {t("الجسر خادم صغير على جهازك (")}
+                  <code dir="ltr">bin/toso-bridge.mjs</code>
+                  {t(
+                    ") — المتصفح لا يستطيع تشغيل الوكيل، فيستقبل الجسر طلبات الواجهة ويشغّل الوكيل في مجلد مشروعك.",
+                  )}
                 </p>
                 <p className="mt-1">
-                  <b>عنوان الجسر:</b> أين يستمع (الافتراضي{" "}
+                  <b>{t("عنوان الجسر:")}</b> {t("أين يستمع (الافتراضي")}{" "}
                   <code dir="ltr">http://127.0.0.1:8676</code>).{" "}
-                  <b>توكن الجسر:</b> كلمة سر مؤقتة يولّدها الجسر كل تشغيل ويرفض
-                  الطلبات بدونها — لا تخرج من جهازك.
+                  <b>{t("توكن الجسر:")}</b>{" "}
+                  {t(
+                    "كلمة سر مؤقتة يولّدها الجسر كل تشغيل ويرفض الطلبات بدونها — لا تخرج من جهازك.",
+                  )}
                 </p>
                 <p className="mt-1 font-semibold text-slate-700">
-                  القاعدة البسيطة: كلما كان الجسر على جهازك بالإعدادات
-                  الافتراضية لا تلمس الحقلين؛ كلما خرج عن الافتراضي تكتبهما
-                  بنفسك.
+                  {t(
+                    "القاعدة البسيطة: كلما كان الجسر على جهازك بالإعدادات الافتراضية لا تلمس الحقلين؛ كلما خرج عن الافتراضي تكتبهما بنفسك.",
+                  )}
                 </p>
               </div>
             ) : null}
             <label className="mt-3 block text-sm font-semibold">
-              عنوان الجسر
+              {t("عنوان الجسر")}
               <input
                 id="bridge-url"
                 name="bridge-url"
@@ -575,7 +585,7 @@ export function SettingsModal({
               />
             </label>
             <label className="mt-3 block text-sm font-semibold">
-              توكن الجسر
+              {t("توكن الجسر")}
               <input
                 id="bridge-token"
                 name="bridge-token"
@@ -593,7 +603,7 @@ export function SettingsModal({
                 placeholder={
                   bridgeSession
                     ? `••••${bridgeSession.token.slice(-6)}`
-                    : "يُطبع في الطرفية عند تشغيل npm run bridge"
+                    : t("يُطبع في الطرفية عند تشغيل npm run bridge")
                 }
                 className="mt-2 w-full border border-slate-300 bg-white p-3 font-mono text-sm outline-none focus:border-ink"
               />
@@ -602,16 +612,18 @@ export function SettingsModal({
             !config.bridgeUrl?.trim() &&
             !config.bridgeToken?.trim() ? (
               <p className="text-xs leading-5 text-slate-500">
-                الرمادية أعلاه هي قيم الجسر العامل — اكتُشفت تلقائياً وتُستخدم
-                كما هي ما دام الحقل فارغاً.
+                {t(
+                  "الرمادية أعلاه هي قيم الجسر العامل — اكتُشفت تلقائياً وتُستخدم كما هي ما دام الحقل فارغاً.",
+                )}
               </p>
             ) : null}
             <div className="mt-3">
               <label htmlFor="agent" className="block text-sm font-semibold">
-                الوكيل الافتراضي
+                {t("الوكيل الافتراضي")}
                 <span className="block text-xs font-normal text-slate-500">
-                  تبويبه يُفتح أولاً. لكل وكيل مدخله الخاص، والإرسال المباشر
-                  مفتاح داخل مدخل كل وكيل.
+                  {t(
+                    "تبويبه يُفتح أولاً. لكل وكيل مدخله الخاص، والإرسال المباشر مفتاح داخل مدخل كل وكيل.",
+                  )}
                 </span>
               </label>
               <div className="mt-2 flex items-center gap-3">
@@ -636,7 +648,7 @@ export function SettingsModal({
                   disabled={bridgeStatus === "checking"}
                   className="shrink-0 border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-600 transition hover:border-ink hover:text-ink disabled:opacity-50"
                 >
-                  {bridgeStatus === "checking" ? "يفحص…" : "فحص الاتصال"}
+                  {bridgeStatus === "checking" ? t("يفحص…") : t("فحص الاتصال")}
                 </button>
               </div>
             </div>
@@ -650,37 +662,44 @@ export function SettingsModal({
                 }`}
               >
                 {bridgeStatus === "ok"
-                  ? "الجسر متصل وجاهز لاستقبال التلقينات."
+                  ? t("الجسر متصل وجاهز لاستقبال التلقينات.")
                   : bridgeStatus === "bad_token"
-                    ? "التوكن مرفوض — انسخ التوكن الظاهر في طرفية الجسر كاملاً."
-                    : "لا يوجد جسر على هذا العنوان — شغّله بأمر npm run bridge."}
+                    ? t(
+                        "التوكن مرفوض — انسخ التوكن الظاهر في طرفية الجسر كاملاً.",
+                      )
+                    : t(
+                        "لا يوجد جسر على هذا العنوان — شغّله بأمر npm run bridge.",
+                      )}
               </p>
             )}
           </Section>
           <Section
             icon={<Languages size={16} className="text-emerald-600" />}
-            title="ردود الوكيل (تبويب OUT)"
-            hint="الترجمة والتنظيف"
+            title={t("ردود الوكيل (تبويب OUT)")}
+            hint={t("الترجمة والتنظيف")}
           >
-            <label className="mt-3 flex cursor-pointer items-start gap-2.5 border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold">
-              <input
-                id="auto-translate"
-                name="auto-translate"
-                type="checkbox"
-                checked={config.autoTranslate ?? false}
-                onChange={(event) =>
-                  onChange({ ...config, autoTranslate: event.target.checked })
-                }
-                className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
-              />
-              <span>
-                ترجمة تلقائية لكل رد
-                <span className="block text-xs font-normal leading-5 text-slate-500">
-                  مفعّل: يظهر كل رد بالعربية فور التقاطه (استدعاء ترجمة لكل رد).
-                  معطّل: زر «ترجمة» بجانب كل رد تضغطه عند الحاجة.
+            {lang === "ar" ? (
+              <label className="mt-3 flex cursor-pointer items-start gap-2.5 border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold">
+                <input
+                  id="auto-translate"
+                  name="auto-translate"
+                  type="checkbox"
+                  checked={config.autoTranslate ?? false}
+                  onChange={(event) =>
+                    onChange({ ...config, autoTranslate: event.target.checked })
+                  }
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
+                />
+                <span>
+                  {t("ترجمة تلقائية لكل رد")}
+                  <span className="block text-xs font-normal leading-5 text-slate-500">
+                    {t(
+                      "مفعّل: يظهر كل رد بالعربية فور التقاطه (استدعاء ترجمة لكل رد). معطّل: زر «ترجمة» بجانب كل رد تضغطه عند الحاجة.",
+                    )}
+                  </span>
                 </span>
-              </span>
-            </label>
+              </label>
+            ) : null}
             <label className="mt-3 flex cursor-pointer items-start gap-2.5 border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold">
               <input
                 id="smart-clean"
@@ -693,11 +712,11 @@ export function SettingsModal({
                 className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
               />
               <span>
-                تنظيف ذكي للمخرجات عبر Gemini
+                {t("تنظيف ذكي للمخرجات عبر Gemini")}
                 <span className="block text-xs font-normal leading-5 text-slate-500">
-                  بعد الاستخراج المحلي من شاشة الطرفية، تمرّر Gemini الالتقاط
-                  لتجمع الأسطر المكسورة بعرض الطرفية وتحذف بقايا الواجهة. يُرفض
-                  أي ناتج فيه كلمات ليست في الالتقاط، ويبقى الاستخراج المحلي.
+                  {t(
+                    "بعد الاستخراج المحلي من شاشة الطرفية، تمرّر Gemini الالتقاط لتجمع الأسطر المكسورة بعرض الطرفية وتحذف بقايا الواجهة. يُرفض أي ناتج فيه كلمات ليست في الالتقاط، ويبقى الاستخراج المحلي.",
+                  )}
                 </span>
               </span>
             </label>
@@ -707,7 +726,7 @@ export function SettingsModal({
           onClick={onClose}
           className="mt-6 w-full border border-ink bg-ink py-3 font-bold text-white transition hover:bg-slate-800"
         >
-          تم
+          {t("تم")}
         </button>
       </div>
     </div>

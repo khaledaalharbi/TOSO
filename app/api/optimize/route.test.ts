@@ -470,6 +470,50 @@ describe("POST", () => {
     ).toEqual(["english", "note"]);
   });
 
+  it("asks for the note in English when the UI is English, in both directions", async () => {
+    vi.stubEnv("AGENT_PLATFORM_API_KEY", "server-key");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () =>
+        generateContentPayload('{"arabic":"أ","english":"e","note":"n"}'),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const call = async (text: string, ui?: string) => {
+      await POST(
+        new Request("http://localhost/api/optimize", {
+          method: "POST",
+          body: JSON.stringify({ text, ui }),
+        }),
+      );
+      const body = JSON.parse(fetchMock.mock.calls.at(-1)![1].body as string);
+      return body.systemInstruction.parts[0].text as string;
+    };
+    expect(await call("Fix the bug", "en")).toContain(
+      "honest English sentence",
+    );
+    expect(await call("Fix the bug", "ar")).toContain("honest Arabic sentence");
+    expect(await call("Fix the bug")).toContain("honest Arabic sentence");
+    const arabicRun = await call("حلل المبيعات", "en");
+    expect(arabicRun).toContain('"note": جملة إنجليزية قصيرة');
+    expect(arabicRun).not.toContain('"note" عربية دائماً');
+    expect(await call("حلل المبيعات", "ar")).toContain(
+      '"note": جملة عربية قصيرة',
+    );
+  });
+
+  it("rejects an unknown UI language", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(
+      new Request("http://localhost/api/optimize", {
+        method: "POST",
+        body: JSON.stringify({ text: "x", ui: "fr" }),
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("falls back when an English-primary reply has no english field", async () => {
     vi.stubEnv("AGENT_PLATFORM_API_KEY", "server-key");
     vi.stubGlobal(

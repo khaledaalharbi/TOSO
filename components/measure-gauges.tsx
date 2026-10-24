@@ -3,10 +3,12 @@
 import { Check, Gauge, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { OptimizationReport } from "@/lib/types";
+import { useI18n } from "@/components/i18n-provider";
+import { tx } from "@/lib/i18n";
 
 export const formatCost = (value: number) =>
   value === 0
-    ? "مجاني"
+    ? tx("مجاني")
     : value < 0.000001
       ? "< $\u00A00.000001"
       : `$\u00A0${value < 0.001 ? value.toFixed(6) : value.toFixed(3)}`;
@@ -96,6 +98,7 @@ function Dial({
   tone: "before" | "after";
   state: "idle" | "waiting" | "done";
 }) {
+  const { t } = useI18n();
   const target = state === "done" ? Math.min(value, max) : 0;
   const [shown, setShown] = useState(0);
   useEffect(() => {
@@ -110,8 +113,8 @@ function Dial({
       role="img"
       aria-label={
         state === "done"
-          ? `${label}: ${value} توكن من ${max}`
-          : `${label}: لا قياس بعد`
+          ? t("{label}: {value} توكن من {max}", { label, value, max })
+          : t("{label}: لا قياس بعد", { label })
       }
     >
       <svg viewBox="0 0 120 78" className="gauge-svg" aria-hidden>
@@ -196,6 +199,7 @@ export function MeasureGauges({
   caption?: string;
   children?: React.ReactNode;
 }) {
+  const { t, dir } = useI18n();
   const state: "idle" | "waiting" | "done" = running
     ? "waiting"
     : data
@@ -203,10 +207,13 @@ export function MeasureGauges({
       : "idle";
   const max = data?.scaleMax ?? 100;
   return (
-    <section aria-label="عدّادات القياس" className="border border-ink bg-white">
+    <section
+      aria-label={t("عدّادات القياس")}
+      className="border border-ink bg-white"
+    >
       <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-3">
         <Gauge size={15} className="text-amber-600" />
-        <h3 className="text-sm font-bold">عدّادات القياس</h3>
+        <h3 className="text-sm font-bold">{t("عدّادات القياس")}</h3>
         {caption && state === "done" ? (
           <span className="ms-auto text-[11px] text-slate-500">{caption}</span>
         ) : null}
@@ -215,35 +222,35 @@ export function MeasureGauges({
         <Dial
           value={data?.before ?? 0}
           max={max}
-          label="الأصل"
+          label={t("الأصل")}
           tone="before"
           state={state}
         />
         <Dial
           value={data?.after ?? 0}
           max={max}
-          label="الناتج"
+          label={t("الناتج")}
           tone="after"
           state={state}
         />
       </div>
       <p role="status" className="px-4 pt-1 text-center text-xs text-slate-500">
         {state === "waiting"
-          ? (progress ?? "يقيس…")
+          ? (progress ?? t("يقيس…"))
           : state === "idle"
-            ? "اكتب في مدخل أي وكيل ثم «معالجة» لتتحرك العدّادات."
+            ? t("اكتب في مدخل أي وكيل ثم «معالجة» لتتحرك العدّادات.")
             : ""}
       </p>
       {data && state === "done" ? (
         <>
           <div
             className="flex flex-wrap items-baseline justify-center gap-3 px-4 pt-1 pb-3"
-            dir="rtl"
+            dir={dir}
           >
             <span className="font-mono text-2xl font-bold text-sky-700">
               {data.before}
             </span>
-            <span className="text-slate-400">←</span>
+            <span className="text-slate-400">{dir === "rtl" ? "←" : "→"}</span>
             <span className="font-mono text-2xl font-bold text-amber-600">
               {data.after}
             </span>
@@ -265,23 +272,23 @@ export function MeasureGauges({
           </div>
           {data.mixedSources ? (
             <p className="px-4 pb-3 text-center text-[11px] text-amber-800">
-              مصدر عدّ الأصل غير مصدر عدّ الناتج — النسبة غير محسوبة.
+              {t("مصدر عدّ الأصل غير مصدر عدّ الناتج — النسبة غير محسوبة.")}
             </p>
           ) : data.estimated ? (
             <p className="px-4 pb-3 text-center text-[11px] text-slate-500">
-              أرقام تقديرية — لا قياس حقيقي من Gemini في هذا التشغيل.
+              {t("أرقام تقديرية — لا قياس حقيقي من Gemini في هذا التشغيل.")}
             </p>
           ) : null}
           {data.costBefore && data.costAfter ? (
             <dl className="mx-4 mb-3 space-y-1.5 border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs">
               <div className="flex justify-between gap-2">
-                <dt className="text-slate-500">تكلفة الإرسال قبل</dt>
+                <dt className="text-slate-500">{t("تكلفة الإرسال قبل")}</dt>
                 <dd dir="ltr" className="font-mono font-bold text-ink">
                   {data.costBefore}
                 </dd>
               </div>
               <div className="flex justify-between gap-2">
-                <dt className="text-slate-500">تكلفة الإرسال بعد</dt>
+                <dt className="text-slate-500">{t("تكلفة الإرسال بعد")}</dt>
                 <dd dir="ltr" className="font-mono font-bold text-ink">
                   {data.costAfter}
                 </dd>
@@ -305,10 +312,10 @@ export function MeasureGauges({
                   <TriangleAlert size={13} />
                 )}
                 {data.entities.count === 0
-                  ? "لا كيانات تحتاج حماية"
+                  ? t("لا كيانات تحتاج حماية")
                   : data.entities.ok
-                    ? `الكيانات محفوظة (${data.entities.count})`
-                    : "كيانات ناقصة"}
+                    ? t("الكيانات محفوظة ({v1})", { v1: data.entities.count })
+                    : t("كيانات ناقصة")}
               </span>
             ) : null}
             {data.quality ? (
@@ -325,8 +332,8 @@ export function MeasureGauges({
                   <TriangleAlert size={13} />
                 )}
                 {data.quality === "ok"
-                  ? "فحص الجودة: اجتاز"
-                  : "فحص الجودة: تنبيه"}
+                  ? t("فحص الجودة: اجتاز")
+                  : t("فحص الجودة: تنبيه")}
               </span>
             ) : null}
             {source ? (

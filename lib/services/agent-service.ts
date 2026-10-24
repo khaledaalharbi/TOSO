@@ -9,6 +9,7 @@
  */
 
 import { DEFAULT_BRIDGE_URL } from "@/lib/bridge/agents";
+import { t } from "@/lib/i18n";
 
 export interface BridgeConfig {
   url: string;
@@ -265,7 +266,7 @@ async function bridgeAction(
     if (payload?.error === "not_found") {
       return {
         state: "failed",
-        detail: "الجسر بإصدار أقدم لا يعرف هذه الميزة — أعد تشغيله",
+        detail: t("الجسر بإصدار أقدم لا يعرف هذه الميزة — أعد تشغيله"),
       };
     }
     const error = payload?.error ?? "";
@@ -312,27 +313,35 @@ export function openAgentTerminal(
 export function describeBridgeAction(result: BridgeActionResult): string {
   switch (result.state) {
     case "ok":
-      return "تم.";
+      return t("تم.");
     case "offline":
-      return "الجسر غير متصل — شغّله بأمر npm run bridge.";
+      return t("الجسر غير متصل — شغّله بأمر npm run bridge.");
     case "bad_token":
-      return "توكن الجسر مرفوض — راجع الإعدادات.";
+      return t("توكن الجسر مرفوض — راجع الإعدادات.");
     case "invalid_workspace":
-      return `مجلد مساحة العمل غير صالح${result.detail ? `: ${result.detail}` : ""}.`;
+      return t("مجلد مساحة العمل غير صالح{v1}.", {
+        v1: result.detail ? `: ${result.detail}` : "",
+      });
     case "trust_unsupported":
-      return "هذا الوكيل لا يملك ملف ثقة معروفاً — ثقته تُدار من داخله.";
+      return t("هذا الوكيل لا يملك ملف ثقة معروفاً — ثقته تُدار من داخله.");
     case "trust_file_unreadable":
-      return "ملف الثقة الخاص بالوكيل غير قابل للقراءة — لم يُعدَّل شيء.";
+      return t("ملف الثقة الخاص بالوكيل غير قابل للقراءة — لم يُعدَّل شيء.");
     case "trust_conflict":
-      return "المجلد مسجّل في إعدادات الوكيل بمستوى ثقة آخر — لم يُعدَّل شيء؛ غيّره من داخل الوكيل.";
+      return t(
+        "المجلد مسجّل في إعدادات الوكيل بمستوى ثقة آخر — لم يُعدَّل شيء؛ غيّره من داخل الوكيل.",
+      );
     case "trust_path_unsupported":
-      return "مسار المجلد يحوي علامة ' لا يقبلها ملف إعدادات الوكيل — لم يُعدَّل شيء.";
+      return t(
+        "مسار المجلد يحوي علامة ' لا يقبلها ملف إعدادات الوكيل — لم يُعدَّل شيء.",
+      );
     case "agent_not_installed":
-      return "الوكيل غير مثبّت أو غير موجود في PATH.";
+      return t("الوكيل غير مثبّت أو غير موجود في PATH.");
     case "no_terminal_found":
-      return "لم يُعثر على تطبيق طرفية على هذا النظام.";
+      return t("لم يُعثر على تطبيق طرفية على هذا النظام.");
     default:
-      return `تعذّر التنفيذ${result.detail ? ` (${result.detail})` : ""}.`;
+      return t("تعذّر التنفيذ{v1}.", {
+        v1: result.detail ? ` (${result.detail})` : "",
+      });
   }
 }
 
@@ -445,7 +454,7 @@ export async function startPtySession(
       detail:
         payload?.detail ??
         (error === "not_found"
-          ? "الجسر بإصدار أقدم لا يعرف الطرفيات المدمجة — أعد تشغيله"
+          ? t("الجسر بإصدار أقدم لا يعرف الطرفيات المدمجة — أعد تشغيله")
           : (error ?? `http_${response.status}`)),
     };
   } catch {

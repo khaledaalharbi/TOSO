@@ -16,6 +16,8 @@
  *      bullet (✦ ⏺ ●) with a space, dedent, collapse blank runs.
  */
 
+import { tx } from "@/lib/i18n";
+
 // A rule line; Claude Code's input box draws one that ends in its "❯".
 const RULE = /^\s*[▄▀─━═╌┄]{8,}\s*[❯›>]?\s*$/;
 const END_MARKERS = [
@@ -75,21 +77,21 @@ const promptText = (line: string) => line.replace(/^\s*[>›❯]\s?/, "");
 const DECISION_PATTERNS: [RegExp, string][] = [
   [
     /do you trust|trust (the files in )?this folder|trust the authors/i,
-    "الثقة بالمجلد",
+    tx("الثقة بالمجلد"),
   ],
-  [/allow .{0,40}work in this folder/i, "السماح بالعمل في المجلد"],
+  [/allow .{0,40}work in this folder/i, tx("السماح بالعمل في المجلد")],
   // Tool-approval dialogs across the TUIs — Gemini "Allow execution of
   // [Shell]?", Claude "Do you want to proceed?", Codex "Would you like to
   // run the following command?". The agent waits on a permission, the turn
   // is not done, and the dialog must not be captured as the reply.
   [
     /allow execution of|allow this (action|command|tool)|do you want to (run|execute|proceed|make|apply)|would you like to (run|execute)|proceed with .{0,40}\?|apply this (edit|change)/i,
-    "إذن تنفيذ أداة",
+    tx("إذن تنفيذ أداة"),
   ],
-  [/enter to confirm|↵ to choose|to select\s*·/i, "اختيار من قائمة"],
-  [/choice \[default/i, "سؤال إعداد أولي"],
-  [/\[(y\/n|Y\/n|y\/N)\]|\(y\/n\)/, "سؤال نعم/لا"],
-  [/press enter to continue/i, "ضغط Enter للمتابعة"],
+  [/enter to confirm|↵ to choose|to select\s*·/i, tx("اختيار من قائمة")],
+  [/choice \[default/i, tx("سؤال إعداد أولي")],
+  [/\[(y\/n|Y\/n|y\/N)\]|\(y\/n\)/, tx("سؤال نعم/لا")],
+  [/press enter to continue/i, tx("ضغط Enter للمتابعة")],
 ];
 
 /**

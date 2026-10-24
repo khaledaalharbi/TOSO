@@ -20,6 +20,7 @@ import type {
   ProviderConfig,
   VariantReport,
 } from "@/lib/types";
+import { t } from "@/lib/i18n";
 
 /** Progress hooks so the UI can light the pipeline as real work completes. */
 export interface OptimizationEvents {
@@ -101,13 +102,17 @@ export async function runOptimization(
           arabic: null,
           english: normalizedPrompt,
           source: "mock",
-          note: "لم يجتز مخرج Gemini فحوص السلامة المحلية؛ عُرض النص المنقّى محلياً والنسخة العربية محجوبة.",
+          note: t(
+            "لم يجتز مخرج Gemini فحوص السلامة المحلية؛ عُرض النص المنقّى محلياً والنسخة العربية محجوبة.",
+          ),
         }
       : {
           arabic: normalizedPrompt,
           english: null,
           source: "mock",
-          note: "لم يجتز مخرج Gemini فحوص السلامة المحلية (كيانات أو لغة)؛ استُخدمت تنقية محلية آمنة دون ترجمة.",
+          note: t(
+            "لم يجتز مخرج Gemini فحوص السلامة المحلية (كيانات أو لغة)؛ استُخدمت تنقية محلية آمنة دون ترجمة.",
+          ),
         }
     : result;
   events.onOptimized?.(optimized);

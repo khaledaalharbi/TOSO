@@ -22,6 +22,8 @@ export const runtime = "nodejs";
 interface OptimizeRequest {
   text?: string;
   model?: string;
+  /** UI language — decides the language of `note` (default: Arabic). */
+  ui?: string;
 }
 
 interface DualOutput {
@@ -31,6 +33,7 @@ interface DualOutput {
 }
 
 type Direction = "ar" | "en";
+type Ui = "ar" | "en";
 
 /** Structured-output schema — JSON Schema for both host contracts. */
 const DUAL_SCHEMA = {
@@ -82,6 +85,24 @@ const SYSTEM_INSTRUCTION = [
   "راجع حفظ المهمة والقيود في النسختين قبل الإرجاع. أعد JSON فقط، دون شرح للمراجعة أو Markdown.",
 ].join("\n");
 
+/** The `note` sentence follows the UI language; everything else is language-fixed. */
+function instructionFor(direction: Direction, ui: Ui): string {
+  if (direction === "en") {
+    return ui === "en"
+      ? ENGLISH_INSTRUCTION.replace(
+          "honest Arabic sentence",
+          "honest English sentence",
+        )
+      : ENGLISH_INSTRUCTION;
+  }
+  return ui === "en"
+    ? SYSTEM_INSTRUCTION.replace(
+        '"note" عربية دائماً',
+        '"note" إنجليزية دائماً',
+      ).replace('"note": جملة عربية قصيرة', '"note": جملة إنجليزية قصيرة')
+    : SYSTEM_INSTRUCTION;
+}
+
 export async function POST(request: Request): Promise<NextResponse> {
   let body: OptimizeRequest;
   try {
@@ -95,7 +116,8 @@ export async function POST(request: Request): Promise<NextResponse> {
     typeof body !== "object" ||
     Array.isArray(body) ||
     (body.text !== undefined && typeof body.text !== "string") ||
-    (body.model !== undefined && typeof body.model !== "string")
+    (body.model !== undefined && typeof body.model !== "string") ||
+    (body.ui !== undefined && body.ui !== "ar" && body.ui !== "en")
   ) {
     return NextResponse.json({ error: "invalid_request" }, { status: 400 });
   }
@@ -129,8 +151,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     apiKey,
     viaUserKey: userKey !== null,
     model: body.model,
-    systemInstruction:
-      direction === "en" ? ENGLISH_INSTRUCTION : SYSTEM_INSTRUCTION,
+    systemInstruction: instructionFor(
+      direction,
+      body.ui === "en" ? "en" : "ar",
+    ),
     userText: wrapInput(text),
     studioConfig: {
       // AI Studio (generativelanguage) contract — verified live:

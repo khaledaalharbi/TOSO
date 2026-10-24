@@ -23,6 +23,7 @@ import { AgentComposer } from "@/components/agent-composer";
 import { AgentViewTabs, type AgentView } from "@/components/agent-view-tabs";
 import { ArabicOnDemand } from "@/components/arabic-on-demand";
 import { BridgeBadge } from "@/components/bridge-badge";
+import { LanguageToggle } from "@/components/language-toggle";
 import {
   MeasureGauges,
   formatCost,
@@ -131,6 +132,8 @@ import type {
   TokenMeasurement,
   VariantReport,
 } from "@/lib/types";
+import { useI18n } from "@/components/i18n-provider";
+import { t as tNow, tx } from "@/lib/i18n";
 
 const initialConfig: ProviderConfig = {
   provider: DEFAULT_PROVIDER,
@@ -142,8 +145,9 @@ const USER_KEY_STORAGE = "toso.userGeminiKey";
 const BRIDGE_URL_STORAGE = "toso.bridgeUrl";
 const BRIDGE_TOKEN_STORAGE = "toso.bridgeToken";
 const AGENT_STORAGE = "toso.agent";
-const NO_ENGLISH_NOTE =
-  "لم يُرسَل شيء: الوكلاء يستقبلون الإنجليزية فقط (لتقليل التوكنز)، وهذا النص ليس إنجليزياً — عالجه أولاً من مدخل الوكيل.";
+const NO_ENGLISH_NOTE = tx(
+  "لم يُرسَل شيء: الوكلاء يستقبلون الإنجليزية فقط (لتقليل التوكنز)، وهذا النص ليس إنجليزياً — عالجه أولاً من مدخل الوكيل.",
+);
 /** Per-agent «إرسال مباشرة بعد المعالجة» switches. */
 const AUTO_SEND_AGENTS_STORAGE = "toso.autoSendAgents";
 /** The old single global auto-send (default agent only) — migrated once. */
@@ -233,7 +237,10 @@ async function launchAgentTerminal(
     ui.setNote({
       agent: agentId,
       ok: false,
-      text: `افحص مجلد مشروع ${agentLabel(agentId)} أولاً (الخطوة ①) — نافذة خارجية بلا مجلد مفحوص قد تعمل على مجلد TOSO نفسه.`,
+      text: tNow(
+        "افحص مجلد مشروع {label} أولاً (الخطوة ①) — نافذة خارجية بلا مجلد مفحوص قد تعمل على مجلد TOSO نفسه.",
+        { label: agentLabel(agentId) },
+      ),
     });
     ui.setBusy(null);
     return;
@@ -255,7 +262,10 @@ async function launchAgentTerminal(
       ui.setNote({
         agent: agentId,
         ok: true,
-        text: `فُتحت نافذة خارجية لـ ${agentLabel(agentId)} — جلسة منفصلة عن الطرفية المدمجة، لا يقرؤها TOSO.`,
+        text: tNow(
+          "فُتحت نافذة خارجية لـ {label} — جلسة منفصلة عن الطرفية المدمجة، لا يقرؤها TOSO.",
+          { label: agentLabel(agentId) },
+        ),
       });
     } else {
       ui.setNote({
@@ -273,12 +283,13 @@ export type Phase = "idle" | "analyzing" | "optimizing" | "measuring" | "done";
 type NodeStatus = "idle" | "active" | "done";
 
 const runLabel: Record<Exclude<Phase, "idle" | "done">, string> = {
-  analyzing: "يقيس الـTokens…",
-  optimizing: "يفهم ويعيد الصياغة…",
-  measuring: "يقيس الناتج…",
+  analyzing: tx("يقيس الـTokens…"),
+  optimizing: tx("يفهم ويعيد الصياغة…"),
+  measuring: tx("يقيس الناتج…"),
 };
 
 export function OptimizerWorkspace() {
+  const { t, lang, dir } = useI18n();
   const [running, setRunning] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   const [original, setOriginal] = useState<TokenMeasurement | null>(null);
@@ -687,8 +698,11 @@ export function OptimizerWorkspace() {
           agent: session.agent,
           ok: false,
           text: terminal?.busy()
-            ? `${agentLabel(session.agent)} يعمل على دورة في هذا التبويب — انتظر انتهاءها ثم اتصل بالجلسة.`
-            : "الجلسة لم تعد حيّة على الجسر.",
+            ? t(
+                "{v1} يعمل على دورة في هذا التبويب — انتظر انتهاءها ثم اتصل بالجلسة.",
+                { v1: agentLabel(session.agent) },
+              )
+            : t("الجلسة لم تعد حيّة على الجسر."),
         });
         return;
       }
@@ -749,7 +763,9 @@ export function OptimizerWorkspace() {
         setTerminalNote({
           agent: closed.agent,
           ok: false,
-          text: `تعذّر فتح الجلسة: ${describeBridgeAction(check)}`,
+          text: t("تعذّر فتح الجلسة: {v1}", {
+            v1: describeBridgeAction(check),
+          }),
         });
         return;
       }
@@ -758,7 +774,10 @@ export function OptimizerWorkspace() {
         setTerminalNote({
           agent: closed.agent,
           ok: false,
-          text: `${agentLabel(closed.agent)} يعمل على دورة في هذا التبويب — انتظر انتهاءها ثم افتح الجلسة.`,
+          text: t(
+            "{v1} يعمل على دورة في هذا التبويب — انتظر انتهاءها ثم افتح الجلسة.",
+            { v1: agentLabel(closed.agent) },
+          ),
         });
         return;
       }
@@ -828,7 +847,7 @@ export function OptimizerWorkspace() {
       setOriginalRatio(null);
       setPhase("idle");
       setRunError(
-        "تعذّر إكمال التحليل. نصك ما زال في مدخل الوكيل؛ أعد المحاولة.",
+        t("تعذّر إكمال التحليل. نصك ما زال في مدخل الوكيل؛ أعد المحاولة."),
       );
       return null;
     } finally {
@@ -860,11 +879,16 @@ export function OptimizerWorkspace() {
    * bridge would silently operate on TOSO itself.
    */
   function sendBlocker(text: string, agent: string): string | null {
-    if (!isAgentWireText(text)) return NO_ENGLISH_NOTE;
+    if (!isAgentWireText(text)) return t(NO_ENGLISH_NOTE);
     if (!folderChecked(agent)) {
       return workspaceFor(config.workspaces, agent)
-        ? `لم يُرسَل النص: افحص مجلد مشروع ${agentLabel(agent)} أولاً — الخطوة ① «فحص المجلد».`
-        : `لم يُرسَل النص: حدّد مجلد مشروع ${agentLabel(agent)} ثم افحصه — الخطوة ①.`;
+        ? t(
+            "لم يُرسَل النص: افحص مجلد مشروع {v1} أولاً — الخطوة ① «فحص المجلد».",
+            { v1: agentLabel(agent) },
+          )
+        : t("لم يُرسَل النص: حدّد مجلد مشروع {v1} ثم افحصه — الخطوة ①.", {
+            v1: agentLabel(agent),
+          });
     }
     return null;
   }
@@ -969,12 +993,16 @@ export function OptimizerWorkspace() {
           phase: status.state === "invalid_workspace" ? "error" : "offline",
           message:
             status.state === "invalid_workspace"
-              ? `مجلد مشروع هذا الوكيل مرفوض${status.detail ? `: ${status.detail}` : ""} — صحّحه من تبويبه.`
+              ? t("مجلد مشروع هذا الوكيل مرفوض{v1} — صحّحه من تبويبه.", {
+                  v1: status.detail ? `: ${status.detail}` : "",
+                })
               : status.state === "bad_token"
-                ? "التوكن غير صحيح — انسخ التوكن الذي طبعه الجسر عند تشغيله إلى الإعدادات."
+                ? t(
+                    "التوكن غير صحيح — انسخ التوكن الذي طبعه الجسر عند تشغيله إلى الإعدادات.",
+                  )
                 : status.state === "bad_url"
-                  ? "عنوان الجسر غير صالح في الإعدادات."
-                  : "الجسر غير متصل على هذا العنوان.",
+                  ? t("عنوان الجسر غير صالح في الإعدادات.")
+                  : t("الجسر غير متصل على هذا العنوان."),
         });
         return;
       }
@@ -1014,7 +1042,7 @@ export function OptimizerWorkspace() {
           agent,
           prompt: text,
           phase: "error",
-          message: "انقطع الاتصال بالجسر أثناء التشغيل.",
+          message: t("انقطع الاتصال بالجسر أثناء التشغيل."),
         });
       }
     }
@@ -1065,8 +1093,8 @@ export function OptimizerWorkspace() {
           outputWire:
             output ||
             (capture.timedOut
-              ? "انتهت مهلة الالتقاط — الرد الكامل في الطرفية أعلاه."
-              : "لم يُلتقط رد نصي — راجع الطرفية أعلاه."),
+              ? t("انتهت مهلة الالتقاط — الرد الكامل في الطرفية أعلاه.")
+              : t("لم يُلتقط رد نصي — راجع الطرفية أعلاه.")),
           outputRaw: capture.region,
           cleanedBy,
           status: output ? "done" : "error",
@@ -1088,7 +1116,7 @@ export function OptimizerWorkspace() {
           outputWire:
             error instanceof Error
               ? error.message
-              : "تعذّر الإرسال إلى الطرفية.",
+              : t("تعذّر الإرسال إلى الطرفية."),
           status: "error",
         }),
       );
@@ -1102,7 +1130,8 @@ export function OptimizerWorkspace() {
    * too when that job is the current run.
    */
   async function translateJob(agent: string, jobId: string, output: string) {
-    if (!output.trim() || translatingJobs.has(jobId)) return;
+    // English UI: replies are already in the user's language — never translate back.
+    if (lang !== "ar" || !output.trim() || translatingJobs.has(jobId)) return;
     setTranslatingJobs((jobs) => new Set(jobs).add(jobId));
     try {
       const result = await translateToArabic(
@@ -1173,8 +1202,12 @@ export function OptimizerWorkspace() {
   const nativeText = englishPrimary
     ? (report?.english?.text ?? dual?.english ?? null)
     : (report?.arabic?.text ?? dual?.arabic ?? null);
+  // English UI + English input: the composer already holds the polished text,
+  // so the card only appears for a run whose input was in another language.
+  const showUserCard =
+    lang === "ar" || (nativeText !== null && !englishPrimary);
   const progress = running
-    ? (runLabel[phase as keyof typeof runLabel] ?? "يعالج…")
+    ? t(runLabel[phase as keyof typeof runLabel] ?? "يعالج…")
     : null;
   const viewOf = (id: string): AgentView => views[id] ?? "terminal";
   const changeView = (id: string, next: AgentView) => {
@@ -1193,15 +1226,16 @@ export function OptimizerWorkspace() {
   return (
     <main className="blueprint-grid min-h-screen px-4 py-8 sm:px-7">
       <div className="mx-auto max-w-[1840px]">
-        <header className="mb-2 flex items-center justify-between">
+        <header className="mb-2 flex items-center justify-between ltr:flex-row-reverse">
           <div className="flex items-center gap-2">
             {savedKeyStatus ? <KeyStatusHint status={savedKeyStatus} /> : null}
             <button
               onClick={() => setSettingsOpen(true)}
               className="flex items-center gap-2 border border-ink bg-white px-3 py-2 text-sm font-semibold transition hover:bg-slate-50"
             >
-              <Settings2 size={17} /> الإعدادات
+              <Settings2 size={17} /> {t("الإعدادات")}
             </button>
+            <LanguageToggle />
             <span className="hidden border border-slate-300 bg-white px-2.5 py-1 font-mono text-[11px] text-slate-600 sm:inline">
               {modelLabel}
             </span>
@@ -1211,12 +1245,13 @@ export function OptimizerWorkspace() {
               onClick={() => setSessionsOpenSignal((n) => n + 1)}
             />
           </div>
-          <div className="text-right">
+          <div className="rtl:text-right ltr:text-left">
             <div className="flex items-center gap-2 text-xl font-black">
-              <Sparkles className="text-brand-500" /> مُحسّن التلقينة العربية
+              <Sparkles className="text-brand-500" />{" "}
+              {t("مُحسّن التلقينة العربية")}
             </div>
             <p className="mt-1 font-mono text-[11px] text-slate-500">
-              TOSO — قياس وتقليص تكلفة التلقينة / Prompt Workbench
+              {t("TOSO — قياس وتقليص تكلفة التلقينة / Prompt Workbench")}
             </p>
           </div>
         </header>
@@ -1225,8 +1260,9 @@ export function OptimizerWorkspace() {
             role="status"
             className="mt-4 border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800"
           >
-            تعذّر الوصول إلى تخزين المتصفح؛ لا يمكن ضمان حفظ المفتاح أو مسحه بعد
-            إغلاق الصفحة. يمكنك المتابعة في هذه الجلسة.
+            {t(
+              "تعذّر الوصول إلى تخزين المتصفح؛ لا يمكن ضمان حفظ المفتاح أو مسحه بعد إغلاق الصفحة. يمكنك المتابعة في هذه الجلسة.",
+            )}
           </p>
         )}
         {runError && (
@@ -1242,8 +1278,10 @@ export function OptimizerWorkspace() {
           {/* WORK — the agent, its own prompt box, the native companion */}
           <div className="min-w-0">
             <SpecHead
-              title="وكيل CLI"
-              note="اكتب في تبويب الوكيل، عالج، ثم أرسل — الوكيل يستلم الإنجليزية فقط"
+              title={t("وكيل CLI")}
+              note={t(
+                "اكتب في تبويب الوكيل، عالج، ثم أرسل — الوكيل يستلم الإنجليزية فقط",
+              )}
             />
             <BridgeSessions
               state={bridgeSessions.state}
@@ -1481,7 +1519,10 @@ export function OptimizerWorkspace() {
           {/* SIDE — the measurement dials, then the native-language card */}
           <aside className="min-w-0 xl:self-stretch">
             <div className="xl:sticky xl:top-4">
-              <SpecHead title="العدّاد" note="قبل المعالجة وبعدها — الخلاصة" />
+              <SpecHead
+                title={t("العدّاد")}
+                note={t("قبل المعالجة وبعدها — الخلاصة")}
+              />
               <MeasureGauges
                 data={report ? gaugeData(report) : null}
                 running={running}
@@ -1489,87 +1530,95 @@ export function OptimizerWorkspace() {
                 source={
                   dual
                     ? dual.source === "gemini"
-                      ? `${dual.model ? getModel("google", dual.model).label : "Gemini"}${dual.viaUserKey ? " · مفتاحك" : ""}`
-                      : "محلي"
+                      ? `${dual.model ? getModel("google", dual.model).label : "Gemini"}${dual.viaUserKey ? t(" · مفتاحك") : ""}`
+                      : t("محلي")
                     : undefined
                 }
                 caption={
                   lastRun
-                    ? `${agentLabel(lastRun.agent)} · ${new Date(lastRun.at).toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" })}`
+                    ? `${agentLabel(lastRun.agent)} · ${new Date(lastRun.at).toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" })}`
                     : undefined
                 }
               />
               {/* The polished text in the user's language — read and copy. */}
-              <details className="group mt-4 border border-ink bg-white">
-                <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 [&::-webkit-details-marker]:hidden">
-                  <span className="flex items-center gap-1.5 bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">
-                    <Languages size={14} /> بطاقة لغة المستخدم
-                  </span>
-                  <span className="text-xs text-slate-500">
-                    {nativeText
-                      ? "النسخة المنقّحة بلغتك من آخر معالجة — للقراءة والنسخ"
-                      : "تظهر هنا النسخة المنقّحة بلغتك بعد المعالجة"}
-                  </span>
-                  <ChevronDown
-                    size={16}
-                    className="ms-auto text-slate-500 transition group-open:rotate-180"
-                  />
-                </summary>
-                <div className="border-t border-slate-200 p-4">
-                  <OutputCard
-                    lang={englishPrimary ? "en" : "ar"}
-                    title="Optimized Output"
-                    chip={
-                      isMock && nativeText
-                        ? "تنقية محلية"
-                        : englishPrimary
-                          ? "English"
-                          : "العربية"
-                    }
-                    status={s3}
-                    text={nativeText}
-                    unavailable={arabicUnavailable}
-                    unavailableReason={
-                      report?.rejectedByGuard
-                        ? "حُجبت النسخة العربية لأن مخرج Gemini لم يجتز فحوص السلامة؛ عُرض النص المنقّى محلياً."
-                        : "الترجمة العربية غير متاحة في الوضع المحلي أو عند تعذّر Gemini."
-                    }
-                    report={
-                      englishPrimary
-                        ? (report?.english ?? null)
-                        : (report?.arabic ?? null)
-                    }
-                  />
-                  {englishPrimary && report?.english && (
-                    <ArabicOnDemand
-                      key={report.english.text}
-                      english={report.english.text}
-                      model={config.model}
-                      userKey={config.userKey}
+              {showUserCard ? (
+                <details className="group mt-4 border border-ink bg-white">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 [&::-webkit-details-marker]:hidden">
+                    <span className="flex items-center gap-1.5 bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">
+                      <Languages size={14} /> {t("بطاقة لغة المستخدم")}
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      {nativeText
+                        ? t(
+                            "النسخة المنقّحة بلغتك من آخر معالجة — للقراءة والنسخ",
+                          )
+                        : t("تظهر هنا النسخة المنقّحة بلغتك بعد المعالجة")}
+                    </span>
+                    <ChevronDown
+                      size={16}
+                      className="ms-auto text-slate-500 transition group-open:rotate-180"
                     />
-                  )}
-                </div>
-              </details>
+                  </summary>
+                  <div className="border-t border-slate-200 p-4">
+                    <OutputCard
+                      lang={englishPrimary ? "en" : "ar"}
+                      title="Optimized Output"
+                      chip={
+                        isMock && nativeText
+                          ? t("تنقية محلية")
+                          : englishPrimary
+                            ? "English"
+                            : t("العربية")
+                      }
+                      status={s3}
+                      text={nativeText}
+                      unavailable={arabicUnavailable}
+                      unavailableReason={
+                        report?.rejectedByGuard
+                          ? t(
+                              "حُجبت النسخة العربية لأن مخرج Gemini لم يجتز فحوص السلامة؛ عُرض النص المنقّى محلياً.",
+                            )
+                          : t(
+                              "الترجمة العربية غير متاحة في الوضع المحلي أو عند تعذّر Gemini.",
+                            )
+                      }
+                      report={
+                        englishPrimary
+                          ? (report?.english ?? null)
+                          : (report?.arabic ?? null)
+                      }
+                    />
+                    {lang === "ar" && englishPrimary && report?.english && (
+                      <ArabicOnDemand
+                        key={report.english.text}
+                        english={report.english.text}
+                        model={config.model}
+                        userKey={config.userKey}
+                      />
+                    )}
+                  </div>
+                </details>
+              ) : null}
             </div>
           </aside>
         </div>
 
         <div className="mt-2">
           <SpecHead
-            title="التعليمات والتفاصيل"
-            note="نتائج المحطات والتحليل والتكلفة لآخر معالجة"
+            title={t("التعليمات والتفاصيل")}
+            note={t("نتائج المحطات والتحليل والتكلفة لآخر معالجة")}
           />
           <DetailsDrawer
             tabs={[
               {
                 id: "stations",
-                label: "نتائج المحطات",
+                label: t("نتائج المحطات"),
                 body: (
                   <div className="grid gap-4 md:grid-cols-2">
                     <SpecCard
                       tag="ST-01"
-                      title="قياس الأصل"
-                      subtitle="Token Analysis — قياس النص الأصلي"
+                      title={t("قياس الأصل")}
+                      subtitle={t("Token Analysis — قياس النص الأصلي")}
                       status={s1}
                       action={
                         original ? (
@@ -1591,18 +1640,21 @@ export function OptimizerWorkspace() {
                             <Metric
                               label={
                                 original.source === "provider"
-                                  ? "Tokens حقيقية"
-                                  : "Tokens تقديرية"
+                                  ? t("Tokens حقيقية")
+                                  : t("Tokens تقديرية")
                               }
                               value={original.tokens}
                             />
-                            <Metric label="كلمة" value={original.words} />
-                            <Metric label="حرف" value={original.characters} />
+                            <Metric label={t("كلمة")} value={original.words} />
+                            <Metric
+                              label={t("حرف")}
+                              value={original.characters}
+                            />
                           </div>
                           {originalRatio !== null && (
                             <div className="mt-3 flex items-center gap-2 border border-slate-300 bg-slate-50 px-3 py-2 text-xs">
                               <span className="font-bold text-slate-500">
-                                نسبة العربية
+                                {t("نسبة العربية")}
                               </span>
                               <div className="h-2 flex-1 overflow-hidden bg-slate-200">
                                 <div
@@ -1621,14 +1673,16 @@ export function OptimizerWorkspace() {
                       ) : (
                         <Placeholder
                           active={s1 === "active"}
-                          text="ستظهر قياسات النص الأصلي هنا"
+                          text={t("ستظهر قياسات النص الأصلي هنا")}
                         />
                       )}
                     </SpecCard>
                     <SpecCard
                       tag="ST-02"
-                      title="المعالجة"
-                      subtitle="تنقية محلية ثم إعادة صياغة عبر Gemini عند توفره"
+                      title={t("المعالجة")}
+                      subtitle={t(
+                        "تنقية محلية ثم إعادة صياغة عبر Gemini عند توفره",
+                      )}
                       status={s2}
                     >
                       {dual ? (
@@ -1639,14 +1693,16 @@ export function OptimizerWorkspace() {
                             className={`px-2.5 py-1 text-[11px] font-bold ${dual.source === "gemini" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}
                           >
                             {dual.source === "gemini"
-                              ? `${dual.model ?? "Gemini"}${dual.viaUserKey ? " · مفتاحك" : ""}`
-                              : "محلي"}
+                              ? `${dual.model ?? "Gemini"}${dual.viaUserKey ? t(" · مفتاحك") : ""}`
+                              : t("محلي")}
                           </span>
                         </div>
                       ) : (
                         <Placeholder
                           active={s2 === "active"}
-                          text="يُنقّى النص محلياً، ويُنشئ Gemini النسخة الإنجليزية المختصرة عند توفره"
+                          text={t(
+                            "يُنقّى النص محلياً، ويُنشئ Gemini النسخة الإنجليزية المختصرة عند توفره",
+                          )}
                         />
                       )}
                     </SpecCard>
@@ -1655,7 +1711,7 @@ export function OptimizerWorkspace() {
               },
               {
                 id: "analysis",
-                label: "التحليل",
+                label: t("التحليل"),
                 body: report ? (
                   <div className="space-y-4">
                     <TokenHeatmap report={report} />
@@ -1665,13 +1721,15 @@ export function OptimizerWorkspace() {
                 ) : (
                   <Placeholder
                     active={phase === "measuring"}
-                    text="تظهر خريطة الثقل وتفصيل التوفير هنا بعد أول معالجة"
+                    text={t(
+                      "تظهر خريطة الثقل وتفصيل التوفير هنا بعد أول معالجة",
+                    )}
                   />
                 ),
               },
               {
                 id: "cost",
-                label: "التكلفة",
+                label: t("التكلفة"),
                 body: (
                   <CostBar
                     report={report}
@@ -1687,26 +1745,29 @@ export function OptimizerWorkspace() {
               },
               {
                 id: "notes",
-                label: "ملاحظات",
+                label: t("ملاحظات"),
                 body: (
                   <ul className="space-y-2 border border-slate-300 bg-white p-4 text-xs leading-6 text-slate-600">
                     <li>
-                      لكل وكيل مدخله: ما تكتبه في تبويب وكيل يُرسل إليه هو.
-                      «معالجة» تستبدل مسودتك بالإنجليزية المختصرة، و«عرض الأصل»
-                      و«تراجع» يعيدانها حتى الإرسال.
+                      {t(
+                        "لكل وكيل مدخله: ما تكتبه في تبويب وكيل يُرسل إليه هو. «معالجة» تستبدل مسودتك بالإنجليزية المختصرة، و«عرض الأصل» و«تراجع» يعيدانها حتى الإرسال.",
+                      )}
                     </li>
                     <li>
-                      الوكلاء يستلمون الإنجليزية فقط لتقليل التوكنز؛ نصك بلغتك
-                      يُحفظ في عمود لغتك من سجل IN / OUT.
+                      {t(
+                        "الوكلاء يستلمون الإنجليزية فقط لتقليل التوكنز؛ نصك بلغتك يُحفظ في عمود لغتك من سجل IN / OUT.",
+                      )}
                     </li>
                     <li>
-                      «إرسال أيضاً» في السجل يعيد إرسال نصوص عولجت سابقاً إلى
-                      وكيل آخر — بلا معالجة جديدة ولا تكلفة إضافية.
+                      {t(
+                        "«إرسال أيضاً» في السجل يعيد إرسال نصوص عولجت سابقاً إلى وكيل آخر — بلا معالجة جديدة ولا تكلفة إضافية.",
+                      )}
                     </li>
                     <li className="flex items-center gap-2">
-                      <Gauge size={14} className="shrink-0" /> القياس عبر Gemini
-                      countTokens عند توفره، وإلا بتقدير محلي · مفتاحك يبقى في
-                      متصفحك.
+                      <Gauge size={14} className="shrink-0" />{" "}
+                      {t(
+                        "القياس عبر Gemini countTokens عند توفره، وإلا بتقدير محلي · مفتاحك يبقى في متصفحك.",
+                      )}
                     </li>
                   </ul>
                 ),
@@ -1806,13 +1867,14 @@ function DetailsDrawer({
 }: {
   tabs: { id: string; label: string; body: ReactNode }[];
 }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(tabs[0].id);
   const current = tabs.find((tab) => tab.id === open) ?? tabs[0];
   return (
     <section className="border border-ink bg-white">
       <div
         role="tablist"
-        aria-label="التعليمات والتفاصيل"
+        aria-label={t("التعليمات والتفاصيل")}
         className="flex flex-wrap gap-1.5 border-b border-slate-200 p-2"
       >
         {tabs.map((tab) => (
@@ -1847,11 +1909,12 @@ function DetailsDrawer({
 }
 
 function Placeholder({ active, text }: { active: boolean; text: string }) {
+  const { t } = useI18n();
   return (
     <div
       className={`border bg-slate-50/60 p-4 text-center text-sm ${active ? "border-brand-500/60 text-slate-500" : "border-slate-300 text-slate-400"}`}
     >
-      {active ? "جارٍ المعالجة…" : text}
+      {active ? t("جارٍ المعالجة…") : text}
     </div>
   );
 }
@@ -1860,27 +1923,30 @@ function Placeholder({ active, text }: { active: boolean; text: string }) {
 const keyStatusLegend: { status: KeyStatus; label: string }[] = [
   {
     status: "idle",
-    label: "مفتاح محفوظ لم يُفحص بعد — اضغط «تحقق» في الإعدادات",
+    label: tx("مفتاح محفوظ لم يُفحص بعد — اضغط «تحقق» في الإعدادات"),
   },
-  { status: "ok", label: "يعمل — آخر تشغيل أو فحص نجح على مفتاحك" },
-  { status: "invalid", label: "مرفوض من Google في آخر محاولة" },
-  { status: "quota", label: "حصة مفتاحك مستنزفة مؤقتاً" },
-  { status: "unreachable", label: "تعذّر الفحص — الشبكة أو الخادم" },
+  { status: "ok", label: tx("يعمل — آخر تشغيل أو فحص نجح على مفتاحك") },
+  { status: "invalid", label: tx("مرفوض من Google في آخر محاولة") },
+  { status: "quota", label: tx("حصة مفتاحك مستنزفة مؤقتاً") },
+  { status: "unreachable", label: tx("تعذّر الفحص — الشبكة أو الخادم") },
 ];
 
 function KeyStatusHint({ status }: { status: KeyStatus }) {
+  const { t } = useI18n();
   return (
     <div className="flex items-center gap-1.5">
       <span className={`h-2.5 w-2.5 ${dotClass[status]}`} aria-hidden="true" />
       <details className="group relative">
         <summary
           className="flex cursor-pointer list-none items-center text-slate-400 transition hover:text-slate-600 [&::-webkit-details-marker]:hidden"
-          aria-label="معنى ألوان حالة المفتاح"
+          aria-label={t("معنى ألوان حالة المفتاح")}
         >
           <Info size={15} />
         </summary>
         <div className="absolute start-0 top-6 z-40 w-64 border border-ink bg-white p-3 text-xs leading-5 text-slate-600 shadow-hard-sm">
-          <p className="mb-2 font-bold text-slate-700">حالة مفتاحك المحفوظ</p>
+          <p className="mb-2 font-bold text-slate-700">
+            {t("حالة مفتاحك المحفوظ")}
+          </p>
           <ul className="space-y-1.5">
             {keyStatusLegend.map((item) => (
               <li key={item.status} className="flex items-center gap-2">
@@ -1888,7 +1954,7 @@ function KeyStatusHint({ status }: { status: KeyStatus }) {
                   className={`h-2 w-2 shrink-0 ${dotClass[item.status]}`}
                   aria-hidden="true"
                 />
-                {item.label}
+                {t(item.label)}
               </li>
             ))}
           </ul>
@@ -1919,6 +1985,7 @@ function OutputCard({
   report: VariantReport | null;
   status: NodeStatus;
 }) {
+  const { t } = useI18n();
   const emerald = lang === "ar";
   const bar = emerald ? "bg-emerald-500" : "bg-sky-500";
   const chipCls = emerald
@@ -1954,7 +2021,9 @@ function OutputCard({
               </span>
             ) : (
               <span className="text-sm text-slate-400">
-                {active ? "تُستكمل القياسات…" : "الناتج المحسّن سيظهر هنا"}
+                {active
+                  ? t("تُستكمل القياسات…")
+                  : t("الناتج المحسّن سيظهر هنا")}
               </span>
             ))}
         </div>
@@ -1975,7 +2044,9 @@ function OutputCard({
                   <span className="font-mono text-sm font-black text-ink">
                     {Math.round(report.analysis.arabicRatio * 100)}%
                   </span>
-                  <span className="text-[10px] text-slate-400">عربي</span>
+                  <span className="text-[10px] text-slate-400">
+                    {t("عربي")}
+                  </span>
                 </span>
               </>
             )}
@@ -1988,10 +2059,10 @@ function OutputCard({
                 className={`h-2 w-2 ${report.measurement.source === "provider" ? "bg-emerald-500" : "bg-amber-500"}`}
               />
               {report.measurement.source === "provider"
-                ? "قياس حقيقي"
+                ? t("قياس حقيقي")
                 : report.measurement.source === "bpe"
-                  ? "BPE محلي"
-                  : "تقدير"}
+                  ? t("BPE محلي")
+                  : t("تقدير")}
             </span>
           )}
         </div>
@@ -2001,6 +2072,7 @@ function OutputCard({
 }
 
 function CopyButton({ text }: { text: string }) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
   async function copy() {
@@ -2025,22 +2097,22 @@ function CopyButton({ text }: { text: string }) {
       ) : (
         <Copy size={14} />
       )}
-      {copied ? "نُسخ!" : copyFailed ? "تعذّر النسخ" : "نسخ"}
+      {copied ? t("نُسخ!") : copyFailed ? t("تعذّر النسخ") : t("نسخ")}
     </button>
   );
 }
 
 const heatLevels = [
   {
-    label: "خفيف · نحو 1",
+    label: tx("خفيف · نحو 1"),
     className: "bg-emerald-50 text-emerald-900 ring-emerald-200",
   },
   {
-    label: "متوسط · نحو 2–3",
+    label: tx("متوسط · نحو 2–3"),
     className: "bg-amber-100 text-amber-950 ring-amber-200",
   },
   {
-    label: "مرتفع · نحو 4+",
+    label: tx("مرتفع · نحو 4+"),
     className: "bg-rose-100 text-rose-900 ring-rose-200",
   },
 ];
@@ -2058,6 +2130,7 @@ export const TokenHeatmap = memo(function TokenHeatmap({
 }: {
   report: OptimizationReport;
 }) {
+  const { t } = useI18n();
   return (
     <section
       aria-labelledby="heatmap-title"
@@ -2066,19 +2139,20 @@ export const TokenHeatmap = memo(function TokenHeatmap({
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-4">
         <div>
           <h2 id="heatmap-title" className="text-lg font-bold text-ink">
-            خريطة ثقل المقاطع
+            {t("خريطة ثقل المقاطع")}
           </h2>
           <p className="mt-1 text-sm text-slate-600">
-            شاهد مواضع الثقل التقريبي في النص الأصلي والمخرجات، من دون إرسال كل
-            مقطع إلى مزود الخدمة.
+            {t(
+              "شاهد مواضع الثقل التقريبي في النص الأصلي والمخرجات، من دون إرسال كل مقطع إلى مزود الخدمة.",
+            )}
           </p>
         </div>
         <span className="border border-sky-300 bg-sky-50 px-3 py-1 font-mono text-xs font-bold text-sky-800">
-          تقدير محلي
+          {t("تقدير محلي")}
         </span>
       </div>
       <div
-        aria-label="مفتاح ألوان الخريطة الحرارية"
+        aria-label={t("مفتاح ألوان الخريطة الحرارية")}
         className="mt-4 flex flex-wrap gap-2 text-xs"
       >
         {heatLevels.map(({ label, className }) => (
@@ -2086,7 +2160,7 @@ export const TokenHeatmap = memo(function TokenHeatmap({
             key={label}
             className={`px-2.5 py-1.5 font-semibold ring-1 ring-inset ${className}`}
           >
-            {label} توكن لكل مقطع
+            {t("{label} توكن لكل مقطع", { label: t(label) })}
           </span>
         ))}
       </div>
@@ -2095,27 +2169,27 @@ export const TokenHeatmap = memo(function TokenHeatmap({
           const arabicVariant = report.arabic ? (
             <HeatmapVariant
               key="ar"
-              title="النسخة العربية"
+              title={t("النسخة العربية")}
               text={report.arabic.text}
               direction="rtl"
             />
           ) : (
-            <HeatmapUnavailable key="ar" title="النسخة العربية" />
+            <HeatmapUnavailable key="ar" title={t("النسخة العربية")} />
           );
           const englishVariant = report.english ? (
             <HeatmapVariant
               key="en"
-              title="النسخة الإنجليزية"
+              title={t("النسخة الإنجليزية")}
               text={report.english.text}
               direction="ltr"
             />
           ) : (
-            <HeatmapUnavailable key="en" title="النسخة الإنجليزية" />
+            <HeatmapUnavailable key="en" title={t("النسخة الإنجليزية")} />
           );
           return (
             <>
               <HeatmapVariant
-                title="النص الأصلي"
+                title={t("النص الأصلي")}
                 text={report.originalPrompt}
                 direction={report.direction === "en" ? "ltr" : "rtl"}
               />
@@ -2127,20 +2201,21 @@ export const TokenHeatmap = memo(function TokenHeatmap({
         })()}
       </div>
       <p className="mt-4 border border-sky-200 bg-sky-50 px-4 py-3 text-xs leading-6 text-sky-900">
-        الألوان تقدير لطول المقطع ونوع حروفه، وليست تفكيكاً رسمياً من Gemini. لا
-        تجمع تقديرات المقاطع لتطابق إجمالي countTokens؛ الأرقام الرسمية والتكلفة
-        المعروضة أعلاه/أدناه منفصلة عن هذه الخريطة.
+        {t(
+          "الألوان تقدير لطول المقطع ونوع حروفه، وليست تفكيكاً رسمياً من Gemini. لا تجمع تقديرات المقاطع لتطابق إجمالي countTokens؛ الأرقام الرسمية والتكلفة المعروضة أعلاه/أدناه منفصلة عن هذه الخريطة.",
+        )}
       </p>
     </section>
   );
 });
 
 function HeatmapUnavailable({ title }: { title: string }) {
+  const { t } = useI18n();
   return (
     <div className="border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
       <h3 className="font-bold text-slate-700">{title}</h3>
       <p className="mt-3">
-        غير متاحة في هذا التشغيل؛ لا توجد خريطة لنص غير موجود.
+        {t("غير متاحة في هذا التشغيل؛ لا توجد خريطة لنص غير موجود.")}
       </p>
     </div>
   );
@@ -2155,6 +2230,7 @@ function HeatmapVariant({
   text: string;
   direction: "rtl" | "ltr";
 }) {
+  const { t } = useI18n();
   const { segments, scoredSegments, truncated } = estimateHeatmapSegments(text);
   const heaviest = segments
     .filter(({ tokens }) => tokens !== null)
@@ -2165,7 +2241,7 @@ function HeatmapVariant({
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-bold text-ink">{title}</h3>
         <span className="border border-slate-200 bg-white px-2 py-1 font-mono text-[11px] font-semibold text-slate-600">
-          {scoredSegments} مقطع في المعاينة
+          {t("{n} مقطع في المعاينة", { n: scoredSegments })}
         </span>
       </div>
       <div
@@ -2179,8 +2255,14 @@ function HeatmapVariant({
             <span
               key={index}
               dir="auto"
-              title={`${part} — نحو ${tokens} توكن (تقدير محلي)`}
-              aria-label={`${part}: نحو ${tokens} توكن بتقدير محلي`}
+              title={t("{part} — نحو {tokens} توكن (تقدير محلي)", {
+                part,
+                tokens,
+              })}
+              aria-label={t("{part}: نحو {tokens} توكن بتقدير محلي", {
+                part,
+                tokens,
+              })}
               className={`px-1 py-0.5 ring-1 ring-inset ${heatLevel(tokens).className}`}
             >
               {part}
@@ -2190,20 +2272,22 @@ function HeatmapVariant({
         {truncated && <span aria-hidden="true">…</span>}
         {!segments.length && (
           <span className="text-slate-500">
-            لا توجد مقاطع قصيرة قابلة للمعاينة.
+            {t("لا توجد مقاطع قصيرة قابلة للمعاينة.")}
           </span>
         )}
       </div>
       {truncated && (
         <p className="mt-2 text-xs font-medium text-amber-800">
-          معاينة محدودة: أول {scoredSegments} مقطع ضمن 2000 حرف؛ بقية النص لم
-          تُحلَّل بصرياً.
+          {t(
+            "معاينة محدودة: أول {n} مقطع ضمن 2000 حرف؛ بقية النص لم تُحلَّل بصرياً.",
+            { n: scoredSegments },
+          )}
         </p>
       )}
       {heaviest.length > 0 && (
         <div className="mt-3 border-t border-slate-300 pt-3">
           <p className="mb-2 text-xs font-semibold text-slate-600">
-            أثقل المقاطع في المعاينة
+            {t("أثقل المقاطع في المعاينة")}
           </p>
           <div className="flex flex-wrap gap-1.5">
             {heaviest.map(({ text: part, tokens }, index) => (
@@ -2233,6 +2317,7 @@ export function OptimizationInsights({
 }: {
   report: OptimizationReport;
 }) {
+  const { t } = useI18n();
   const {
     originalMeasurement,
     normalizedMeasurement,
@@ -2248,7 +2333,7 @@ export function OptimizationInsights({
   const arabicEntity = entityChecks.arabic ? (
     <EntityStatus
       key="ar-entity"
-      label="النسخة العربية"
+      label={t("النسخة العربية")}
       check={entityChecks.arabic}
     />
   ) : (
@@ -2256,13 +2341,13 @@ export function OptimizationInsights({
       key="ar-entity"
       className="border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500"
     >
-      النسخة العربية غير متاحة للفحص.
+      {t("النسخة العربية غير متاحة للفحص.")}
     </p>
   );
   const englishEntity = entityChecks.english ? (
     <EntityStatus
       key="en-entity"
-      label="النسخة الإنجليزية"
+      label={t("النسخة الإنجليزية")}
       check={entityChecks.english}
     />
   ) : (
@@ -2270,20 +2355,20 @@ export function OptimizationInsights({
       key="en-entity"
       className="border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500"
     >
-      النسخة الإنجليزية غير متاحة للفحص.
+      {t("النسخة الإنجليزية غير متاحة للفحص.")}
     </p>
   );
   const arabicQuality = report.quality.arabic ? (
     <QualityStatus
       key="ar-quality"
-      label="النسخة العربية"
+      label={t("النسخة العربية")}
       check={report.quality.arabic}
     />
   ) : null;
   const englishQuality = report.quality.english ? (
     <QualityStatus
       key="en-quality"
-      label="النسخة الإنجليزية"
+      label={t("النسخة الإنجليزية")}
       check={report.quality.english}
     />
   ) : null;
@@ -2291,22 +2376,28 @@ export function OptimizationInsights({
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <section className="border border-ink bg-white p-5">
-        <h2 className="font-bold text-ink">تفصيل التوفير في توكنز الإدخال</h2>
+        <h2 className="font-bold text-ink">
+          {t("تفصيل التوفير في توكنز الإدخال")}
+        </h2>
         <p className="mt-1 text-xs text-slate-500">
-          مقارنة النص الأصلي بالمنقّح محلياً، ثم بالنسخة{" "}
-          {direction === "en" ? "الإنجليزية" : "العربية"} النهائية.
+          {t(
+            "مقارنة النص الأصلي بالمنقّح محلياً، ثم بالنسخة {lang} النهائية.",
+            {
+              lang: direction === "en" ? t("الإنجليزية") : t("العربية"),
+            },
+          )}
         </p>
         <div className="mt-4 space-y-3">
           <MeasurementStep
-            title="التنقية المحلية"
+            title={t("التنقية المحلية")}
             before={originalMeasurement}
             after={normalizedMeasurement}
           />
           <MeasurementStep
             title={
               report.source === "gemini"
-                ? "إعادة صياغة Gemini"
-                : "تعديل إضافي محلي"
+                ? t("إعادة صياغة Gemini")
+                : t("تعديل إضافي محلي")
             }
             before={normalizedMeasurement}
             after={primary.measurement}
@@ -2314,7 +2405,7 @@ export function OptimizationInsights({
         </div>
         <details className="mt-4 border border-emerald-200 bg-emerald-50/50 p-3 text-xs">
           <summary className="cursor-pointer font-semibold text-emerald-900">
-            عرض النص بعد التنقية المحلية
+            {t("عرض النص بعد التنقية المحلية")}
           </summary>
           <p
             dir="auto"
@@ -2326,26 +2417,31 @@ export function OptimizationInsights({
         {direction === "en"
           ? arabic && (
               <p className="mt-3 text-xs text-slate-500">
-                العربية نسخة مرافقة منقولة للمعنى؛ لا تُضاف وفوراتها إلى
-                الإنجليزية.
+                {t(
+                  "العربية نسخة مرافقة منقولة للمعنى؛ لا تُضاف وفوراتها إلى الإنجليزية.",
+                )}
               </p>
             )
           : english && (
               <p className="mt-3 text-xs text-slate-500">
-                الإنجليزية بديل مستقل مقارنة بالنص الأصلي؛ لا تُضاف وفوراتها إلى
-                العربية.
+                {t(
+                  "الإنجليزية بديل مستقل مقارنة بالنص الأصلي؛ لا تُضاف وفوراتها إلى العربية.",
+                )}
               </p>
             )}
       </section>
       <section className="border border-ink bg-white p-5">
-        <h2 className="font-bold text-ink">فحص الكيانات والجودة الظاهرة</h2>
+        <h2 className="font-bold text-ink">
+          {t("فحص الكيانات والجودة الظاهرة")}
+        </h2>
         {report.rejectedByGuard && (
           <p
             role="status"
             className="mt-3 border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-800"
           >
-            رُفض مخرج Gemini لعدم اجتيازه فحوص السلامة المحلية. المعروض تنقية
-            محلية، والترجمة محجوبة.
+            {t(
+              "رُفض مخرج Gemini لعدم اجتيازه فحوص السلامة المحلية. المعروض تنقية محلية، والترجمة محجوبة.",
+            )}
           </p>
         )}
         <div className="mt-3 space-y-2">
@@ -2354,8 +2450,9 @@ export function OptimizationInsights({
             : [arabicEntity, englishEntity, arabicQuality, englishQuality]}
         </div>
         <p className="mt-3 text-xs text-slate-500">
-          فحوص الكيانات والجودة تقيس عناصر ظاهرة قابلة للمطابقة (لغة، نفي، كلمات
-          محتوى)؛ ليست ضماناً لحفظ المعنى أو جميع المتطلبات.
+          {t(
+            "فحوص الكيانات والجودة تقيس عناصر ظاهرة قابلة للمطابقة (لغة، نفي، كلمات محتوى)؛ ليست ضماناً لحفظ المعنى أو جميع المتطلبات.",
+          )}
         </p>
       </section>
     </div>
@@ -2371,18 +2468,19 @@ function MeasurementStep({
   before: TokenMeasurement;
   after: TokenMeasurement;
 }) {
+  const { t } = useI18n();
   const comparable = before.source === after.source;
   const saved = before.tokens - after.tokens;
   const percent = before.tokens
     ? Math.round((Math.abs(saved) / before.tokens) * 100)
     : 0;
   const difference = !comparable
-    ? "لا يمكن حساب الفرق بدقة لاختلاف مصدر العد"
+    ? t("لا يمكن حساب الفرق بدقة لاختلاف مصدر العد")
     : saved > 0
-      ? `توفير ${saved} توكن (${percent}%)`
+      ? t("توفير {saved} توكن ({percent}%)", { saved, percent })
       : saved < 0
-        ? `زيادة ${-saved} توكن (${percent}%)`
-        : "لا تغير في عدد التوكنز";
+        ? t("زيادة {v1} توكن ({percent}%)", { v1: -saved, percent })
+        : t("لا تغير في عدد التوكنز");
   return (
     <div className="border border-slate-200 bg-slate-50 p-3 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2400,8 +2498,8 @@ function MeasurementStep({
         {comparable
           ? before.source === "provider"
             ? "Gemini countTokens"
-            : "تقدير محلي"
-          : "قياس بمصادر مختلفة: Gemini أو تقدير محلي"}
+            : t("تقدير محلي")
+          : t("قياس بمصادر مختلفة: Gemini أو تقدير محلي")}
       </p>
     </div>
   );
@@ -2414,28 +2512,37 @@ function QualityStatus({
   label: string;
   check: QualityCheck;
 }) {
+  const { t } = useI18n();
   const coverage = check.keywordCoverage;
   const clean = check.warnings.length === 0;
   return (
     <div
       className={`border p-3 text-xs ${clean ? "border-sky-200 bg-sky-50 text-sky-800" : "border-amber-300 bg-amber-50 text-amber-800"}`}
     >
-      <span className="font-bold">{label} — فحص الجودة: </span>
+      <span className="font-bold">
+        {t("{label} — فحص الجودة: ", { label })}
+      </span>
       {clean
         ? coverage !== null
-          ? `سليم ظاهرياً — تغطية كلمات المحتوى ~${Math.round(coverage * 100)}%`
-          : "سليم ظاهرياً"
-        : check.warnings.join("؛ ")}
+          ? t("سليم ظاهرياً — تغطية كلمات المحتوى ~{v1}%", {
+              v1: Math.round(coverage * 100),
+            })
+          : t("سليم ظاهرياً")
+        : check.warnings.join(t("؛ "))}
     </div>
   );
 }
 
 function EntityStatus({ label, check }: { label: string; check: EntityCheck }) {
+  const { t } = useI18n();
   const message = !check.checked
-    ? "لا توجد كيانات مدعومة للفحص"
+    ? t("لا توجد كيانات مدعومة للفحص")
     : check.preserved
-      ? `لم يُرصد فقد في ${check.checked} كيان قابل للفحص`
-      : `تعذّر حفظ ${check.missing.length} من ${check.checked} كيان`;
+      ? t("لم يُرصد فقد في {v1} كيان قابل للفحص", { v1: check.checked })
+      : t("تعذّر حفظ {v1} من {v2} كيان", {
+          v1: check.missing.length,
+          v2: check.checked,
+        });
   return (
     <div
       className={`border p-3 text-xs ${check.checked && check.preserved ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-300 bg-amber-50 text-amber-800"}`}
@@ -2444,11 +2551,11 @@ function EntityStatus({ label, check }: { label: string; check: EntityCheck }) {
       {message}
       {check.missing.length > 0 && (
         <p dir="auto" className="mt-1 break-all">
-          المفقود:{" "}
+          {t("المفقود:")}{" "}
           {check.missing
             .slice(0, 5)
             .map(({ value }) => value)
-            .join("، ")}
+            .join(t("، "))}
           {check.missing.length > 5 ? "…" : ""}
         </p>
       )}
@@ -2457,12 +2564,12 @@ function EntityStatus({ label, check }: { label: string; check: EntityCheck }) {
 }
 
 const usageFields: { key: keyof GeminiUsage; label: string }[] = [
-  { key: "total_input_tokens", label: "مدخلات الاستدعاء" },
-  { key: "total_output_tokens", label: "المخرجات" },
-  { key: "total_thought_tokens", label: "التفكير" },
-  { key: "total_cached_tokens", label: "المخزّن مؤقتاً" },
-  { key: "total_tool_use_tokens", label: "استخدام الأدوات" },
-  { key: "total_tokens", label: "الإجمالي حسب Gemini" },
+  { key: "total_input_tokens", label: tx("مدخلات الاستدعاء") },
+  { key: "total_output_tokens", label: tx("المخرجات") },
+  { key: "total_thought_tokens", label: tx("التفكير") },
+  { key: "total_cached_tokens", label: tx("المخزّن مؤقتاً") },
+  { key: "total_tool_use_tokens", label: tx("استخدام الأدوات") },
+  { key: "total_tokens", label: tx("الإجمالي حسب Gemini") },
 ];
 
 export function OptimizationUsagePanel({
@@ -2470,39 +2577,46 @@ export function OptimizationUsagePanel({
 }: {
   report: OptimizationReport;
 }) {
+  const { t } = useI18n();
   const usage = report.optimizationUsage;
   return (
     <section className="border border-ink bg-white p-5">
-      <h2 className="font-bold text-ink">استهلاك استدعاء التحسين الفعلي</h2>
+      <h2 className="font-bold text-ink">
+        {t("استهلاك استدعاء التحسين الفعلي")}
+      </h2>
       {usage ? (
         <>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
             {usageFields
               .filter(({ key }) => usage[key] !== undefined)
               .map(({ key, label }) => (
-                <Metric key={key} label={label} value={usage[key] ?? "—"} />
+                <Metric key={key} label={t(label)} value={usage[key] ?? "—"} />
               ))}
           </div>
           {report.rejectedByGuard && (
             <p className="mt-3 text-xs text-amber-800">
-              حدث استدعاء Gemini فعلي، لكن حارس الكيانات رفض مخرجه؛ الأرقام تخص
-              الاستدعاء المرفوض.
+              {t(
+                "حدث استدعاء Gemini فعلي، لكن حارس الكيانات رفض مخرجه؛ الأرقام تخص الاستدعاء المرفوض.",
+              )}
             </p>
           )}
           <p className="mt-3 text-xs text-slate-500">
-            أرقام Gemini لهذا الاستدعاء الناجح فقط؛ مدخلاته تشمل تعليمات النظام،
-            وليست عدّ التلقينة وحدها. الحقول التفصيلية لا تُجمع يدويًا؛ الإجمالي
-            معروض كما أعاده Gemini.
+            {t(
+              "أرقام Gemini لهذا الاستدعاء الناجح فقط؛ مدخلاته تشمل تعليمات النظام، وليست عدّ التلقينة وحدها. الحقول التفصيلية لا تُجمع يدويًا؛ الإجمالي معروض كما أعاده Gemini.",
+            )}
           </p>
         </>
       ) : (
         <p className="mt-3 text-xs text-slate-500">
-          لا تتوفر بيانات استهلاك فعلية لهذا التشغيل؛ لن نعرض رقماً مفترضاً.
+          {t(
+            "لا تتوفر بيانات استهلاك فعلية لهذا التشغيل؛ لن نعرض رقماً مفترضاً.",
+          )}
         </p>
       )}
       <p className="mt-2 text-xs text-slate-500">
-        تقدير التكلفة أدناه يخص استخدام النص الناتج لاحقاً، وليس فاتورة هذا
-        الاستدعاء. لا تشمل هذه الأرقام طلبات عدّ التوكنز أو المحاولات الأخرى.
+        {t(
+          "تقدير التكلفة أدناه يخص استخدام النص الناتج لاحقاً، وليس فاتورة هذا الاستدعاء. لا تشمل هذه الأرقام طلبات عدّ التوكنز أو المحاولات الأخرى.",
+        )}
       </p>
     </section>
   );
@@ -2519,13 +2633,14 @@ function CostBar({
   modelLabel?: string;
   onReset: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <section className="border border-ink bg-amber-50/70 p-5">
       <div className="mb-4 flex items-center justify-between border-b border-amber-200 pb-3">
         <div className="flex items-center gap-2 font-bold">
           <Coins className="text-amber-600" size={18} /> Cost Analysis{" "}
           <span className="hidden text-xs font-normal text-slate-500 sm:inline">
-            تقدير تكلفة الإدخال · {modelLabel}
+            {t("تقدير تكلفة الإدخال · {model}", { model: modelLabel ?? "" })}
           </span>
         </div>
         {report && (
@@ -2533,7 +2648,7 @@ function CostBar({
             onClick={onReset}
             className="flex items-center gap-1.5 text-sm font-bold text-slate-600 hover:text-ink"
           >
-            <RotateCcw size={15} /> بدء جديد
+            <RotateCcw size={15} /> {t("بدء جديد")}
           </button>
         )}
       </div>
@@ -2544,7 +2659,7 @@ function CostBar({
               const arabicGroup = report.arabic ? (
                 <CostGroup
                   key="ar"
-                  label="النسخة العربية"
+                  label={t("النسخة العربية")}
                   cost={report.arabic.cost}
                   comparable={
                     report.originalMeasurement?.source ===
@@ -2556,13 +2671,13 @@ function CostBar({
                   key="ar"
                   className="grid place-items-center border border-slate-200 bg-white/70 p-3 text-center text-xs text-slate-400"
                 >
-                  توفير النسخة العربية يظهر مع الترجمة
+                  {t("توفير النسخة العربية يظهر مع الترجمة")}
                 </div>
               );
               const englishGroup = report.english ? (
                 <CostGroup
                   key="en"
-                  label="النسخة الإنجليزية"
+                  label={t("النسخة الإنجليزية")}
                   cost={report.english.cost}
                   comparable={
                     report.originalMeasurement?.source ===
@@ -2574,7 +2689,7 @@ function CostBar({
                   key="en"
                   className="grid place-items-center border border-slate-200 bg-white/70 p-3 text-center text-xs text-slate-400"
                 >
-                  توفير النسخة الإنجليزية يظهر مع الترجمة
+                  {t("توفير النسخة الإنجليزية يظهر مع الترجمة")}
                 </div>
               );
               return report.direction === "en"
@@ -2590,16 +2705,17 @@ function CostBar({
                 report.originalMeasurement.source !==
                   report.english.measurement?.source)) && (
               <p className="mt-3 text-xs text-amber-800">
-                تختلف مصادر عد التوكنز بين المدخل والمخرج؛ أُخفيت نسبة التوفير
-                لأنها غير قابلة للمقارنة بدقة.
+                {t(
+                  "تختلف مصادر عد التوكنز بين المدخل والمخرج؛ أُخفيت نسبة التوفير لأنها غير قابلة للمقارنة بدقة.",
+                )}
               </p>
             )}
         </>
       ) : (
         <div className="border border-slate-200 bg-white/70 p-4 text-center text-sm text-slate-400">
           {active
-            ? "يُحسب التقدير…"
-            : "سيظهر تحليل التكلفة هنا بعد تشغيل التحسين"}
+            ? t("يُحسب التقدير…")
+            : t("سيظهر تحليل التكلفة هنا بعد تشغيل التحسين")}
         </div>
       )}
     </section>
@@ -2615,14 +2731,15 @@ function CostGroup({
   cost: CostEstimate;
   comparable?: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <div className="border border-slate-200 bg-white p-3">
       <div className="mb-2 text-xs font-bold text-slate-500">{label}</div>
       <div className="grid grid-cols-3 gap-2 text-center">
-        <Metric label="قبل" value={formatCost(cost.original)} />
-        <Metric label="بعد" value={formatCost(cost.optimized)} />
+        <Metric label={t("قبل")} value={formatCost(cost.original)} />
+        <Metric label={t("بعد")} value={formatCost(cost.optimized)} />
         <Metric
-          label="التوفير"
+          label={t("التوفير")}
           value={comparable ? `${cost.savingPercent}%` : "—"}
         />
       </div>
@@ -2652,13 +2769,14 @@ function SourceBadge({
   providerLabel?: string;
   compact?: boolean;
 }) {
+  const { t } = useI18n();
   if (!source) return null;
   const live = source === "provider";
   const label = live
-    ? `مقياس حقيقي · ${providerLabel ?? "Gemini"}`
+    ? t("مقياس حقيقي · {v1}", { v1: providerLabel ?? "Gemini" })
     : source === "bpe"
-      ? "تقدير BPE محلي"
-      : "تقدير تجريبي";
+      ? t("تقدير BPE محلي")
+      : t("تقدير تجريبي");
   const colors = live
     ? "border-emerald-300 bg-emerald-50 text-emerald-700"
     : "border-amber-300 bg-amber-50 text-amber-700";

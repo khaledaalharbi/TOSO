@@ -11,6 +11,8 @@
  * a better prompt. Warnings are surfaced to the UI as hints, not verdicts.
  */
 
+import { t } from "@/lib/i18n";
+
 export interface QualityCheck {
   /** The output is written in the expected language (script-ratio test). */
   languageOk: boolean;
@@ -234,8 +236,8 @@ export function checkQuality(
   if (!languageOk) {
     warnings.push(
       lang === "ar"
-        ? "المخرج العربي ليس مكتوباً بالعربية"
-        : "المخرج الإنجليزي ليس مكتوباً بالإنجليزية",
+        ? t("المخرج العربي ليس مكتوباً بالعربية")
+        : t("المخرج الإنجليزي ليس مكتوباً بالإنجليزية"),
     );
   }
 
@@ -249,7 +251,7 @@ export function checkQuality(
         ? countMarkers(output, NEGATION_MARKERS.en) > 0
         : null;
   if (negationKept === false) {
-    warnings.push("لم تُحفظ أدوات النفي الموجودة في المدخل");
+    warnings.push(t("لم تُحفظ أدوات النفي الموجودة في المدخل"));
   }
 
   // Coverage is same-language only: Arabic against Arabic, English against an
@@ -270,7 +272,9 @@ export function checkQuality(
       keywordCoverage = kept / sourceWords.size;
       if (keywordCoverage < 0.4) {
         warnings.push(
-          `تغطية كلمات المحتوى منخفضة (~${Math.round(keywordCoverage * 100)}%)`,
+          t("تغطية كلمات المحتوى منخفضة (~{percent}%)", {
+            percent: Math.round(keywordCoverage * 100),
+          }),
         );
       }
     }
