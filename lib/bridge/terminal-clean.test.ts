@@ -13,7 +13,7 @@ import {
 // Screens captured live (outputs/agent-live-probe.md, 2026-10-19).
 const CLAUDE_TRUST = [
   " Accessing workspace:",
-  " C:\\Users\\khale\\AppData\\Local\\Temp\\toso-agent-probe",
+  " C:\\Users\\dev\\projects\\demo-app",
   " Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source",
   " Claude Code'll be able to read, edit, and execute files here.",
   " ❯ No, exit",

@@ -1,5 +1,7 @@
 # TOSO
 
+[![CI](https://github.com/khaledaalharbi/TOSO/actions/workflows/ci.yml/badge.svg)](https://github.com/khaledaalharbi/TOSO/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 **Spend fewer tokens on every AI coding task — before the agent reads your prompt,
 and while it works.** TOSO cleans and tightens your prompt, translates it to English
 when you write in another language, sends it to the CLI coding agent of your
@@ -124,7 +126,7 @@ decides what it receives:
 Requires **Node.js 22.12+** and at least one CLI agent installed and logged in.
 
 ```bash
-git clone <this-repo>
+git clone https://github.com/khaledaalharbi/TOSO.git
 cd TOSO
 npm install
 npm run dev:all
@@ -208,6 +210,7 @@ Help wanted — these are open for the community, not scheduled:
 | [Docs/setup-and-usage.md](Docs/setup-and-usage.md) | Install, run, first settings, per-agent steps, troubleshooting (Arabic) |
 | [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md)       | Technical reference: pipeline, API routes, bridge, guards (Arabic)      |
 | [SECURITY.md](SECURITY.md)                         | Key handling and the local bridge threat model                          |
+| [CONTRIBUTING.md](CONTRIBUTING.md)                 | Set up, the four CI checks, project rules, adding a language            |
 
 ## License
 

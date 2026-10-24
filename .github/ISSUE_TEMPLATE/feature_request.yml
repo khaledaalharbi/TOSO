@@ -1,0 +1,39 @@
+name: Feature request / اقتراح ميزة
+description: Suggest an improvement / اقترح تحسيناً
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        TOSO's goal is **fewer tokens, locally and for free** — please say how your idea serves it.
+        هدف TOSO تقليل التوكنز محلياً ومجاناً — اذكر كيف تخدم فكرتك ذلك.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem / المشكلة
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea / الفكرة المقترحة
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Area / المجال
+      options:
+        - New interface/input language
+        - Token saving (cleanup, rewrite, translation)
+        - Agent support (new or existing CLI agent)
+        - Interface / UX
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence or source / دليل أو مصدر
+      description: Any claim about token savings needs a source or a measurement we can reproduce.

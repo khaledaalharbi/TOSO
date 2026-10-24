@@ -2,6 +2,8 @@
 
 # TOSO
 
+[![CI](https://github.com/khaledaalharbi/TOSO/actions/workflows/ci.yml/badge.svg)](https://github.com/khaledaalharbi/TOSO/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 **أنفق توكنز أقل في كل مهمة برمجة بالذكاء الاصطناعي: قبل أن يقرأ الوكيل تلقينتك، وأثناء
 عمله.** ينقّي TOSO تلقينتك ويختصرها، ويترجمها إلى الإنجليزية إن كتبتها بلغة أخرى،
 ويرسلها إلى وكيل البرمجة في سطر الأوامر الذي تختاره، ويتيح لك التحكم بعدة وكلاء
@@ -126,7 +128,7 @@
 <div dir="ltr">
 
 ```bash
-git clone <this-repo>
+git clone https://github.com/khaledaalharbi/TOSO.git
 cd TOSO
 npm install
 npm run dev:all
@@ -198,12 +200,13 @@ TOSO نموذج أولي يعمل، وهو أول مشروع مفتوح المص
 
 ## التوثيق
 
-| الملف                                              | المحتوى                                                         |
-| -------------------------------------------------- | --------------------------------------------------------------- |
-| [Docs/RESEARCH.md](Docs/RESEARCH.md)               | كل ادعاء بمصدره ومستوى دليله، وما لا ندّعيه (بالإنجليزية)       |
-| [Docs/setup-and-usage.md](Docs/setup-and-usage.md) | التثبيت والتشغيل والإعدادات الأولية وخطوات كل وكيل وحل المشكلات |
-| [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md)       | المرجع التقني: المسار والواجهات البرمجية والجسر والحراسة        |
-| [SECURITY.md](SECURITY.md)                         | التعامل مع المفاتيح ونموذج أمان الجسر المحلي                    |
+| الملف                                              | المحتوى                                                          |
+| -------------------------------------------------- | ---------------------------------------------------------------- |
+| [Docs/RESEARCH.md](Docs/RESEARCH.md)               | كل ادعاء بمصدره ومستوى دليله، وما لا ندّعيه (بالإنجليزية)        |
+| [Docs/setup-and-usage.md](Docs/setup-and-usage.md) | التثبيت والتشغيل والإعدادات الأولية وخطوات كل وكيل وحل المشكلات  |
+| [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md)       | المرجع التقني: المسار والواجهات البرمجية والجسر والحراسة         |
+| [SECURITY.md](SECURITY.md)                         | التعامل مع المفاتيح ونموذج أمان الجسر المحلي                     |
+| [CONTRIBUTING.md](CONTRIBUTING.md)                 | الإعداد وفحوص CI الأربعة وقواعد المشروع وإضافة لغة (بالإنجليزية) |
 
 ## الرخصة
 

@@ -2,6 +2,22 @@
   "name": "toso",
   "version": "0.1.0",
   "private": true,
+  "description": "Free, local, Arabic-first prompt optimizer: cut token usage, then drive your CLI coding agents from one screen.",
+  "license": "MIT",
+  "author": "khaledaalharbi",
+  "keywords": [
+    "prompt-optimizer",
+    "tokens",
+    "arabic",
+    "cli-agents",
+    "gemini",
+    "claude-code",
+    "codex",
+    "nextjs"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

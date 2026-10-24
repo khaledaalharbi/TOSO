@@ -1,0 +1,64 @@
+name: Bug report / بلاغ عن علة
+description: Something does not work as documented / شيء لا يعمل كما هو موثّق
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping. Please **do not paste API keys, bridge tokens or confidential prompts**.
+        شكراً لمساعدتك. **لا تلصق مفاتيح API ولا توكن الجسر ولا تلقينات سرية.**
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened? / ماذا حدث؟
+      description: What you did, what you expected, what you got.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / خطوات إعادة الإنتاج
+      placeholder: |
+        1. npm run start:all
+        2. Agent tab → Codex → ① Check → ④ Start session
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent involved / الوكيل
+      options:
+        - None (UI or measurement only)
+        - Gemini CLI
+        - Claude Code
+        - OpenAI Codex
+        - Devin
+        - Hermes
+    validations:
+      required: true
+  - type: dropdown
+    id: ui
+    attributes:
+      label: Interface language / لغة الواجهة
+      options:
+        - Arabic
+        - English
+  - type: input
+    id: os
+    attributes:
+      label: OS and Node.js version / النظام وإصدار Node.js
+      placeholder: Windows 11 · Node 22.12.0
+    validations:
+      required: true
+  - type: input
+    id: agent-version
+    attributes:
+      label: Agent CLI version / إصدار الوكيل
+      description: e.g. output of `codex --version`.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console / bridge output / مخرجات الطرفية
+      description: Redact tokens and keys first.
+      render: text
