@@ -250,6 +250,8 @@ Help wanted — these are open for the community, not scheduled:
 | [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md)       | Technical reference: pipeline, API routes, bridge, guards (Arabic)    |
 | [SECURITY.md](SECURITY.md)                         | Key handling and the local bridge threat model                        |
 | [CONTRIBUTING.md](CONTRIBUTING.md)                 | Set up, the four CI checks, project rules, adding a language          |
+| [CHANGELOG.md](CHANGELOG.md)                       | What changed in each release                                          |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)           | How we treat each other                                               |
 
 ## License
 

@@ -4,6 +4,10 @@ TOSO is a free, local tool that cuts the tokens your AI coding agent spends.
 Contributions are welcome — small fixes as much as new languages.
 (بالعربية: المساهمات مرحّب بها؛ الشيفرة بالإنجليزية والواجهة والتوثيق ثنائيا اللغة.)
 
+Everyone taking part agrees to the [Code of Conduct](CODE_OF_CONDUCT.md).
+Changes are listed in [CHANGELOG.md](CHANGELOG.md) — add a line under
+"Unreleased" with your pull request.
+
 ## Set up
 
 Requires **Node.js 22.12+**.

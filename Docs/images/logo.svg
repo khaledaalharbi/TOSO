@@ -1,10 +1,41 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="TOSO">
-  <title>TOSO</title>
-  <rect width="128" height="128" rx="28" fill="#0d1729"/>
-  <path d="M24 88A40 40 0 0 1 104 88" fill="none" stroke="#1f2f4d" stroke-width="11" stroke-linecap="round"/>
-  <path d="M24 88A40 40 0 0 1 84 53.4" fill="none" stroke="#54d3b8" stroke-width="11" stroke-linecap="round"/>
-  <path d="M64 88L79 62" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
-  <circle cx="64" cy="88" r="7" fill="#e89a2b"/>
-  <path d="M98 20l2.6 7.4L108 30l-7.4 2.6L98 40l-2.6-7.4L88 30l7.4-2.6z" fill="#54d3b8"/>
-  <path d="M30 104h68" stroke="#1f2f4d" stroke-width="4" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">TOSO</title>
+  <desc id="desc">Arabic and English prompts are streamlined through TOSO and routed to five local coding agents.</desc>
+  <defs>
+    <linearGradient id="flow" x1="12" y1="36" x2="116" y2="92" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#55E2C1"/>
+      <stop offset=".58" stop-color="#43BFD2"/>
+      <stop offset="1" stop-color="#8A8BFF"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="#0D1729"/>
+  <rect x="1" y="1" width="126" height="126" rx="27" fill="none" stroke="#1D2A41" stroke-width="2"/>
+
+  <!-- Arabic and English prompt inputs -->
+  <rect x="12" y="29" width="29" height="25" rx="8" fill="#152940" stroke="#55E2C1" stroke-width="2.5"/>
+  <text x="26.5" y="46.5" text-anchor="middle" fill="#D9FFF6" font-family="Arial,sans-serif" font-size="15" font-weight="700">A</text>
+  <rect x="12" y="74" width="29" height="25" rx="8" fill="#152940" stroke="#55E2C1" stroke-width="2.5"/>
+  <text x="26.5" y="91.5" text-anchor="middle" fill="#D9FFF6" font-family="Arial,sans-serif" font-size="16" font-weight="700">ع</text>
+
+  <!-- Two language paths converge into a compact, optimized prompt -->
+  <path d="M41 41.5h6c5 0 7 2 10 5.3L62 53" fill="none" stroke="url(#flow)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M41 86.5h6c5 0 7-2 10-5.3L62 75" fill="none" stroke="url(#flow)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M61.5 56.5 69 64l-7.5 7.5" fill="none" stroke="#9AF4DF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="69" cy="64" r="3" fill="#9AF4DF"/>
+
+  <!-- Orchestrator bus distributes the prompt to five CLI sessions -->
+  <path d="M72 64h12M84 29v70" fill="none" stroke="url(#flow)" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M84 29h11M84 46.5h11M84 64h11M84 81.5h11M84 99h11" fill="none" stroke="#7185C8" stroke-width="2.5" stroke-linecap="round"/>
+  <g fill="#1A2942" stroke="#8A9BFF" stroke-width="1.8">
+    <rect x="95" y="23" width="21" height="12" rx="4"/>
+    <rect x="95" y="40.5" width="21" height="12" rx="4"/>
+    <rect x="95" y="58" width="21" height="12" rx="4"/>
+    <rect x="95" y="75.5" width="21" height="12" rx="4"/>
+    <rect x="95" y="93" width="21" height="12" rx="4"/>
+  </g>
+  <g fill="#55E2C1">
+    <circle cx="101" cy="29" r="1.6"/><circle cx="101" cy="46.5" r="1.6"/>
+    <circle cx="101" cy="64" r="1.6"/><circle cx="101" cy="81.5" r="1.6"/>
+    <circle cx="101" cy="99" r="1.6"/>
+  </g>
 </svg>

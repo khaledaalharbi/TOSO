@@ -203,6 +203,8 @@ TOSO نموذج أولي يعمل، وهو أول مشروع مفتوح المص
 | [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md)       | المرجع التقني: المسار والواجهات البرمجية والجسر والحراسة         |
 | [SECURITY.md](SECURITY.md)                         | التعامل مع المفاتيح ونموذج أمان الجسر المحلي                     |
 | [CONTRIBUTING.md](CONTRIBUTING.md)                 | الإعداد وفحوص CI الأربعة وقواعد المشروع وإضافة لغة (بالإنجليزية) |
+| [CHANGELOG.md](CHANGELOG.md)                       | ما تغيّر في كل إصدار                                             |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)           | ميثاق السلوك في المجتمع                                          |
 
 ## الرخصة
 
