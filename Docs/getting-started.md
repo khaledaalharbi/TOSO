@@ -27,8 +27,10 @@ One guide, in the order you walk it: from a clean machine to your first agent re
 ### Linux
 
 The embedded terminal uses `node-pty`, which has no prebuilt binary for Linux. Install a C/C++ toolchain
-(`build-essential` and `python3` on Debian/Ubuntu) before `npm install`. Without it TOSO still works: the bridge falls back
-to one-shot runs (`gemini -p`, `claude -p`, `codex exec`, …) instead of live terminals.
+(`build-essential` and `python3` on Debian/Ubuntu) before `npm install`. npm 12 and newer block install scripts by default,
+so allow node-pty's build once: `npm install-scripts approve node-pty`, then `npm rebuild node-pty`. Without it TOSO still
+works: the bridge falls back to one-shot runs (`gemini -p`, `claude -p`, `codex exec`, …) instead of live terminals.
+Windows and macOS use node-pty's prebuilt binaries and need none of this.
 
 ## 2. Install and run
 

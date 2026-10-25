@@ -75,22 +75,21 @@ for your environment, do not run the bridge; the copy-paste fallback remains.
 ## Known dependency findings (last audit: October 2026)
 
 `npm audit --omit=dev` is **clean** — nothing vulnerable ships to the
-runtime/browser bundle. The full audit reports 9 dev-only findings
-(7 high, 2 moderate) through two build-time chains:
+runtime/browser bundle. The full audit reports 3 dev-only findings
+(moderate) through one build-time chain:
 
-| Chain                                               | Package                         | Advisory         | Status                                                                             |
-| --------------------------------------------------- | ------------------------------- | ---------------- | ---------------------------------------------------------------------------------- |
-| `tailwindcss@3` → `chokidar`/`micromatch` →         | `braces@3.0.3`                  | ReDoS (high)     | No patched `braces` release exists; fix requires the breaking Tailwind 4 migration |
-| `eslint-config-next` → `fast-glob` → `micromatch` → | `braces@3.0.3`                  | same             | npm's autofix would _downgrade_ `eslint-config-next` to 14.x — rejected            |
-| `tailwindcss@3` → `postcss-nested` →                | `postcss-selector-parser@6.1.4` | ReDoS (moderate) | Fixed in `7.1.6`, outside Tailwind 3's `^6` range                                  |
+| Chain                                | Package                         | Advisory         | Status                                            |
+| ------------------------------------ | ------------------------------- | ---------------- | ------------------------------------------------- |
+| `tailwindcss@3` → `postcss-nested` → | `postcss-selector-parser@6.1.4` | ReDoS (moderate) | Fixed in `7.1.6`, outside Tailwind 3's `^6` range |
 
-Why these are tolerated: all three run **at build/lint time only** and their
-input is repo-controlled (glob patterns in `tailwind.config`, project CSS).
-Exploiting them requires a malicious pattern inside the repository itself —
-at which point arbitrary code is already in the build. The remaining
-realistic vector in an open-source repo is a crafted CSS file in a PR
-slowing a CI build.
+(The earlier `braces` ReDoS findings through `micromatch` are gone after the
+`eslint-config-next` 15.5.28 and dev-dependency updates.)
 
-Planned resolution: an upstream `braces` fix, or a deliberate Tailwind 4
-migration. `npm audit fix --force` is **not** applied — it proposes breaking
-changes (Tailwind 4, `eslint-config-next` 14.x) without migrating the code.
+Why this is tolerated: it runs **at build time only** and its input is
+repo-controlled (project CSS). Exploiting it requires a malicious stylesheet
+inside the repository itself; the realistic vector in an open-source repo is a
+crafted CSS file in a PR slowing a CI build.
+
+Planned resolution: a deliberate Tailwind 4 migration. `npm audit fix --force`
+is **not** applied — it installs Tailwind 4, a breaking change, without migrating
+the code.

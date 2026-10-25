@@ -38,5 +38,7 @@ First public release.
   `npm run dev:all` for development; both listen on `127.0.0.1` only.
 - CI (types, lint, tests, build), issue and PR templates, contributing guide,
   code of conduct, security policy, and guides in English and Arabic.
+- Built on Next.js 16.4 and React 19.3; Dependabot proposes minor and patch
+  updates after a 7-day cooldown.
 
 [0.1.0]: https://github.com/khaledaalharbi/TOSO/releases/tag/v0.1.0
