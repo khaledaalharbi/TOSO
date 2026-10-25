@@ -27,6 +27,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## قواعد معمارية وتشغيلية
 
+- **الاسم الرسمي:** TOSO = **Token Optimizer & Session Orchestrator** — محسّن التوكنز (طبقات المدخل ①–③) ومُنسّق جلسات الوكلاء (جلسات PTY على الجسر، عدة وكلاء من شاشة واحدة — تنسيق جلسات لا «سرباً» متعاوناً يوزّع المهام). وُجد الاسم منذ الكوميت الأول `fca4483` كاسم لشخصية المحسّن في تعليمات النظام (`You are TOSO` في `app/api/optimize/route.ts`) ثم صار اسم الحزمة في `0a02e15`؛ اعتُمد التوسيع رسمياً بتاريخ 2026-10-25 ويظهر تحت العنوان في `README.md` و`README.ar.md` ومقدمة دليلَي الاستخدام `Docs/getting-started.md` و`Docs/setup-and-usage.md` — إن تغيّر حدّث المواضع الأربعة معاً.
 - `AGENT_PLATFORM_API_KEY` يُقرأ فقط في Route Handlers — لا يصل للمتصفح أبدًا؛ مفتاح `.env.local` هو الوحيد المستخدم في المشروع ولا توجد مفاتيح احتياطية. الحصة مرتبطة بالمشروع لا بالمفتاح.
 - **حجب متغيرات البيئة:** Next.js لا يتجاوز متغيراً موجوداً مسبقاً في `process.env` — متغير مستخدم قديم في Windows (`AGENT_PLATFORM_API_KEY` بقيمة مختلفة) حجب `.env.local` وتسبب بـ`http_403` على كل النماذج رغم صحة مفتاح الملف. عند `403` جماعي: قارن بصمة المفتاح في `process.env` مع `.env.local` (`Remove-Item Env:AGENT_PLATFORM_API_KEY` في جلسة الطرفية، أو حذفه من نطاق المستخدم).
 - التحسين عبر Vertex AI Agent Platform Express mode (`POST /v1/publishers/google/models/{model}:generateContent`)؛ قياس الـTokens عبر `countTokens` في `/api/tokens/count`. مفتاح Agent Platform يبقى في Route Handlers فقط.

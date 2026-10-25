@@ -1,5 +1,7 @@
 # Getting started with TOSO
 
+_TOSO: Token Optimizer & Session Orchestrator._
+
 One guide, in the order you walk it: from a clean machine to your first agent reply.
 (Arabic version: [setup-and-usage.md](setup-and-usage.md).)
 

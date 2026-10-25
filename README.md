@@ -4,6 +4,8 @@
 
 <h1 align="center">TOSO</h1>
 
+<p align="center"><i>Token Optimizer &amp; Session Orchestrator</i></p>
+
 <p align="center">
   <b>Spend fewer tokens on every AI coding task — before the agent reads your prompt, and while it works.</b><br>
   Free · local · Arabic + English · five CLI coding agents on one screen
