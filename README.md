@@ -167,7 +167,8 @@ sources: **[Docs/RESEARCH.md](Docs/RESEARCH.md)**.
 - **IN / OUT transcript** per agent and per turn, with the reply translated back;
   past prompts can be re-sent to another agent without being processed again.
 - **Bridge sessions panel:** see which sessions are live, reconnect to them, end
-  them or reopen closed ones.
+  them or reopen closed ones — one by one or all at once. A pulsing **Decision
+  needed** badge marks any tab whose agent is waiting on your input.
 - **Local bridge** bound to `127.0.0.1` with a session token and a fixed agent
   allowlist — see [SECURITY.md](SECURITY.md).
 

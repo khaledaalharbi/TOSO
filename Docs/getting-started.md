@@ -136,6 +136,8 @@ Capability badges on ② and ③: **Supported** (TOSO drives it), **Automatic** 
 
 **Permission questions** (such as "Allow execution of…" or "Do you trust this folder?") are answered by you **inside the
 embedded terminal**. TOSO never treats the question as the agent's reply; it tells you the agent is waiting for a decision.
+While an agent sits on such a question its **tab** lights a pulsing dot and a **Decision needed** badge — visible from any
+other tab, and cleared once you answer.
 
 ## 6. Use it
 
@@ -175,9 +177,11 @@ are sent in order after it finishes).
 
 Agent sessions live **in the bridge, not in the page**: they keep running after you close the browser and across a TOSO
 restart (the bridge is reused). The **Bridge sessions** panel lists live sessions (_Connect to session_, _End session_) and
-recently closed ones (_Open session_ starts a new session in the same folder; the old conversation is not restored). The
-bridge allows 8 live sessions. TOSO never ends a session on a timer — a long task stays yours to end. Stopping the bridge
-ends all its sessions.
+recently closed ones (_Open session_ starts a new session in the same folder; the old conversation is not restored). Its
+folded header counts the closed ones (**{n} closed**), and **Reopen all** starts a fresh session for every listed agent in
+its saved folder at once — one per agent, the newest folder when an agent closed several. The bridge allows 8 live
+sessions. TOSO never ends a session on a timer — a long task stays yours to end. Stopping the bridge ends all its
+sessions.
 
 ## 7. Troubleshooting
 
