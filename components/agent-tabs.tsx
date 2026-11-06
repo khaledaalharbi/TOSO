@@ -18,11 +18,12 @@ import { useI18n } from "@/components/i18n-provider";
 import { tx } from "@/lib/i18n";
 
 /** What a tab's dot says about that agent's latest run. */
-export type TabStatus = "idle" | "running" | "done" | "error";
+export type TabStatus = "idle" | "running" | "blocked" | "done" | "error";
 
 const dotTone: Record<TabStatus, string> = {
   idle: "bg-slate-300",
   running: "bg-amber-500 animate-pulse",
+  blocked: "bg-rose-500 animate-pulse",
   done: "bg-emerald-500",
   error: "bg-rose-500",
 };
@@ -30,6 +31,7 @@ const dotTone: Record<TabStatus, string> = {
 const dotLabel: Record<TabStatus, string> = {
   idle: tx("لم يعمل بعد"),
   running: tx("يعمل الآن"),
+  blocked: tx("ينتظر إجابتك"),
   done: tx("اكتمل"),
   error: tx("فشل"),
 };
@@ -87,6 +89,21 @@ export function AgentTabStrip({
               aria-label={t(dotLabel[state])}
             />
             {opt.label}
+            {state === "blocked" ? (
+              <span
+                dir={dir}
+                title={t(
+                  "الوكيل متوقف على سؤال في طرفيته — انتقل لتبويبه وأجب",
+                )}
+                className={`border px-1.5 py-px text-[10px] leading-4 font-bold ${
+                  selected
+                    ? "border-white/40 text-white"
+                    : "border-rose-400 bg-rose-50 text-rose-700"
+                }`}
+              >
+                {t("قرار مطلوب")}
+              </span>
+            ) : null}
             {opt.id === defaultAgent ? (
               <span
                 dir={dir}

@@ -73,6 +73,7 @@ export function BridgeSessions({
   onConnect,
   onEnd,
   onOpen,
+  onOpenAll,
   openSignal = 0,
 }: {
   state: SessionsState;
@@ -85,6 +86,8 @@ export function BridgeSessions({
   onConnect: (session: BridgeSessionView) => void;
   onEnd: (session: BridgeSessionView) => void;
   onOpen: (closed: ClosedSession) => void;
+  /** Reopens every listed closed session — one per agent, the newest. */
+  onOpenAll: (closed: ClosedSession[]) => void;
   /** Changes when the header badge is pressed: open and bring into view. */
   openSignal?: number;
 }) {
@@ -129,6 +132,11 @@ export function BridgeSessions({
           >
             {t("حيّة {live}/{max}", { live: panels.liveCount, max })}
             {full ? t(" — ممتلئ") : ""}
+          </span>
+        ) : null}
+        {state === "ok" && panels.closed.length ? (
+          <span className="border border-amber-400 bg-amber-50 px-1.5 py-px text-[10px] font-bold text-amber-800">
+            {t("مغلقة {n}", { n: panels.closed.length + panels.moreClosed })}
           </span>
         ) : null}
         <span className="text-[11px] text-slate-500">
@@ -198,8 +206,22 @@ export function BridgeSessions({
             ) : null}
           </section>
           <section aria-label={t("الجلسات المغلقة")}>
-            <h3 className="mb-1.5 text-xs font-bold text-slate-600">
+            <h3 className="mb-1.5 flex items-center gap-2 text-xs font-bold text-slate-600">
               {t("الجلسات المغلقة")}
+              {panels.closed.length ? (
+                <button
+                  type="button"
+                  disabled={pending !== null}
+                  onClick={() => onOpenAll(panels.closed)}
+                  title={t(
+                    "تُفتح جلسة جديدة لكل وكيل في مجلده — جلسة واحدة للوكيل، ومحادثات الجلسات السابقة لا تُستعاد",
+                  )}
+                  className={`${btn} border-amber-400 bg-amber-50 text-amber-800 hover:border-amber-600`}
+                >
+                  <Play size={12} />{" "}
+                  {t("أعد فتح الكل ({n})", { n: panels.closed.length })}
+                </button>
+              ) : null}
             </h3>
             <ul className="space-y-1.5">
               {panels.closed.length === 0 ? (

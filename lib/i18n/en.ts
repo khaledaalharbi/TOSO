@@ -119,6 +119,10 @@ export const EN: Record<string, string> = {
   // agent-tabs
   "لم يعمل بعد": "Not run yet",
   "يعمل الآن": "Running now",
+  "ينتظر إجابتك": "Waiting for your answer",
+  "قرار مطلوب": "Decision needed",
+  "الوكيل متوقف على سؤال في طرفيته — انتقل لتبويبه وأجب":
+    "The agent is stopped on a question in its terminal — go to its tab and answer it",
   "وكلاء CLI": "CLI agents",
   "الوكيل الافتراضي — تبويبه يُفتح أولاً، ويُحدَّد من الإعدادات":
     "Default agent — its tab opens first; chosen in Settings",
@@ -287,6 +291,10 @@ export const EN: Record<string, string> = {
   "يبدأ جلسة جديدة للوكيل في المجلد نفسه — محادثة الجلسة السابقة لا تُستعاد":
     "Starts a new session for the agent in the same folder — the previous conversation is not restored",
   "فتح الجلسة": "Open session",
+  "مغلقة {n}": "{n} closed",
+  "أعد فتح الكل ({n})": "Reopen all ({n})",
+  "تُفتح جلسة جديدة لكل وكيل في مجلده — جلسة واحدة للوكيل، ومحادثات الجلسات السابقة لا تُستعاد":
+    "Starts a new session for each agent in its folder — one session per agent; the closed sessions' conversations are not restored",
   "و{n} جلسات مغلقة أقدم.": "and {n} older closed sessions.",
   // gemini-key-guide
   "الانتقال إلى صفحة المفاتيح": "Go to the keys page",

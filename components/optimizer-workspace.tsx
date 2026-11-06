@@ -107,6 +107,7 @@ import {
   parseHistory,
   parseLiveSnapshot,
   recordClosed,
+  reopenBatch,
   sessionPanels,
   type BridgeSessionView,
   type ClosedSession,
@@ -192,14 +193,17 @@ const finishedCount = (turns: AgentTurn[] | undefined) =>
   (turns ?? []).filter((t) => t.status !== "running").length;
 
 /**
- * Tab dot: a turn or one-shot run in flight beats everything; then the last
- * turn's outcome; a live idle session reads as ready.
+ * Tab dot: a dialog the agent waits on beats everything — it needs the user,
+ * not watching. Then a turn or one-shot run in flight; then the last turn's
+ * outcome; a live idle session reads as ready.
  */
 function tabStatus(
   run: AgentRunState | null,
   turns: AgentTurn[] | undefined,
   terminal: TerminalStatus | undefined,
+  blocked: boolean,
 ): TabStatus {
+  if (blocked) return "blocked";
   const last = turns?.at(-1);
   if (
     last?.status === "running" ||
@@ -386,6 +390,11 @@ export function OptimizerWorkspace() {
     () => new Set(),
   );
   const [sessionPending, setSessionPending] = useState<string | null>(null);
+  // An agent stopped on a dialog only the user can answer — the tab lights
+  // «قرار مطلوب» wherever you are (reported by each embedded terminal).
+  const [needsInput, setNeedsInput] = useState<Record<string, string | null>>(
+    {},
+  );
   // Which of the three views each agent shows: its terminal, IN or OUT.
   const [views, setViews] = useState<Record<string, AgentView>>({});
   // Finished turns the user has already looked at, per agent — the OUT dot
@@ -397,8 +406,9 @@ export function OptimizerWorkspace() {
   );
   const [sessionsOpenSignal, setSessionsOpenSignal] = useState(0);
   const lastLive = useRef<BridgeSessionView[] | null>(null);
-  /** «فتح الجلسة»: start once the tab shows the reopened, checked folder. */
-  const pendingStart = useRef<{ agent: string; cwd: string } | null>(null);
+  /** «فتح الجلسة» / «أعد فتح الكل»: start once the tab shows the reopened,
+      checked folder — a queue so a batch reopens several agents at once. */
+  const pendingStarts = useRef<{ agent: string; cwd: string }[]>([]);
 
   // Hydrate the BYOK key and bridge settings once on mount, then mirror
   // every change to storage.
@@ -673,16 +683,17 @@ export function OptimizerWorkspace() {
     return () => clearInterval(timer);
   }, [keyHydrated]);
   // «فتح الجلسة» starts the session only once the tab shows the reopened
-  // folder as checked (the pane reads its props after this render).
+  // folder as checked (the pane reads its props after this render). The
+  // queue drains head-first so a batch reopens agents one render at a time.
   useEffect(() => {
-    const target = pendingStart.current;
+    const target = pendingStarts.current[0];
     if (
       !target ||
       !folderChecked(target.agent) ||
       !samePath(workspaceFor(config.workspaces, target.agent), target.cwd)
     )
       return;
-    pendingStart.current = null;
+    pendingStarts.current.shift();
     void terminals.current[target.agent]
       ?.start()
       .then(() => refreshSessions.current());
@@ -783,7 +794,7 @@ export function OptimizerWorkspace() {
         return;
       }
       const cwd = check.path ?? closed.cwd;
-      pendingStart.current = { agent: closed.agent, cwd };
+      pendingStarts.current.push({ agent: closed.agent, cwd });
       setConfig((c) => ({
         ...c,
         workspaces: withWorkspace(c.workspaces, closed.agent, cwd),
@@ -796,6 +807,15 @@ export function OptimizerWorkspace() {
     } finally {
       setSessionPending(null);
     }
+  }
+
+  /**
+   * «أعد فتح الكل»: every listed closed session, one per agent (reopenBatch
+   * picks the newest folder when one agent closed several). Each reopen runs
+   * the same check-and-start flow as a single «فتح الجلسة».
+   */
+  async function openAllClosed(closed: ClosedSession[]) {
+    for (const entry of reopenBatch(closed)) await openClosedSession(entry);
   }
 
   /**
@@ -1231,7 +1251,12 @@ export function OptimizerWorkspace() {
     setViews((all) => ({ ...all, [id]: next }));
   };
   const agentStatus = (id: string) =>
-    tabStatus(sessions[id]?.run ?? null, agentLog[id], terminalStatus[id]);
+    tabStatus(
+      sessions[id]?.run ?? null,
+      agentLog[id],
+      terminalStatus[id],
+      needsInput[id] != null,
+    );
   const bridge = {
     url: config.bridgeUrl ?? DEFAULT_BRIDGE_URL,
     token: config.bridgeToken ?? "",
@@ -1306,6 +1331,7 @@ export function OptimizerWorkspace() {
               onConnect={(session) => void connectSession(session)}
               onEnd={(session) => void endSession(session)}
               onOpen={(closed) => void openClosedSession(closed)}
+              onOpenAll={(closed) => void openAllClosed(closed)}
               openSignal={sessionsOpenSignal}
             />
             <AgentTabStrip
@@ -1426,6 +1452,13 @@ export function OptimizerWorkspace() {
                             // Started/ended here → the sessions panel follows now.
                             void refreshSessions.current();
                           }}
+                          onBlocked={(decision) =>
+                            setNeedsInput((all) =>
+                              all[opt.id] === decision
+                                ? all
+                                : { ...all, [opt.id]: decision },
+                            )
+                          }
                         />
                       </div>
                       {opt.id === activeAgent && view !== "terminal" ? (

@@ -120,6 +120,21 @@ export interface SessionPanels {
 }
 
 /**
+ * «فتح الكل» batch: one session per agent — a tab hosts a single session,
+ * so a second closed folder for the same agent would have to detach the
+ * session the first reopen just started. The newest closed entry (history
+ * is newest-first) wins.
+ */
+export function reopenBatch(closed: ClosedSession[]): ClosedSession[] {
+  const seen = new Set<string>();
+  return closed.filter((entry) => {
+    if (seen.has(entry.agent)) return false;
+    seen.add(entry.agent);
+    return true;
+  });
+}
+
+/**
  * The two sections, at most PANEL_LIMIT each. A closed project that is
  * live again (reopened) is not listed as closed.
  */

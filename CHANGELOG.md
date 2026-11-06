@@ -6,6 +6,17 @@ All notable changes to TOSO are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **«Decision needed» tab state**: every agent tab now watches its live
+  terminal for dialogs only the user can answer (permission prompts, trust
+  questions, menus) and lights a pulsing dot plus a badge — visible from any
+  tab, so a blocked agent is never missed.
+- **«Reopen all» for closed bridge sessions**: the sessions panel counts
+  recently closed sessions in its folded header and offers one action that
+  starts a fresh session per agent in its saved folder (newest folder when
+  an agent closed several; conversations are not restored).
+
 ## [0.1.0] — 2026-10-25
 
 First public release.

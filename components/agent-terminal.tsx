@@ -160,6 +160,7 @@ export function AgentTerminal({
   ready,
   visible,
   onStatus,
+  onBlocked,
   ref,
 }: {
   agent: string;
@@ -170,6 +171,11 @@ export function AgentTerminal({
   ready: boolean;
   visible: boolean;
   onStatus?: (status: TerminalStatus) => void;
+  /**
+   * The live screen shows a dialog only the user can answer — reported so
+   * the tab can flag it even while hidden. `null` clears it.
+   */
+  onBlocked?: (decision: string | null) => void;
   ref?: Ref<AgentTerminalHandle>;
 }) {
   const { t, dir } = useI18n();
@@ -187,9 +193,16 @@ export function AgentTerminal({
   const statusRef = useRef<TerminalStatus>("idle");
   const messageRef = useRef<string | null>(null);
   // Latest props for async callbacks (they outlive the render that made them).
-  const props = useRef({ bridge, workspace, trust, ready, onStatus });
+  const props = useRef({
+    bridge,
+    workspace,
+    trust,
+    ready,
+    onStatus,
+    onBlocked,
+  });
   useEffect(() => {
-    props.current = { bridge, workspace, trust, ready, onStatus };
+    props.current = { bridge, workspace, trust, ready, onStatus, onBlocked };
   });
 
   const [status, setStatusState] = useState<TerminalStatus>("idle");
@@ -632,6 +645,31 @@ export function AgentTerminal({
     if (!visible || !restored) return;
     safeFit();
   }, [visible, restored]);
+
+  // Watch a live session's rendered screen for a dialog only the user can
+  // answer (permission, trust, menu). Runs while hidden too — that is the
+  // point: the tab badge lights up wherever you are. Reports on change only.
+  const blockedRef = useRef<string | null>(null);
+  useEffect(() => {
+    const report = (decision: string | null) => {
+      if (blockedRef.current === decision) return;
+      blockedRef.current = decision;
+      props.current.onBlocked?.(decision);
+    };
+    const timer = setInterval(() => {
+      if (statusRef.current !== "live") {
+        report(null);
+        return;
+      }
+      const term = termRef.current;
+      if (!term) return;
+      void drain(term).then(() => report(pendingDecision(viewport(term))));
+    }, 1500);
+    return () => {
+      clearInterval(timer);
+      blockedRef.current = null;
+    };
+  }, []);
 
   const cwdChanged =
     status === "live" &&

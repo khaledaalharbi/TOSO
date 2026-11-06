@@ -20,6 +20,7 @@ const render = (props: Partial<Parameters<typeof BridgeSessions>[0]> = {}) =>
       onConnect={() => {}}
       onEnd={() => {}}
       onOpen={() => {}}
+      onOpenAll={() => {}}
       {...props}
     />,
   );
@@ -44,6 +45,12 @@ describe("BridgeSessions", () => {
     expect(html).toContain("الجلسات المغلقة");
     expect(html).toContain("Claude Code");
     expect(html).toContain("فتح الجلسة");
+  });
+
+  it("offers «أعد فتح الكل» with the closed count in the folded header too", () => {
+    const html = render();
+    expect(html).toContain("أعد فتح الكل (1)");
+    expect(html).toContain("مغلقة 1");
   });
 
   it("opens itself when there are detached live sessions", () => {

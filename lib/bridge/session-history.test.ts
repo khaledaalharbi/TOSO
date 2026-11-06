@@ -4,6 +4,7 @@ import {
   parseHistory,
   parseLiveSnapshot,
   recordClosed,
+  reopenBatch,
   sessionPanels,
   type BridgeSessionView,
 } from "./session-history";
@@ -96,6 +97,29 @@ describe("parseLiveSnapshot — closes noticed across a restart", () => {
       { agent: "hermes", cwd: "C:\\A", endedAt: 7 },
     ]);
     expect(parseLiveSnapshot("nope")).toEqual([]);
+  });
+});
+
+describe("reopenBatch — «أعد فتح الكل»", () => {
+  it("keeps one closed session per agent — the newest (history order)", () => {
+    const closed = [
+      { agent: "claude", cwd: "C:\\newer", endedAt: 30 },
+      { agent: "codex", cwd: "C:\\stats", endedAt: 20 },
+      { agent: "claude", cwd: "C:\\older", endedAt: 10 },
+    ];
+    expect(reopenBatch(closed)).toEqual([
+      { agent: "claude", cwd: "C:\\newer", endedAt: 30 },
+      { agent: "codex", cwd: "C:\\stats", endedAt: 20 },
+    ]);
+  });
+
+  it("passes every agent through when each closed a different project", () => {
+    const closed = [
+      { agent: "gemini", cwd: "C:\\A", endedAt: 2 },
+      { agent: "devin", cwd: "C:\\B", endedAt: 1 },
+    ];
+    expect(reopenBatch(closed)).toEqual(closed);
+    expect(reopenBatch([])).toEqual([]);
   });
 });
 

@@ -66,6 +66,23 @@ describe("AgentTabStrip", () => {
     expect(html).toContain("اكتمل");
   });
 
+  it("flags a blocked agent with a pulsing dot and a «قرار مطلوب» badge", () => {
+    const html = renderToStaticMarkup(
+      <AgentTabStrip
+        activeAgent="gemini"
+        status={{ codex: "blocked" }}
+        turns={{}}
+        onSelect={() => {}}
+      />,
+    );
+    const codexTab = html.split('id="agent-tab-codex"')[1] ?? "";
+    expect(codexTab).toContain("bg-rose-500 animate-pulse");
+    expect(codexTab).toContain("قرار مطلوب");
+    expect(codexTab).toContain("ينتظر إجابتك");
+    // Only the blocked tab carries the badge.
+    expect(html.match(/قرار مطلوب/g)).toHaveLength(1);
+  });
+
   it("badges only the settings-chosen default agent's tab", () => {
     const html = (defaultAgent?: string) =>
       renderToStaticMarkup(
