@@ -6,6 +6,8 @@ All notable changes to TOSO are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-11-06
+
 ### Added
 
 - **«Decision needed» tab state**: every agent tab now watches its live
@@ -52,4 +54,6 @@ First public release.
 - Built on Next.js 16.4 and React 19.3; Dependabot proposes minor and patch
   updates after a 7-day cooldown.
 
+[Unreleased]: https://github.com/khaledaalharbi/TOSO/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/khaledaalharbi/TOSO/releases/tag/v0.1.1
 [0.1.0]: https://github.com/khaledaalharbi/TOSO/releases/tag/v0.1.0
