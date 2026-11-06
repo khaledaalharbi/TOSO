@@ -72,24 +72,29 @@ and add folders to an agent's trust file** — the same risk class as any
 localhost agent. If that is unacceptable
 for your environment, do not run the bridge; the copy-paste fallback remains.
 
-## Known dependency findings (last audit: October 2026)
+## Known dependency findings (last audit: November 2026)
 
 `npm audit --omit=dev` is **clean** — nothing vulnerable ships to the
-runtime/browser bundle. The full audit reports 3 dev-only findings
-(moderate) through one build-time chain:
+runtime/browser bundle. The full audit reports 6 dev-only findings
+(moderate), all one package inside the ESLint toolchain:
 
-| Chain                                | Package                         | Advisory         | Status                                            |
-| ------------------------------------ | ------------------------------- | ---------------- | ------------------------------------------------- |
-| `tailwindcss@3` → `postcss-nested` → | `postcss-selector-parser@6.1.4` | ReDoS (moderate) | Fixed in `7.1.6`, outside Tailwind 3's `^6` range |
+| Chain                                    | Package             | Advisory                                              | Status                                                        |
+| ---------------------------------------- | ------------------- | ----------------------------------------------------- | ------------------------------------------------------------- |
+| `@typescript-eslint/*` (eslint dev deps) | `minimatch@10.2.6`  | DoS via globparts amplification (moderate, GHSA-g3hv-75wg-m249) | Fixed in `11.0.1+`, outside typescript-estree's `^10` range |
 
-(The earlier `braces` ReDoS findings through `micromatch` are gone after the
+(The earlier `postcss-selector-parser` ReDoS through Tailwind 3's
+`postcss-nested` was resolved by the `6.1.5` patch inside its `^6` range, and
+the `braces` findings through `micromatch` are gone after the
 `eslint-config-next` 15.5.28 and dev-dependency updates.)
 
-Why this is tolerated: it runs **at build time only** and its input is
-repo-controlled (project CSS). Exploiting it requires a malicious stylesheet
-inside the repository itself; the realistic vector in an open-source repo is a
-crafted CSS file in a PR slowing a CI build.
+Why this is tolerated: it runs **at dev time only** inside ESLint's TypeScript
+parser, on repo-controlled inputs (lint globs). Exploiting it requires feeding
+a crafted glob into a lint run; the realistic vector in an open-source repo is
+a malicious config in a PR slowing a CI lint step.
 
-Planned resolution: a deliberate Tailwind 4 migration. `npm audit fix --force`
-is **not** applied — it installs Tailwind 4, a breaking change, without migrating
-the code.
+Planned resolution: wait for `@typescript-eslint` to ship a `minimatch@11`
+compatible release — Dependabot will pick it up automatically. A deliberate
+Tailwind 4 migration remains on the roadmap for its own reasons.
+`npm audit fix --force` is **not** applied — it downgrades `eslint-config-next`
+to a major version and pulls Tailwind 4, both breaking changes, without
+migrating the code.
